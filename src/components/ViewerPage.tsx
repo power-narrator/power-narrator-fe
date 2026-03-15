@@ -83,7 +83,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
 
         let textToPlay = activeSlide.notes;
 
-        if (textareaRef.current && !voiceOverride) { // Selection only for main play
+        if (textareaRef.current) {
             const start = textareaRef.current.selectionStart;
             const end = textareaRef.current.selectionEnd;
             if (start !== end) {
@@ -106,6 +106,10 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                             .then(() => setIsPlaying(true))
                             .catch(e => console.error("Auto-play failed after generation", e));
                     }
+                    // Restore focus and selection if we had one
+                    if (textareaRef.current) {
+                        textareaRef.current.focus();
+                    }
                 }, 100);
             } else {
                 if (audioRef.current) {
@@ -113,6 +117,10 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                     audioRef.current.play()
                         .then(() => setIsPlaying(true))
                         .catch(e => console.error("Auto-play failed for cached audio", e));
+                }
+                // Restore focus
+                if (textareaRef.current) {
+                    textareaRef.current.focus();
                 }
             }
         } catch (error: any) {
@@ -291,7 +299,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         setCustomBreak('');
     };
 
-    const [splitRatio, setSplitRatio] = useState(60); // Percentage height of top panel
+    const [splitRatio, setSplitRatio] = useState(40); // Percentage height of top panel
     const splitContainerRef = useRef<HTMLDivElement>(null);
 
     const handleResizeMouseDown = (e: React.MouseEvent) => {
@@ -609,10 +617,12 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
     };
 
     const [isRemoving, setIsRemoving] = useState(false);
+    const [removeStatus, setRemoveStatus] = useState('');
 
     const handleRemoveAudio = async (scope: 'slide' | 'all') => {
         if (isGenerating || isSaving || isSyncing || isRemoving) return;
         setIsRemoving(true);
+        setRemoveStatus(scope === 'all' ? 'Removing all audio...' : 'Removing audio...');
         try {
             if (ipcRenderer) {
                 const indexToUse = activeSlide.index || (activeSlideIndex + 1);
@@ -624,7 +634,12 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                 });
 
                 if (result.success) {
-                    alert(`Successfully removed audio (${scope === 'all' ? 'all slides' : 'current slide'}).`);
+                    if (scope === 'all') {
+                        alert('Successfully removed audio from all slides.');
+                    } else {
+                        setRemoveStatus('Removed!');
+                        setTimeout(() => setRemoveStatus(''), 2000);
+                    }
                 } else {
                     alert('Failed to remove audio: ' + (result.error || 'Unknown error'));
                 }
@@ -634,6 +649,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
             alert("Remove audio error: " + e.message);
         } finally {
             setIsRemoving(false);
+            if (removeStatus !== 'Removed!') setRemoveStatus('');
         }
     };
 
@@ -650,72 +666,58 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                 </Group>
 
                 <Group>
-                    {isGenerating && <Text size="xs" c="dimmed">{genStatus}</Text>}
-                    {isSaving && <Text size="xs" c="dimmed">{saveStatus}</Text>}
-                    {isInsertingAudio && <Text size="xs" c="dimmed">{insertStatus}</Text>}
-                    <Button.Group>
-                        <Button
-                            variant="default"
-                            size="xs"
-                            leftSection={<IconRefresh size={14} className={isSyncing ? "mantine-rotate" : ""} />}
-                            onClick={handleSyncSlide}
-                            loading={isSyncing}
-                            disabled={isGenerating || isSaving || isSyncing}
-                        >
-                            Sync Slide
-                        </Button>
-                        <Menu position="bottom-end" withinPortal>
-                            <Menu.Target>
-                                <Button
-                                    variant="default"
-                                    size="xs"
-                                    px={4}
-                                    disabled={isGenerating || isSaving || isSyncing}
-                                >
-                                    <IconChevronDown size={14} />
-                                </Button>
-                            </Menu.Target>
-                            <Menu.Dropdown>
-                                <Menu.Item
-                                    leftSection={<IconRefresh size={14} />}
-                                    onClick={handleSyncAll}
-                                >
-                                    Sync All Slides
-                                </Menu.Item>
-                            </Menu.Dropdown>
-                        </Menu>
-                    </Button.Group>
+                    {(isSyncing || isSaving || isInsertingAudio || isGenerating) && (
+                        <Group gap="xs" mr="xs">
+                            {isSyncing && <Text size="xs" c="dimmed">Syncing...</Text>}
+                            {isSaving && <Text size="xs" c="dimmed">{saveStatus}</Text>}
+                            {isInsertingAudio && <Text size="xs" c="dimmed">{insertStatus}</Text>}
+                            {isRemoving && <Text size="xs" c="dimmed">{removeStatus}</Text>}
+                            {isGenerating && <Text size="xs" c="dimmed">{genStatus}</Text>}
+                        </Group>
+                    )}
 
-                    <Button.Group>
-                        <Button
-                            variant="default"
-                            size="xs"
-                            onClick={() => handleRemoveAudio('slide')}
-                            loading={isRemoving}
-                            disabled={isGenerating || isSaving || isSyncing || isRemoving}
-                        >
-                            Remove Slide Audio
-                        </Button>
-                        <Menu position="bottom-end" withinPortal>
-                            <Menu.Target>
-                                <Button
-                                    variant="default"
-                                    size="xs"
-                                    px={4}
-                                    disabled={isGenerating || isSaving || isSyncing || isRemoving}
-                                >
-                                    <IconChevronDown size={14} />
-                                </Button>
-                            </Menu.Target>
-                            <Menu.Dropdown>
-                                <Menu.Item
-                                    onClick={() => handleRemoveAudio('all')}
-                                >
-                                    Remove All Audio
-                                </Menu.Item>
-                            </Menu.Dropdown>
-                        </Menu>
-                    </Button.Group>
+                    <Button
+                        variant="default"
+                        size="xs"
+                        leftSection={<IconRefresh size={14} className={isSyncing ? "mantine-rotate" : ""} />}
+                        onClick={handleSyncAll}
+                        loading={isSyncing}
+                        disabled={isGenerating || isSaving || isSyncing}
+                    >
+                        Sync All Slides
+                    </Button>
+
+                    <Button
+                        variant="filled"
+                        color="blue"
+                        size="xs"
+                        onClick={handleInsertAllAudio}
+                        loading={isInsertingAudio}
+                        disabled={isGenerating || isSaving || isSyncing || isInsertingAudio}
+                    >
+                        Insert All Audio
+                    </Button>
+
+                    <Button
+                        variant="default"
+                        size="xs"
+                        onClick={handleSaveAllNotes}
+                        loading={isSaving}
+                        disabled={isGenerating || isSaving || isSyncing || isInsertingAudio}
+                    >
+                        Save All Slides
+                    </Button>
+
+                    <Button
+                        variant="default"
+                        size="xs"
+                        onClick={() => handleRemoveAudio('all')}
+                        loading={isRemoving}
+                        disabled={isGenerating || isSaving || isSyncing || isRemoving}
+                    >
+                        Remove All Audio
+                    </Button>
+
                     <Button
                         size="xs"
                         variant="light"
@@ -726,78 +728,6 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                     >
                         {isGenerating ? 'Generating...' : 'Generate Video'}
                     </Button>
-                    <Button
-                        variant="default"
-                        size="xs"
-                        leftSection={<IconDeviceTv size={14} />}
-                        onClick={handlePlaySlide}
-                        disabled={isGenerating || isSaving || isSyncing || isInsertingAudio}
-                    >
-                        Play
-                    </Button>
-                    <Button.Group>
-                        <Button
-                            variant="filled"
-                            color="blue"
-                            size="xs"
-                            onClick={handleInsertSlideAudio}
-                            loading={isInsertingAudio}
-                            disabled={isGenerating || isSaving || isSyncing || isRemoving || isInsertingAudio}
-                        >
-                            Insert Audio
-                        </Button>
-                        <Menu position="bottom-end" withinPortal>
-                            <Menu.Target>
-                                <Button
-                                    variant="filled"
-                                    color="blue"
-                                    size="xs"
-                                    px={4}
-                                    disabled={isGenerating || isSaving || isSyncing || isRemoving || isInsertingAudio}
-                                >
-                                    <IconChevronDown size={14} />
-                                </Button>
-                            </Menu.Target>
-                            <Menu.Dropdown>
-                                <Menu.Item
-                                    onClick={handleInsertAllAudio}
-                                >
-                                    Insert All Audio
-                                </Menu.Item>
-                            </Menu.Dropdown>
-                        </Menu>
-                    </Button.Group>
-
-                    <Button.Group>
-                        <Button
-                            variant="default"
-                            size="xs"
-                            onClick={handleSaveAllNotes}
-                            loading={isSaving}
-                            disabled={isGenerating || isSaving || isSyncing || isRemoving || isInsertingAudio}
-                        >
-                            Save All Slides
-                        </Button>
-                        <Menu position="bottom-end" withinPortal>
-                            <Menu.Target>
-                                <Button
-                                    variant="default"
-                                    size="xs"
-                                    px={4}
-                                    disabled={isGenerating || isSaving || isSyncing || isRemoving || isInsertingAudio}
-                                >
-                                    <IconChevronDown size={14} />
-                                </Button>
-                            </Menu.Target>
-                            <Menu.Dropdown>
-                                <Menu.Item
-                                    onClick={handleSaveCurrentSlideNotes}
-                                >
-                                    Save Current Slide
-                                </Menu.Item>
-                            </Menu.Dropdown>
-                        </Menu>
-                    </Button.Group>
                 </Group>
             </Group>
 
@@ -947,6 +877,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                             variant="outline"
                                             size="compact-xs"
                                             leftSection={<IconPlayerPlay size={12} />}
+                                            onMouseDown={(e) => e.preventDefault()}
                                             onClick={() => handlePlayAudio(voice)}
                                             disabled={!activeSlide.notes || isAudioGenerating}
                                         >
@@ -956,6 +887,65 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                 </Group>
                             </Box>
                         )}
+
+                        <Group gap="md" py="xs" style={{ borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
+                            <Button
+                                variant="default"
+                                size="xs"
+                                leftSection={<IconRefresh size={14} className={isSyncing ? "mantine-rotate" : ""} />}
+                                onClick={handleSyncSlide}
+                                loading={isSyncing}
+                                disabled={isGenerating || isSaving || isSyncing}
+                            >
+                                Sync Slide
+                            </Button>
+
+                            <Button
+                                variant="filled"
+                                color="blue"
+                                size="xs"
+                                onClick={handleInsertSlideAudio}
+                                loading={isInsertingAudio}
+                                disabled={isGenerating || isSaving || isSyncing || isRemoving || isInsertingAudio}
+                            >
+                                Insert Audio
+                            </Button>
+
+                            <Button
+                                variant="default"
+                                size="xs"
+                                leftSection={<IconDeviceTv size={14} />}
+                                onClick={handlePlaySlide}
+                                disabled={isGenerating || isSaving || isSyncing || isInsertingAudio}
+                            >
+                                Play
+                            </Button>
+
+                            <Button
+                                variant="default"
+                                size="xs"
+                                onClick={handleSaveCurrentSlideNotes}
+                                loading={isSaving}
+                                disabled={isGenerating || isSaving || isSyncing || isRemoving || isInsertingAudio}
+                            >
+                                Save Slide
+                            </Button>
+
+                            <Button
+                                variant="default"
+                                size="xs"
+                                onClick={() => handleRemoveAudio('slide')}
+                                loading={isRemoving}
+                                disabled={isGenerating || isSaving || isSyncing || isRemoving}
+                            >
+                                Remove Audio
+                            </Button>
+                            {isRemoving && removeStatus && (
+                                <Text size="xs" c="dimmed" ml="xs">
+                                    {removeStatus}
+                                </Text>
+                            )}
+                        </Group>
 
                         {/* SSML Toolbar (Second) */}
                         <Group gap={0} mb="xs" style={{ border: '1px solid var(--mantine-color-dark-4)', borderRadius: '4px', padding: '4px', background: 'var(--mantine-color-dark-6)' }}>

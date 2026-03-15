@@ -126,19 +126,19 @@ test.describe('PPT Viewer UI Workflows', () => {
         // Change text
         await notesTextarea.fill('Initial notes for slide 1 - EDITED IN TEST');
 
-        // Click "Save All Slides"
-        await window.click('button:has-text("Save All Slides")');
-
-        // Verify UI shows success state (this might be too fast to catch the text change, 
-        // so we just rely on it not throwing an error and the button remaining enabled afterwards)
-        const saveBtn = window.locator('button:has-text("Save All Slides")');
-        // Wait for it to not be disabled (meaning saving finished)
-        await expect(saveBtn).toBeEnabled();
+        // Click "Save Slide"
+        await window.getByRole('button', { name: 'Save Slide', exact: true }).click();
+        
+        // Wait for it to be enabled (meaning saving finished)
+        await expect(window.getByRole('button', { name: 'Save Slide', exact: true })).toBeEnabled();
     });
 
     test('Test 3: Insert Audio', async () => {
         // Click "Insert Audio"
-        await window.click('button:has-text("Insert Audio")');
+        await window.getByRole('button', { name: 'Insert Audio', exact: true }).click();
+        
+        // Wait for it to be enabled
+        await expect(window.getByRole('button', { name: 'Insert Audio', exact: true })).toBeEnabled();
 
         // Verify UI completes operation without throwing errors.
         // It might take a few seconds because it actually runs the AppleScript macro...
