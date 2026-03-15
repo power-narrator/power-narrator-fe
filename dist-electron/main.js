@@ -326,15 +326,6 @@ electron_1.ipcMain.handle('save-all-notes', async (event, filePath, slides, slid
         return { success: false, error: 'File not found' };
     }
     try {
-        // 1. Insert Audio (if provided)
-        if (slidesAudio && slidesAudio.length > 0) {
-            console.log('Inserting audio before saving notes...');
-            const audioResult = await handleAudioInsertion(absolutePath, slidesAudio);
-            if (!audioResult.success) {
-                console.error("Audio insertion failed during save:", audioResult.error);
-                return { success: false, error: "Audio insertion failed: " + audioResult.error };
-            }
-        }
         if (process.platform === 'darwin') {
             const app = require('electron').app;
             const homeDir = app.getPath('home');
@@ -393,6 +384,28 @@ electron_1.ipcMain.handle('save-all-notes', async (event, filePath, slides, slid
             // Windows implementation...
             return { success: false, error: 'Save not supported on this platform yet' };
         }
+    }
+    catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+electron_1.ipcMain.handle('insert-audio', async (event, filePath, slidesAudio) => {
+    console.log('Insert Audio request for:', filePath);
+    const absolutePath = path_1.default.resolve(filePath);
+    const fs = require('fs');
+    if (!fs.existsSync(absolutePath)) {
+        return { success: false, error: 'File not found' };
+    }
+    try {
+        if (slidesAudio && slidesAudio.length > 0) {
+            console.log('Inserting audio...');
+            const audioResult = await handleAudioInsertion(absolutePath, slidesAudio);
+            if (!audioResult.success) {
+                console.error("Audio insertion failed:", audioResult.error);
+                return { success: false, error: "Audio insertion failed: " + audioResult.error };
+            }
+        }
+        return { success: true };
     }
     catch (e) {
         return { success: false, error: e.message };

@@ -387,44 +387,25 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
     // Save State
     const [isSaving, setIsSaving] = useState(false);
     const [saveStatus, setSaveStatus] = useState('');
+    const [isInsertingAudio, setIsInsertingAudio] = useState(false);
+    const [insertStatus, setInsertStatus] = useState('');
 
-    const handleSaveWithAudio = async () => {
-        if (isSaving) return;
+    const handleSaveAllNotes = async () => {
+        if (isSaving || isInsertingAudio) return;
         setIsSaving(true);
-        setSaveStatus('Generating audio...');
+        setSaveStatus('Saving all notes...');
 
         try {
             if (ipcRenderer) {
-                // 1. Generate Audio
-                const slidesAudioString = [];
-                for (const slide of slides) {
-                    if (slide.notes && slide.notes.trim().length > 0) {
-                        setSaveStatus(`Generating audio for slide ${slide.index}...`);
-                        const buffer = await getAudioBuffer(slide.notes, undefined);
-                        slidesAudioString.push({
-                            index: slide.index,
-                            audioData: new Uint8Array(buffer)
-                        });
-                    }
-                }
-
-                setSaveStatus('Saving notes and inserting audio...');
-
-                // 2. Call Save
-                // Note: We are passing slidesAudioString as the 4th argument (after filePath, slides)
-                // BUT my ipcMain handler signature is (event, filePath, slides, slidesAudio).
-                // Wait, ipcRenderer.invoke('channel', arg1, arg2...) 
-                // matches handle('channel', (event, arg1, arg2...))
-                const result = await ipcRenderer.invoke('save-all-notes', filePath, slides, slidesAudioString);
+                const result = await ipcRenderer.invoke('save-all-notes', filePath, slides);
 
                 if (result.success) {
-                    alert('Changes saved successfully (Notes & Audio)!');
+                    alert('Notes saved successfully!');
                     onSave(slides);
                 } else {
-                    alert('Failed to save: ' + result.error);
+                    alert('Failed to save notes: ' + result.error);
                 }
             } else {
-                // Fallback for web-only (no electron)?
                 onSave(slides);
             }
         } catch (e: any) {
@@ -436,37 +417,21 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         }
     };
 
-    const handleSaveCurrentSlide = async () => {
-        if (isSaving) return;
+    const handleSaveCurrentSlideNotes = async () => {
+        if (isSaving || isInsertingAudio) return;
         setIsSaving(true);
-        setSaveStatus(`Saving Slide ${activeSlide.index}...`);
+        setSaveStatus(`Saving Note for Slide ${activeSlide.index}...`);
 
         try {
             if (ipcRenderer) {
-                // 1. Generate Audio for Current Slide Only
-                const slidesAudioString = [];
-                if (activeSlide.notes && activeSlide.notes.trim().length > 0) {
-                    setSaveStatus(`Generating audio for slide ${activeSlide.index}...`);
-                    const buffer = await getAudioBuffer(activeSlide.notes, undefined);
-                    slidesAudioString.push({
-                        index: activeSlide.index,
-                        audioData: new Uint8Array(buffer)
-                    });
-                }
-
-                setSaveStatus('Saving current slide...');
-
-                // 2. Call Save with ONLY current slide data
-                // We pass a single-element array for slides and audio
-                const result = await ipcRenderer.invoke('save-all-notes', filePath, [activeSlide], slidesAudioString);
+                const result = await ipcRenderer.invoke('save-all-notes', filePath, [activeSlide]);
 
                 if (result.success) {
                     setSaveStatus('Saved!');
                     setTimeout(() => setSaveStatus(''), 2000);
-                    // Update parent state with FULL list to keep UI in sync
                     onSave(slides);
                 } else {
-                    alert('Failed to save slide: ' + result.error);
+                    alert('Failed to save slide note: ' + result.error);
                 }
             } else {
                 onSave(slides);
@@ -477,6 +442,90 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         } finally {
             setIsSaving(false);
             if (saveStatus !== 'Saved!') setSaveStatus('');
+        }
+    };
+
+    const handleInsertSlideAudio = async () => {
+        if (isInsertingAudio || isSaving || isGenerating || isSyncing) return;
+        setIsInsertingAudio(true);
+        setInsertStatus(`Generating audio for slide ${activeSlide.index}...`);
+
+        try {
+            if (ipcRenderer) {
+                const slidesAudioString = [];
+                if (activeSlide.notes && activeSlide.notes.trim().length > 0) {
+                    const buffer = await getAudioBuffer(activeSlide.notes, undefined);
+                    slidesAudioString.push({
+                        index: activeSlide.index,
+                        audioData: new Uint8Array(buffer)
+                    });
+                }
+
+                if (slidesAudioString.length === 0) {
+                    alert("No notes found to generate audio.");
+                    setIsInsertingAudio(false);
+                    return;
+                }
+
+                setInsertStatus('Inserting audio...');
+                const result = await ipcRenderer.invoke('insert-audio', filePath, slidesAudioString);
+
+                if (result.success) {
+                    setInsertStatus('Audio Inserted!');
+                    setTimeout(() => setInsertStatus(''), 2000);
+                } else {
+                    alert('Failed to insert audio: ' + result.error);
+                }
+            }
+        } catch (e: any) {
+            console.error("Insert audio failed:", e);
+            alert("Insert error: " + e.message);
+        } finally {
+            setIsInsertingAudio(false);
+            if (insertStatus !== 'Audio Inserted!') setInsertStatus('');
+        }
+    };
+
+    const handleInsertAllAudio = async () => {
+        if (isInsertingAudio || isSaving || isGenerating || isSyncing) return;
+        setIsInsertingAudio(true);
+        setInsertStatus('Generating audio for all slides...');
+
+        try {
+            if (ipcRenderer) {
+                const slidesAudioString = [];
+                for (const slide of slides) {
+                    if (slide.notes && slide.notes.trim().length > 0) {
+                        setInsertStatus(`Generating audio for slide ${slide.index}...`);
+                        const buffer = await getAudioBuffer(slide.notes, undefined);
+                        slidesAudioString.push({
+                            index: slide.index,
+                            audioData: new Uint8Array(buffer)
+                        });
+                    }
+                }
+
+                if (slidesAudioString.length === 0) {
+                    alert("No notes found to generate audio.");
+                    setIsInsertingAudio(false);
+                    return;
+                }
+
+                setInsertStatus('Inserting all audio...');
+                const result = await ipcRenderer.invoke('insert-audio', filePath, slidesAudioString);
+
+                if (result.success) {
+                    alert('All audio inserted successfully!');
+                } else {
+                    alert('Failed to insert audio: ' + result.error);
+                }
+            }
+        } catch (e: any) {
+            console.error("Insert all audio failed:", e);
+            alert("Insert error: " + e.message);
+        } finally {
+            setIsInsertingAudio(false);
+            setInsertStatus('');
         }
     };
 
@@ -603,6 +652,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                 <Group>
                     {isGenerating && <Text size="xs" c="dimmed">{genStatus}</Text>}
                     {isSaving && <Text size="xs" c="dimmed">{saveStatus}</Text>}
+                    {isInsertingAudio && <Text size="xs" c="dimmed">{insertStatus}</Text>}
                     <Button.Group>
                         <Button
                             variant="default"
@@ -681,29 +731,73 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                         size="xs"
                         leftSection={<IconDeviceTv size={14} />}
                         onClick={handlePlaySlide}
-                        disabled={isGenerating || isSaving || isSyncing}
+                        disabled={isGenerating || isSaving || isSyncing || isInsertingAudio}
                     >
                         Play
                     </Button>
-                    <Button
-                        variant="default"
-                        size="xs"
-                        onClick={handleSaveCurrentSlide}
-                        loading={isSaving}
-                        disabled={isGenerating || isSaving || isSyncing}
-                    >
-                        Save Slide
-                    </Button>
-                    <Button
-                        variant="filled"
-                        color="blue"
-                        size="xs"
-                        onClick={handleSaveWithAudio}
-                        loading={isSaving}
-                        disabled={isGenerating || isSaving || isSyncing}
-                    >
-                        Save All Changes
-                    </Button>
+                    <Button.Group>
+                        <Button
+                            variant="filled"
+                            color="blue"
+                            size="xs"
+                            onClick={handleInsertSlideAudio}
+                            loading={isInsertingAudio}
+                            disabled={isGenerating || isSaving || isSyncing || isRemoving || isInsertingAudio}
+                        >
+                            Insert Audio
+                        </Button>
+                        <Menu position="bottom-end" withinPortal>
+                            <Menu.Target>
+                                <Button
+                                    variant="filled"
+                                    color="blue"
+                                    size="xs"
+                                    px={4}
+                                    disabled={isGenerating || isSaving || isSyncing || isRemoving || isInsertingAudio}
+                                >
+                                    <IconChevronDown size={14} />
+                                </Button>
+                            </Menu.Target>
+                            <Menu.Dropdown>
+                                <Menu.Item
+                                    onClick={handleInsertAllAudio}
+                                >
+                                    Insert All Audio
+                                </Menu.Item>
+                            </Menu.Dropdown>
+                        </Menu>
+                    </Button.Group>
+
+                    <Button.Group>
+                        <Button
+                            variant="default"
+                            size="xs"
+                            onClick={handleSaveCurrentSlideNotes}
+                            loading={isSaving}
+                            disabled={isGenerating || isSaving || isSyncing || isRemoving || isInsertingAudio}
+                        >
+                            Save Slide
+                        </Button>
+                        <Menu position="bottom-end" withinPortal>
+                            <Menu.Target>
+                                <Button
+                                    variant="default"
+                                    size="xs"
+                                    px={4}
+                                    disabled={isGenerating || isSaving || isSyncing || isRemoving || isInsertingAudio}
+                                >
+                                    <IconChevronDown size={14} />
+                                </Button>
+                            </Menu.Target>
+                            <Menu.Dropdown>
+                                <Menu.Item
+                                    onClick={handleSaveAllNotes}
+                                >
+                                    Save Slides
+                                </Menu.Item>
+                            </Menu.Dropdown>
+                        </Menu>
+                    </Button.Group>
                 </Group>
             </Group>
 
