@@ -126,12 +126,12 @@ test.describe('PPT Viewer UI Workflows', () => {
         // Change text
         await notesTextarea.fill('Initial notes for slide 1 - EDITED IN TEST');
 
-        // Click "Save Slide"
-        await window.click('button:has-text("Save Slide")');
+        // Click "Save All Slides"
+        await window.click('button:has-text("Save All Slides")');
 
         // Verify UI shows success state (this might be too fast to catch the text change, 
         // so we just rely on it not throwing an error and the button remaining enabled afterwards)
-        const saveBtn = window.locator('button:has-text("Save Slide")');
+        const saveBtn = window.locator('button:has-text("Save All Slides")');
         // Wait for it to not be disabled (meaning saving finished)
         await expect(saveBtn).toBeEnabled();
     });

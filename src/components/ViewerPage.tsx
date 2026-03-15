@@ -772,11 +772,11 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                         <Button
                             variant="default"
                             size="xs"
-                            onClick={handleSaveCurrentSlideNotes}
+                            onClick={handleSaveAllNotes}
                             loading={isSaving}
                             disabled={isGenerating || isSaving || isSyncing || isRemoving || isInsertingAudio}
                         >
-                            Save Slide
+                            Save All Slides
                         </Button>
                         <Menu position="bottom-end" withinPortal>
                             <Menu.Target>
@@ -791,9 +791,9 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                             </Menu.Target>
                             <Menu.Dropdown>
                                 <Menu.Item
-                                    onClick={handleSaveAllNotes}
+                                    onClick={handleSaveCurrentSlideNotes}
                                 >
-                                    Save Slides
+                                    Save Current Slide
                                 </Menu.Item>
                             </Menu.Dropdown>
                         </Menu>
