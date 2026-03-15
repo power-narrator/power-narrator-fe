@@ -16,7 +16,7 @@ import {
     IconRefresh
 } from '@tabler/icons-react';
 import type { Slide } from '../electron';
-import { generateAudio, getAudioBuffer } from '../utils/tts';
+import { generateAudio, getAudioBuffer, type VoiceOption } from '../utils/tts';
 // Removed VoiceSelector import
 import { SettingsModal } from './SettingsModal';
 const { ipcRenderer } = (window as any).require('electron');
@@ -78,12 +78,12 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         setDuration(0);
     }, [activeSlideIndex]);
 
-    const handlePlayAudio = async () => {
+    const handlePlayAudio = async (voiceOverride?: VoiceOption) => {
         if (!activeSlide.notes) return;
 
         let textToPlay = activeSlide.notes;
 
-        if (textareaRef.current) {
+        if (textareaRef.current && !voiceOverride) { // Selection only for main play
             const start = textareaRef.current.selectionStart;
             const end = textareaRef.current.selectionEnd;
             if (start !== end) {
@@ -94,7 +94,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         try {
             setIsAudioGenerating(true);
             // Generate URL (cached if possible)
-            const url = await generateAudio(textToPlay, undefined);
+            const url = await generateAudio(textToPlay, voiceOverride);
 
             if (url !== audioUrl) {
                 setAudioUrl(url);
@@ -934,6 +934,28 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                 </Box>
                             </Group>
                         </Box>
+                        {/* Speaker Previews */}
+                        {Object.keys(mappings).length > 0 && (
+                            <Box mb="md">
+                                <Text size="xs" fw={700} c="dimmed" mb={8} style={{ textTransform: 'uppercase', letterSpacing: rem(1) }}>
+                                    Speaker Previews
+                                </Text>
+                                <Group gap="xs">
+                                    {Object.entries(mappings).map(([alias, voice]) => (
+                                        <Button
+                                            key={alias}
+                                            variant="outline"
+                                            size="compact-xs"
+                                            leftSection={<IconPlayerPlay size={12} />}
+                                            onClick={() => handlePlayAudio(voice)}
+                                            disabled={!activeSlide.notes || isAudioGenerating}
+                                        >
+                                            {alias === '_default_' ? 'Default' : alias}
+                                        </Button>
+                                    ))}
+                                </Group>
+                            </Box>
+                        )}
 
                         {/* SSML Toolbar (Second) */}
                         <Group gap={0} mb="xs" style={{ border: '1px solid var(--mantine-color-dark-4)', borderRadius: '4px', padding: '4px', background: 'var(--mantine-color-dark-6)' }}>

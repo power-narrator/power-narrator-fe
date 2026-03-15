@@ -798,13 +798,22 @@ ipcMain.handle('get-voices', async () => {
         if (keyPath) {
             const options: any = { keyFilename: keyPath };
             const client = new TextToSpeechClient(options);
-            const [result] = await client.listVoices({ languageCode: 'en-US' });
-
-            if (result.voices) {
-                const gcpVoices = result.voices
+            // Fetch en-GB Chirp 3 HD voices (UK)
+            const [gbResult] = await client.listVoices({ languageCode: 'en-GB' });
+            if (gbResult.voices) {
+                const gbGcpVoices = gbResult.voices
                     .filter(v => v.name && v.name.includes('Chirp3-HD'))
                     .map(v => ({ ...v, provider: 'gcp' }));
-                voices.push(...gcpVoices);
+                voices.push(...gbGcpVoices);
+            }
+
+            // Fetch en-US Chirp 3 HD voices
+            const [usResult] = await client.listVoices({ languageCode: 'en-US' });
+            if (usResult.voices) {
+                const usGcpVoices = usResult.voices
+                    .filter(v => v.name && v.name.includes('Chirp3-HD'))
+                    .map(v => ({ ...v, provider: 'gcp' }));
+                voices.push(...usGcpVoices);
             }
         } else {
             console.warn("GOOGLE_APPLICATION_CREDENTIALS is not set; skipping GCP voices.");
