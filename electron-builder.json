@@ -15,5 +15,12 @@
         "target": "dmg",
         "hardenedRuntime": true,
         "gatekeeperAssess": false
-    }
+    },
+    "asar": true,
+    "asarUnpack": [
+        "**/*.scpt",
+        "**/*.applescript",
+        "**/*.bas",
+        "**/*.vba"
+    ]
 }
