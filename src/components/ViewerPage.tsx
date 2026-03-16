@@ -40,11 +40,16 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
     const [customBreak, setCustomBreak] = useState('');
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [mappings, setMappings] = useState<Record<string, any>>({});
+    const [xmlCliEnabled, setXmlCliEnabled] = useState(false);
 
     const loadSettings = async () => {
         if (window.electronAPI.getSpeakerMappings) {
             const m = await window.electronAPI.getSpeakerMappings();
             setMappings(m || {});
+        }
+        if (window.electronAPI.getXmlCliEnabled) {
+            const enabled = await window.electronAPI.getXmlCliEnabled();
+            setXmlCliEnabled(enabled);
         }
     };
 
@@ -911,15 +916,20 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                 Insert Audio
                             </Button>
 
-                            <Button
-                                variant="default"
-                                size="xs"
-                                leftSection={<IconDeviceTv size={14} />}
-                                onClick={handlePlaySlide}
-                                disabled={isGenerating || isSaving || isSyncing || isInsertingAudio}
+                            <Tooltip 
+                                label="Disabled when XML CLI is enabled" 
+                                disabled={!xmlCliEnabled}
                             >
-                                Play
-                            </Button>
+                                <Button
+                                    variant="default"
+                                    size="xs"
+                                    leftSection={<IconDeviceTv size={14} />}
+                                    onClick={handlePlaySlide}
+                                    disabled={isGenerating || isSaving || isSyncing || isInsertingAudio || xmlCliEnabled}
+                                >
+                                    Play
+                                </Button>
+                            </Tooltip>
 
                             <Button
                                 variant="default"

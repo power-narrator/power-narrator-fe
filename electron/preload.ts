@@ -13,4 +13,6 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
     getSpeakerMappings: () => ipcRenderer.invoke('get-speaker-mappings'),
     setSpeakerMappings: (mappings: Record<string, any>) => ipcRenderer.invoke('set-speaker-mappings', mappings),
     getTtsProvider: () => ipcRenderer.invoke('get-tts-provider'),
+    getXmlCliEnabled: () => ipcRenderer.invoke('get-xml-cli-enabled'),
+    setXmlCliEnabled: (enabled: boolean) => ipcRenderer.invoke('set-xml-cli-enabled', enabled),
 };

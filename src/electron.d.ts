@@ -26,6 +26,8 @@ declare global {
             getSpeakerMappings: () => Promise<Record<string, any>>;
             setSpeakerMappings: (mappings: Record<string, any>) => Promise<{ success: boolean; error?: string }>;
             getTtsProvider: () => Promise<'gcp' | 'local'>;
+            getXmlCliEnabled: () => Promise<boolean>;
+            setXmlCliEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
         };
     }
 }
