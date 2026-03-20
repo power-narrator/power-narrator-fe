@@ -180,7 +180,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
                     <Box>
                         <Text fw={500}>XML CLI Engine (Experimental)</Text>
                         <Text size="sm" c="dimmed">
-                            Use the Python XML CLI for PPTX operations instead of AppleScript. This may be faster and more reliable outside of PowerPoint running.
+                            Use the Python XML CLI for PPTX operations instead of AppleScript. Less features are supported but it does not require PowerPoint to be running.
                         </Text>
                     </Box>
                     <Switch 

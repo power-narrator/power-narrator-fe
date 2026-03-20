@@ -563,6 +563,11 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
 
     const handleSyncAll = async () => {
         if (isSyncing || isSaving || isGenerating) return;
+
+        if (!window.confirm("Syncing will override any unsaved changes in your notes. Do you want to proceed?")) {
+            return;
+        }
+
         setIsSyncing(true);
 
         try {
@@ -591,6 +596,11 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
 
     const handleSyncSlide = async () => {
         if (isSyncing || isSaving || isGenerating) return;
+
+        if (!window.confirm("Syncing will override any unsaved changes in your notes. Do you want to proceed?")) {
+            return;
+        }
+
         setIsSyncing(true);
 
         try {
@@ -894,16 +904,21 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                         )}
 
                         <Group gap="md" py="xs" style={{ borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
-                            <Button
-                                variant="default"
-                                size="xs"
-                                leftSection={<IconRefresh size={14} className={isSyncing ? "mantine-rotate" : ""} />}
-                                onClick={handleSyncSlide}
-                                loading={isSyncing}
-                                disabled={isGenerating || isSaving || isSyncing}
+                            <Tooltip
+                                label="Individual slide sync is disabled in XML mode"
+                                disabled={!xmlCliEnabled}
                             >
-                                Sync Slide
-                            </Button>
+                                <Button
+                                    variant="default"
+                                    size="xs"
+                                    leftSection={<IconRefresh size={14} className={isSyncing ? "mantine-rotate" : ""} />}
+                                    onClick={handleSyncSlide}
+                                    loading={isSyncing}
+                                    disabled={isGenerating || isSaving || isSyncing || xmlCliEnabled}
+                                >
+                                    Sync Slide
+                                </Button>
+                            </Tooltip>
 
                             <Button
                                 variant="filled"
@@ -916,8 +931,8 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                 Insert Audio
                             </Button>
 
-                            <Tooltip 
-                                label="Disabled when XML CLI is enabled" 
+                            <Tooltip
+                                label="Disabled when XML CLI is enabled"
                                 disabled={!xmlCliEnabled}
                             >
                                 <Button
