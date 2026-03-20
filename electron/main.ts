@@ -149,9 +149,9 @@ async function runXmlCli(inputPath: string, outputPath: string | null, ops: any[
     const path = require('path');
     const { spawn } = require('child_process');
 
-    const projectRoot = app.getAppPath();
-    const reqPath = path.join(projectRoot, 'request.json');
-    const resPath = path.join(projectRoot, 'response.json');
+    const tempDir = app.getPath('temp');
+    const reqPath = path.join(tempDir, 'request.json');
+    const resPath = path.join(tempDir, 'response.json');
 
     const payload = {
         input: inputPath,
@@ -169,21 +169,26 @@ async function runXmlCli(inputPath: string, outputPath: string | null, ops: any[
 
     // 2. Run Python CLI
     const cliResult: any = await new Promise((resolve) => {
-        // Run uv run -m slide_voice_pptx request.json response.json
-        // Ensure ~/.local/bin is in the PATH for macOS where uv is often installed
         const env = Object.assign({}, process.env);
         const localBinDir = path.join(app.getPath('home'), '.local', 'bin');
         if (env.PATH && !env.PATH.includes(localBinDir)) {
             env.PATH = `${localBinDir}:${env.PATH}`;
         }
 
-        // Expected location of the slide-voice-app component
-        const cliDir = path.join(__dirname, '../xml/slide-voice-app');
-
-        const child = spawn('uv', ['run', '-m', 'slide_voice_pptx', reqPath, resPath], {
-            cwd: cliDir,
-            env: env
-        });
+        let child;
+        if (app.isPackaged) {
+            const cliPath = resolveScriptPath(path.join('xml-cli', 'slide-voice-pptx'));
+            child = spawn(cliPath, [reqPath, resPath], { 
+                env: env 
+            });
+        } else {
+            // Expected location of the slide-voice-app component in dev
+            const cliDir = path.join(__dirname, '../xml/slide-voice-app');
+            child = spawn('uv', ['run', '-m', 'slide_voice_pptx', reqPath, resPath], {
+                cwd: cliDir,
+                env: env
+            });
+        }
 
         let stdout = '';
         let stderr = '';

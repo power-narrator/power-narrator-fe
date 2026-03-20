@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
 const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 const child_process_1 = require("child_process");
 const text_to_speech_1 = require("@google-cloud/text-to-speech");
 const dotenv_1 = __importDefault(require("dotenv"));
@@ -90,6 +91,129 @@ electron_1.ipcMain.handle('select-file', async () => {
     }
     return result.filePaths[0];
 });
+// --- XML CLI Helper ---
+// --- PPT Lifecycle Helpers ---
+async function closePresentation(filePath) {
+    if (process.platform !== 'darwin')
+        return 1;
+    const path = require('path');
+    const { spawn } = require('child_process');
+    try {
+        const closeScript = resolveScriptPath('close-presentation.applescript');
+        const childClose = spawn('osascript', [closeScript, filePath]);
+        const slideIndex = await new Promise((resolve) => {
+            let out = '';
+            childClose.stdout.on('data', (d) => out += d.toString());
+            childClose.on('close', () => {
+                const parsed = parseInt(out.trim(), 10);
+                resolve(isNaN(parsed) ? 1 : parsed);
+            });
+        });
+        console.log("Closed presentation, was on slide " + slideIndex);
+        return slideIndex;
+    }
+    catch (e) {
+        console.error("Failed to close presentation", e);
+        return 1;
+    }
+}
+async function reopenPresentation(filePath, slideIndex) {
+    if (process.platform !== 'darwin')
+        return;
+    const { spawn } = require('child_process');
+    try {
+        const reopenScript = resolveScriptPath('reopen-presentation.applescript');
+        const childReopen = spawn('osascript', [reopenScript, filePath, slideIndex.toString()]);
+        await new Promise((resolve) => {
+            childReopen.on('close', () => resolve());
+        });
+        console.log("Reopened presentation at slide " + slideIndex);
+    }
+    catch (e) {
+        console.error("Failed to reopen presentation", e);
+    }
+    // Focus App Back
+    const BrowserWindow = require('electron').BrowserWindow;
+    const windows = BrowserWindow.getAllWindows();
+    if (windows.length > 0) {
+        windows[0].show();
+        windows[0].focus();
+    }
+}
+// --- XML CLI Helper ---
+async function runXmlCli(inputPath, outputPath, ops, options = {}) {
+    const fs = require('fs');
+    const path = require('path');
+    const { spawn } = require('child_process');
+    const tempDir = electron_1.app.getPath('temp');
+    const reqPath = path.join(tempDir, 'request.json');
+    const resPath = path.join(tempDir, 'response.json');
+    const payload = {
+        input: inputPath,
+        output: outputPath,
+        ops: ops
+    };
+    fs.writeFileSync(reqPath, JSON.stringify(payload, null, 2), 'utf8');
+    // 1. Close presentation if MacOS
+    let currentSlideIndex = 1;
+    if (!options.skipClose && process.platform === 'darwin') {
+        currentSlideIndex = await closePresentation(inputPath);
+    }
+    // 2. Run Python CLI
+    const cliResult = await new Promise((resolve) => {
+        const env = Object.assign({}, process.env);
+        const localBinDir = path.join(electron_1.app.getPath('home'), '.local', 'bin');
+        if (env.PATH && !env.PATH.includes(localBinDir)) {
+            env.PATH = `${localBinDir}:${env.PATH}`;
+        }
+        let child;
+        if (electron_1.app.isPackaged) {
+            const cliPath = resolveScriptPath(path.join('xml-cli', 'slide-voice-pptx'));
+            child = spawn(cliPath, [reqPath, resPath], {
+                env: env
+            });
+        }
+        else {
+            // Expected location of the slide-voice-app component in dev
+            const cliDir = path.join(__dirname, '../xml/slide-voice-app');
+            child = spawn('uv', ['run', '-m', 'slide_voice_pptx', reqPath, resPath], {
+                cwd: cliDir,
+                env: env
+            });
+        }
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', (d) => stdout += d.toString());
+        child.stderr.on('data', (d) => stderr += d.toString());
+        child.on('close', (code) => {
+            if (fs.existsSync(resPath)) {
+                try {
+                    const resultData = JSON.parse(fs.readFileSync(resPath, 'utf8'));
+                    if (code === 0) {
+                        resolve({ success: true, data: resultData });
+                    }
+                    else {
+                        resolve({ success: false, error: `CLI failed with code ${code}. Stderr: ${stderr}. Result: ${JSON.stringify(resultData)}` });
+                    }
+                }
+                catch (e) {
+                    resolve({ success: false, error: `Failed to parse response JSON: ${e.message}. Stderr: ${stderr}` });
+                }
+            }
+            else {
+                resolve({ success: false, error: `CLI did not produce response.json. Code: ${code}. Stderr: ${stderr}. Stdout: ${stdout}` });
+            }
+        });
+        child.on('error', (err) => {
+            resolve({ success: false, error: `Failed to start uv process: ${err.message}` });
+        });
+    });
+    // 3. Reopen presentation if MacOS
+    if (!options.skipReopen && process.platform === 'darwin') {
+        await reopenPresentation(inputPath, currentSlideIndex);
+    }
+    return cliResult;
+}
 electron_1.ipcMain.handle('convert-pptx', async (event, filePath) => {
     console.log('Convert request for (raw):', filePath);
     // Resolve to absolute path to handle relative paths (e.g. from dev environment)
@@ -326,6 +450,25 @@ electron_1.ipcMain.handle('save-all-notes', async (event, filePath, slides, slid
         return { success: false, error: 'File not found' };
     }
     try {
+        const useXmlCli = store.get('xmlCliEnabled') || false;
+        if (useXmlCli) {
+            console.log('Using XML CLI for saving notes');
+            const ops = slides.filter((s) => s.notes).map((s) => ({
+                op: 'set_slide_notes',
+                args: {
+                    slide_index: s.index - 1, // API is 0-indexed, PPT index is usually 1-indexed
+                    notes: s.notes
+                }
+            }));
+            if (ops.length === 0) {
+                return { success: true };
+            }
+            const result = await runXmlCli(absolutePath, absolutePath, ops);
+            if (!result.success) {
+                return { success: false, error: result.error };
+            }
+            return { success: true };
+        }
         if (process.platform === 'darwin') {
             const app = require('electron').app;
             const homeDir = app.getPath('home');
@@ -399,10 +542,46 @@ electron_1.ipcMain.handle('insert-audio', async (event, filePath, slidesAudio) =
     try {
         if (slidesAudio && slidesAudio.length > 0) {
             console.log('Inserting audio...');
-            const audioResult = await handleAudioInsertion(absolutePath, slidesAudio);
-            if (!audioResult.success) {
-                console.error("Audio insertion failed:", audioResult.error);
-                return { success: false, error: "Audio insertion failed: " + audioResult.error };
+            const useXmlCli = store.get('xmlCliEnabled') || false;
+            if (useXmlCli) {
+                console.log('Using XML CLI for inserting audio');
+                const app = require('electron').app;
+                const tempDir = app.getPath('temp');
+                const sessionDir = path_1.default.join(tempDir, `ppt_audio_${Date.now()}`);
+                fs.mkdirSync(sessionDir, { recursive: true });
+                const ops = [];
+                for (const slide of slidesAudio) {
+                    const buffer = Buffer.from(slide.audioData);
+                    const audioFileName = `audio_${slide.index}.mp3`;
+                    const audioFilePath = path_1.default.join(sessionDir, audioFileName);
+                    fs.writeFileSync(audioFilePath, buffer);
+                    ops.push({
+                        op: 'save_audio_for_slide',
+                        args: {
+                            slide_index: slide.index - 1, // 0-indexed API
+                            mp3_path: audioFilePath
+                        }
+                    });
+                }
+                if (ops.length > 0) {
+                    const result = await runXmlCli(absolutePath, absolutePath, ops);
+                    // Cleanup temp audio files
+                    try {
+                        fs.rmSync(sessionDir, { recursive: true, force: true });
+                    }
+                    catch (e) { }
+                    if (!result.success) {
+                        console.error("XML CLI Audio insertion failed:", result.error);
+                        return { success: false, error: "Audio insertion failed: " + result.error };
+                    }
+                }
+            }
+            else {
+                const audioResult = await handleAudioInsertion(absolutePath, slidesAudio);
+                if (!audioResult.success) {
+                    console.error("Audio insertion failed:", audioResult.error);
+                    return { success: false, error: "Audio insertion failed: " + audioResult.error };
+                }
             }
         }
         return { success: true };
@@ -525,23 +704,113 @@ electron_1.ipcMain.handle('set-gcp-key', async () => {
     store.set('gcpKeyPath', keyPath);
     return { success: true, path: keyPath };
 });
+electron_1.ipcMain.handle('get-xml-cli-enabled', async () => {
+    return store.get('xmlCliEnabled') || false;
+});
+electron_1.ipcMain.handle('set-xml-cli-enabled', async (event, enabled) => {
+    store.set('xmlCliEnabled', enabled);
+    return { success: true };
+});
 // --- Remove Audio Handler ---
 electron_1.ipcMain.handle('remove-audio', async (event, { filePath, scope, slideIndex }) => {
     console.log(`Remove Audio request for: ${filePath}, scope: ${scope}, slideIndex: ${slideIndex}`);
-    if (process.platform !== 'darwin') {
-        return { success: false, error: 'Remove Audio is only supported on macOS.' };
+    const reqPath = require('path');
+    const reqFs = require('fs');
+    const absolutePath = reqPath.resolve(filePath);
+    if (!reqFs.existsSync(absolutePath)) {
+        return { success: false, error: 'File not found' };
     }
     try {
-        const path = require('path');
-        const fs = require('fs');
+        const useXmlCli = store.get('xmlCliEnabled') || false;
+        if (useXmlCli) {
+            console.log('Using XML CLI for removing audio');
+            let targetIndex = slideIndex - 1;
+            let slideIndexBefore = 1;
+            if (process.platform === 'darwin') {
+                slideIndexBefore = await closePresentation(absolutePath);
+            }
+            // Step 1: Query slides to find the exact audio name(s)
+            const queryResult = await runXmlCli(absolutePath, null, [{ op: 'get_slides', args: {} }], { skipClose: true, skipReopen: true });
+            if (!queryResult.success) {
+                if (process.platform === 'darwin')
+                    await reopenPresentation(absolutePath, slideIndexBefore);
+                return { success: false, error: "Failed to query slide content: " + queryResult.error };
+            }
+            const slideData = queryResult.data && queryResult.data.results && queryResult.data.results[0] && queryResult.data.results[0].result;
+            if (!slideData) {
+                if (process.platform === 'darwin')
+                    await reopenPresentation(absolutePath, slideIndexBefore);
+                return { success: false, error: "Could not find slide data" };
+            }
+            const deleteOps = [];
+            if (scope === 'all') {
+                // Iterate through all slides and find all audio
+                slideData.forEach((slide, idx) => {
+                    const slideAudio = slide.audio || [];
+                    slideAudio.forEach((audio) => {
+                        // Treat any entry in the 'audio' list as a target for deletion
+                        deleteOps.push({
+                            op: 'delete_audio_for_slide',
+                            args: {
+                                slide_index: idx,
+                                name: audio.name
+                            }
+                        });
+                    });
+                });
+            }
+            else {
+                // Specific slide removal
+                if (!slideData[targetIndex]) {
+                    if (process.platform === 'darwin')
+                        await reopenPresentation(absolutePath, slideIndexBefore);
+                    return { success: false, error: "Could not find slide data for index " + targetIndex };
+                }
+                const slideAudio = slideData[targetIndex].audio || [];
+                console.log(`Discovered audio entries on slide ${slideIndex}:`, slideAudio.map((a) => a.name));
+                // First preference: includes "audio"
+                let targetAudio = slideAudio.find((a) => a.name.toLowerCase().includes('audio'));
+                // Second preference: any entry at all
+                if (!targetAudio && slideAudio.length > 0) {
+                    targetAudio = slideAudio[0];
+                }
+                if (targetAudio) {
+                    console.log(`Targeting audio shape: ${targetAudio.name} on slide ${slideIndex}`);
+                    deleteOps.push({
+                        op: 'delete_audio_for_slide',
+                        args: {
+                            slide_index: targetIndex,
+                            name: targetAudio.name
+                        }
+                    });
+                }
+            }
+            if (deleteOps.length === 0) {
+                console.log(`No audio found to remove (Scope: ${scope}, Slide: ${slideIndex})`);
+                if (process.platform === 'darwin')
+                    await reopenPresentation(absolutePath, slideIndexBefore);
+                return { success: true };
+            }
+            // Step 2: Execute deletion operations
+            const result = await runXmlCli(absolutePath, absolutePath, deleteOps, { skipClose: true, skipReopen: true });
+            if (process.platform === 'darwin')
+                await reopenPresentation(absolutePath, slideIndexBefore);
+            if (!result.success) {
+                console.error("XML CLI Remove audio failed:", result.error);
+                return { success: false, error: "Remove audio failed: " + result.error };
+            }
+            return { success: true };
+        }
+        if (process.platform !== 'darwin') {
+            return { success: false, error: 'Remove Audio via AppleScript is only supported on macOS.' };
+        }
         const app = require('electron').app;
         const { spawn } = require('child_process');
-        const absolutePath = path.resolve(filePath);
         const homeDir = app.getPath('home');
-        const officeContainer = path.join(homeDir, 'Library/Group Containers/UBF8T346G9.Office');
-        const paramsPath = path.join(officeContainer, 'remove_audio_params.txt');
+        const officeContainer = path_1.default.join(homeDir, 'Library/Group Containers/UBF8T346G9.Office');
+        const paramsPath = path_1.default.join(officeContainer, 'remove_audio_params.txt');
         const paramsContent = `${absolutePath}|${scope}|${slideIndex || 0}`;
-        fs.writeFileSync(paramsPath, paramsContent, 'utf8');
+        fs_1.default.writeFileSync(paramsPath, paramsContent, 'utf8');
         const scriptPath = resolveScriptPath('trigger-macro.applescript');
         const child = spawn('osascript', [
             scriptPath,
@@ -711,12 +980,21 @@ electron_1.ipcMain.handle('get-voices', async () => {
         if (keyPath) {
             const options = { keyFilename: keyPath };
             const client = new text_to_speech_1.TextToSpeechClient(options);
-            const [result] = await client.listVoices({ languageCode: 'en-US' });
-            if (result.voices) {
-                const gcpVoices = result.voices
+            // Fetch en-GB Chirp 3 HD voices (UK)
+            const [gbResult] = await client.listVoices({ languageCode: 'en-GB' });
+            if (gbResult.voices) {
+                const gbGcpVoices = gbResult.voices
                     .filter(v => v.name && v.name.includes('Chirp3-HD'))
                     .map(v => ({ ...v, provider: 'gcp' }));
-                voices.push(...gcpVoices);
+                voices.push(...gbGcpVoices);
+            }
+            // Fetch en-US Chirp 3 HD voices
+            const [usResult] = await client.listVoices({ languageCode: 'en-US' });
+            if (usResult.voices) {
+                const usGcpVoices = usResult.voices
+                    .filter(v => v.name && v.name.includes('Chirp3-HD'))
+                    .map(v => ({ ...v, provider: 'gcp' }));
+                voices.push(...usGcpVoices);
             }
         }
         else {
