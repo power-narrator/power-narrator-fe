@@ -184,6 +184,18 @@ class PptxFile:
         slide = self._get_slide(slide_index)
         slide.delete_audio(name)
 
+    def clear_audio_for_slide(self, slide_index: int) -> None:
+        """Clear all ppt_audio media nodes from a slide.
+
+        Args:
+            slide_index: Zero-based slide index.
+        """
+        slide = self._get_slide(slide_index)
+        # iterate over list copy since slide.delete_audio modifies it
+        for audio in list(slide.audio):
+            if "audio" in audio.name.lower():
+                slide.delete_audio(audio.name)
+
     def export_to(self, output_path: Path) -> None:
         """Export current workspace into a .pptx file.
 

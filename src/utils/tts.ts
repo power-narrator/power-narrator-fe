@@ -117,11 +117,14 @@ export const getAudioBuffer = async (text: string, voiceOption?: VoiceOption): P
     // 2. Parse text for tags. Regex looks for [tag] literal
     const tagRegex = /\[([^\]]+)\]/g;
 
+    // Remove `---` separators that optionally have blank lines around them so TTS won't read them
+    const textWithoutSeparators = text.replace(/^\s*---\s*$/gm, '\n');
+
     // We split the string by the regex. 
     // split() with capturing group returns an array like:
     // ["normal text", "speaker 1", "  more text", "speaker 2", " final"]
     // Odd indices are the captured tags. Even indices are text outside tags.
-    const parts = text.split(tagRegex);
+    const parts = textWithoutSeparators.split(tagRegex);
 
     // Default starting active voice
     // Try provided voiceOption -> mapped default -> null

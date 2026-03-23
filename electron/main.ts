@@ -424,8 +424,12 @@ async function handleAudioInsertion(filePath: string, slidesAudio: any[]) {
             console.log(`Processing slide ${slide.index}`);
             // audioData might be coming as an object from IPC, need to ensure it's a buffer
             const buffer = Buffer.from(slide.audioData);
-            const audioFileName = `audio_${slide.index}.mp3`;
-            const audioFilePath = path.join(audioSessionDir, audioFileName);
+            const slideDir = path.join(audioSessionDir, `slide_${slide.index}`);
+            if (!fs.existsSync(slideDir)) {
+                fs.mkdirSync(slideDir, { recursive: true });
+            }
+            const audioFileName = slide.sectionIndex !== undefined ? `ppt_audio_${slide.sectionIndex + 1}.mp3` : `ppt_audio_1.mp3`;
+            const audioFilePath = path.join(slideDir, audioFileName);
 
             fs.writeFileSync(audioFilePath, buffer);
             console.log(`Saved audio to ${audioFilePath}`);
@@ -602,11 +606,29 @@ ipcMain.handle('insert-audio', async (event, filePath, slidesAudio) => {
                 const sessionDir = path.join(tempDir, `ppt_audio_${Date.now()}`);
                 fs.mkdirSync(sessionDir, { recursive: true });
 
+                const slidesToClear = new Set<number>();
+                for (const slide of slidesAudio) {
+                    slidesToClear.add(slide.index);
+                }
+
                 const ops = [];
+                for (const slideIndex of slidesToClear) {
+                    ops.push({
+                        op: 'clear_audio_for_slide',
+                        args: {
+                            slide_index: slideIndex - 1 // 0-indexed API
+                        }
+                    });
+                }
+
                 for (const slide of slidesAudio) {
                     const buffer = Buffer.from(slide.audioData);
-                    const audioFileName = `audio_${slide.index}.mp3`;
-                    const audioFilePath = path.join(sessionDir, audioFileName);
+                    const slideDir = path.join(sessionDir, `slide_${slide.index}`);
+                    if (!fs.existsSync(slideDir)) {
+                        fs.mkdirSync(slideDir, { recursive: true });
+                    }
+                    const audioFileName = slide.sectionIndex !== undefined ? `ppt_audio_${slide.sectionIndex + 1}.mp3` : `ppt_audio_1.mp3`;
+                    const audioFilePath = path.join(slideDir, audioFileName);
                     fs.writeFileSync(audioFilePath, buffer);
 
                     ops.push({
@@ -1130,11 +1152,34 @@ ipcMain.handle('get-voices', async () => {
 });
 
 ipcMain.handle('generate-speech', async (event, { text, voiceOption }) => {
-    // Determine provider: 'gcp' or 'local' (default)
-    // If voiceOption specifies a provider, use that. Otherwise fallback to global provider logic.
     const provider = voiceOption && voiceOption.provider ? voiceOption.provider : getTtsProvider();
 
     console.log(`TTS Request: "${text.substring(0, 20)}..." using provider: ${provider}, voice: ${voiceOption ? voiceOption.name : 'default'}`);
+
+    const crypto = require('crypto');
+    const fs = require('fs');
+    const path = require('path');
+    const app = require('electron').app;
+    
+    let cachePath = '';
+    try {
+        const cacheDir = path.join(app.getPath('userData'), 'tts_cache');
+        if (!fs.existsSync(cacheDir)) {
+             fs.mkdirSync(cacheDir, { recursive: true });
+        }
+        
+        const voiceStr = voiceOption ? JSON.stringify(voiceOption) : 'default';
+        const hash = crypto.createHash('sha256').update(text + voiceStr + provider).digest('hex');
+        cachePath = path.join(cacheDir, `${hash}.mp3`);
+        
+        if (fs.existsSync(cachePath)) {
+            console.log(`Serving TTS from persistent cache: ${hash}`);
+            const buffer = fs.readFileSync(cachePath);
+            return new Uint8Array(buffer);
+        }
+    } catch (e) {
+        console.error("TTS Cache read error:", e);
+    }
 
     try {
         if (provider === 'gcp') {
@@ -1175,6 +1220,15 @@ ipcMain.handle('generate-speech', async (event, { text, voiceOption }) => {
             };
 
             const [response] = await client.synthesizeSpeech(request);
+            
+            try {
+                if (cachePath && response.audioContent) {
+                    fs.writeFileSync(cachePath, Buffer.from(response.audioContent));
+                }
+            } catch (e) {
+                console.error("Failed to write GCP TTS cache:", e);
+            }
+            
             return response.audioContent; // This is Uint8Array or Buffer
 
         } else {
@@ -1215,7 +1269,17 @@ ipcMain.handle('generate-speech', async (event, { text, voiceOption }) => {
             }
 
             const arrayBuffer = await resp.arrayBuffer();
-            return new Uint8Array(arrayBuffer);
+            const uint8Array = new Uint8Array(arrayBuffer);
+            
+            try {
+                if (cachePath) {
+                    fs.writeFileSync(cachePath, Buffer.from(uint8Array));
+                }
+            } catch (e) {
+                console.error("Failed to write Local TTS cache:", e);
+            }
+            
+            return uint8Array;
         }
     } catch (error: any) {
         console.error("TTS generation failed:", error);

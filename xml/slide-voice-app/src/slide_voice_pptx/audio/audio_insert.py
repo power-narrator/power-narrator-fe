@@ -329,11 +329,11 @@ def add_audio_to_slide(
     cmd_base_id = get_next_timing_id(slide_root)
     delay = compute_next_delay(cmd_parent)
     cmd_node = create_command_node(spid, delay, cmd_base_id)
-    cmd_parent.insert(0, cmd_node)
+    cmd_parent.append(cmd_node)
 
     audio_ctn_id = get_next_timing_id(slide_root)
     audio_node = create_audio_node(spid, audio_ctn_id)
-    audio_parent.insert(0, audio_node)
+    audio_parent.append(audio_node)
 
     slide_file_path.write_bytes(
         ET.tostring(slide_root, encoding="UTF-8", xml_declaration=True)
