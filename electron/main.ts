@@ -55,7 +55,7 @@ const createWindow = () => {
         mainWindow.loadURL('http://localhost:5173');
         mainWindow.webContents.openDevTools();
     } else {
-        mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+        mainWindow.loadFile(path.join(__dirname, '../dist-vite/index.html'));
         // Optional: Open DevTools on specific key combination for debugging production builds
         mainWindow.webContents.on('before-input-event', (event, input) => {
             if (input.control && input.shift && input.key.toLowerCase() === 'i') {

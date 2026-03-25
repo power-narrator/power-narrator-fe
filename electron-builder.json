@@ -1,12 +1,9 @@
 {
     "appId": "com.norbertloh.pptviewer",
     "productName": "PPT Viewer",
-    "directories": {
-        "output": "release"
-    },
     "files": [
-        "dist/**/*",
-        "dist-electron/**/*"
+        "dist-vite",
+        "dist-electron"
     ],
     "extraResources": [
         "electron/scripts/**/*"
