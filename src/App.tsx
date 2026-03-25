@@ -55,25 +55,6 @@ function App() {
     // Optional: Show a subtle success message if needed, but ViewerPage already alerted.
   };
 
-  const handleFileDrop = async (files: File[]) => {
-    if (files.length > 0) {
-      const file = files[0];
-      // With contextIsolation: false, path should be available directly on the file object
-      // or via our simplified preload
-      let filePath = (file as any).path;
-
-      console.log('File Object:', file);
-      console.log('Detected Path:', filePath);
-
-      if (!filePath) {
-        setError('Could not detect file path. Please try using the "Select File" button below.');
-        return;
-      }
-
-      processFile(filePath);
-    }
-  };
-
   if (loading) {
     return (
       <Center h="100vh">
@@ -111,7 +92,7 @@ function App() {
           >
             <IconSettings size={24} />
           </ActionIcon>
-          <LandingPage onDrop={handleFileDrop} onSelectFile={handleManualSelect} />
+          <LandingPage onSelectFile={handleManualSelect} />
           {loading && <Text ta="center" mt="sm">Analysing file...</Text>}
         </>
       ) : (

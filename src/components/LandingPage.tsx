@@ -2,7 +2,6 @@ import { Text, Button } from '@mantine/core';
 
 interface LandingPageProps {
     onSelectFile?: () => void;
-    onDrop?: any; // Keep to satisfy App.tsx passing it, even if unused
 }
 
 export function LandingPage({ onSelectFile }: LandingPageProps) {
