@@ -1,5 +1,5 @@
 import { Box, Group, Button, Image, ScrollArea, Textarea, Title, ActionIcon, Tooltip, Menu, rem, TextInput, Text, Select, Slider, Loader } from '@mantine/core';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import {
     IconPlayerPause,
     IconPlayerPlay,
@@ -17,75 +17,54 @@ import {
 } from '@tabler/icons-react';
 import type { Slide } from '../electron';
 import { generateAudio, getAudioBuffer } from '../utils/tts';
-// Removed VoiceSelector import
 import { SettingsModal } from './SettingsModal';
-const { ipcRenderer } = (window as any).require('electron');
+import { useSettings } from '../context/useSettings';
+import { DEFAULT_SPEAKER_KEY, DEFAULT_SPEAKER_LABEL, DEFAULT_SPEAKER_VALUE } from '../constants/speakers';
+import { getErrorMessage } from '../utils/errors';
+import { formatNotes, parseNotes, type NoteSection } from '../utils/notes';
+import type { Voice } from '../types/voice';
 
-export interface NoteSection {
-    speaker: string;
-    text: string;
+type IpcRendererLike = {
+    invoke: <T = unknown>(channel: string, ...args: unknown[]) => Promise<T>;
+};
+
+interface BasicIpcResult {
+    success: boolean;
+    error?: string;
 }
 
-export const parseNotes = (text: string): NoteSection[] => {
-    if (!text) return [{ speaker: '', text: '' }];
-    
-    // Split more leniently but effectively. We want to avoid trailing space deletion.
-    const parts = text.split(/\r?\n---\r?\n/g);
-    if (parts.length === 1 && text.includes('---')) {
-        // Fallback if manual string didn't have exact newlines around ---
-        const fallbackParts = text.split(/^\s*---\s*$/gm);
-        return fallbackParts.map(part => {
-            const match = part.match(/^\s*\[([^\]]+)\]\s*([\s\S]*)$/);
-            if (match) return { speaker: match[1], text: match[2] };
-            // Strip up to one leading newline
-            return { speaker: '', text: part.replace(/^\s*\r?\n/, '') };
-        });
-    }
+interface SlidesIpcResult extends BasicIpcResult {
+    slides?: Slide[];
+}
 
-    return parts.map(part => {
-        // Attempt strict match first to avoid consuming trailing spaces in tags
-        const match = part.match(/^\[([^\]]+)\]\n([\s\S]*)$/);
-        if (match) {
-            return { speaker: match[1], text: match[2] };
-        }
-        
-        // Legacy match
-        const legacyMatch = part.match(/^\[([^\]]+)\]\s*([\s\S]*)$/);
-        if (legacyMatch) {
-            return { speaker: legacyMatch[1], text: legacyMatch[2] };
-        }
-        
-        return { speaker: '', text: part };
-    });
-};
+interface VideoIpcResult extends BasicIpcResult {
+    outputPath?: string;
+}
 
-export const formatNotes = (sections: NoteSection[]): string => {
-    return sections.map(sec => {
-        const speakerPart = sec.speaker && sec.speaker !== '_default_' ? `[${sec.speaker}]\n` : '';
-        return `${speakerPart}${sec.text}`;
-    }).join('\n---\n');
-};
-
-const SectionPreviewButtons = ({ section, mappings, onFocus, getTextarea }: { section: NoteSection, mappings: Record<string, any>, onFocus: () => void, getTextarea?: () => HTMLTextAreaElement | null }) => {
+const SectionPreviewButtons = ({ section, mappings, onFocus, getTextarea }: { section: NoteSection, mappings: Record<string, Voice>, onFocus: () => void, getTextarea?: () => HTMLTextAreaElement | null }) => {
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
-    const [playingSpeaker, setPlayingSpeaker] = useState<string | null>(null);
+    const [activePreviewTarget, setActivePreviewTarget] = useState<string | null>(null);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const isSeekingRef = useRef(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [isAudioGenerating, setIsAudioGenerating] = useState(false);
+    const shouldAutoplayRef = useRef(false);
 
-    const speakers = [{ value: '', label: 'Default' }].concat(Object.keys(mappings).filter(k => k !== '_default_').map(k => ({ value: k, label: k })));
+    const speakers = [{ value: DEFAULT_SPEAKER_VALUE, label: DEFAULT_SPEAKER_LABEL }].concat(
+        Object.keys(mappings).filter((key) => key !== DEFAULT_SPEAKER_KEY).map((key) => ({ value: key, label: key }))
+    );
 
-    const handlePlay = async (speakerValue: string, isMainPlayer: boolean = false) => {
-        const targetSpeaker = isMainPlayer ? section.speaker : speakerValue;
+    const handlePlay = async (speakerValue: string) => {
+        const targetSpeaker = speakerValue || section.speaker;
 
-        if (playingSpeaker === (isMainPlayer ? 'MAIN' : targetSpeaker)) {
+        if (activePreviewTarget === speakerValue) {
             if (audioRef.current) {
                 audioRef.current.pause();
                 audioRef.current.currentTime = 0;
             }
-            setPlayingSpeaker(null);
+            shouldAutoplayRef.current = false;
+            setActivePreviewTarget(null);
             return;
         }
 
@@ -104,24 +83,17 @@ const SectionPreviewButtons = ({ section, mappings, onFocus, getTextarea }: { se
         onFocus();
         try {
             setIsAudioGenerating(true);
-            setPlayingSpeaker(isMainPlayer ? 'MAIN' : targetSpeaker);
-            
+            setActivePreviewTarget(speakerValue);
+            shouldAutoplayRef.current = true;
             const voiceOverride = targetSpeaker ? mappings[targetSpeaker] : undefined;
             const url = await generateAudio(textToPlay, voiceOverride);
-            
+            setCurrentTime(0);
+            setDuration(0);
             setAudioUrl(url);
-            setTimeout(() => {
-                if (audioRef.current) {
-                    audioRef.current.currentTime = 0;
-                    audioRef.current.play().catch(e => {
-                        console.error(e);
-                        setPlayingSpeaker(null);
-                    });
-                }
-            }, 100);
-        } catch (error: any) {
-            alert("Failed to play audio: " + error.message);
-            setPlayingSpeaker(null);
+        } catch (error: unknown) {
+            alert("Failed to play audio: " + getErrorMessage(error));
+            shouldAutoplayRef.current = false;
+            setActivePreviewTarget(null);
         } finally {
             setIsAudioGenerating(false);
         }
@@ -138,15 +110,27 @@ const SectionPreviewButtons = ({ section, mappings, onFocus, getTextarea }: { se
             <audio
                 ref={audioRef}
                 src={audioUrl || ''}
+                onCanPlay={() => {
+                    if (!shouldAutoplayRef.current || !audioRef.current) {
+                        return;
+                    }
+
+                    shouldAutoplayRef.current = false;
+                    audioRef.current.currentTime = 0;
+                    audioRef.current.play().catch((error) => {
+                        console.error(error);
+                        setActivePreviewTarget(null);
+                    });
+                }}
                 onTimeUpdate={() => { if (audioRef.current && !isSeekingRef.current) setCurrentTime(audioRef.current.currentTime); }}
                 onLoadedMetadata={() => { if (audioRef.current) setDuration(audioRef.current.duration); }}
-                onEnded={() => setPlayingSpeaker(null)}
+                onEnded={() => setActivePreviewTarget(null)}
             />
             
             <Group gap="xs" mb="xs">
                 {speakers.map(spk => {
-                    const isPlaying = playingSpeaker === spk.value;
-                    const isGenerating = isAudioGenerating && playingSpeaker === spk.value;
+                    const isActive = activePreviewTarget === spk.value;
+                    const isGenerating = isAudioGenerating && isActive;
                     return (
                         <Button
                             key={spk.value}
@@ -154,10 +138,10 @@ const SectionPreviewButtons = ({ section, mappings, onFocus, getTextarea }: { se
                             variant="outline"
                             color="blue"
                             onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => handlePlay(spk.value, false)}
+                            onClick={() => handlePlay(spk.value)}
                             loading={isGenerating}
                             disabled={isAudioGenerating && !isGenerating}
-                            leftSection={isPlaying ? <IconPlayerPause size={12} /> : <IconPlayerPlay size={12} />}
+                            leftSection={isActive ? <IconPlayerPause size={12} /> : <IconPlayerPlay size={12} />}
                         >
                             {spk.label}
                         </Button>
@@ -168,17 +152,17 @@ const SectionPreviewButtons = ({ section, mappings, onFocus, getTextarea }: { se
             <Group gap="xs">
                 <ActionIcon
                     variant="filled"
-                    color={playingSpeaker === 'MAIN' ? "red" : "blue"}
+                    color={activePreviewTarget === section.speaker ? "red" : "blue"}
                     size="sm"
                     radius="xl"
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => handlePlay('', true)}
-                    disabled={(!section.text) || (isAudioGenerating && playingSpeaker !== 'MAIN')}
+                    onClick={() => handlePlay(DEFAULT_SPEAKER_VALUE)}
+                    disabled={!section.text || (isAudioGenerating && activePreviewTarget !== section.speaker)}
                 >
-                    {playingSpeaker === 'MAIN' && !isAudioGenerating ? <IconPlayerPause size={12} /> : <IconPlayerPlay size={12} />}
+                    {activePreviewTarget === section.speaker && !isAudioGenerating ? <IconPlayerPause size={12} /> : <IconPlayerPlay size={12} />}
                 </ActionIcon>
                 <Box style={{ flex: 1, position: 'relative' }}>
-                    {isAudioGenerating && playingSpeaker === 'MAIN' ? (
+                    {isAudioGenerating && activePreviewTarget === section.speaker ? (
                         <div style={{ height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <Loader size="xs" variant="dots" color="blue" />
                         </div>
@@ -212,44 +196,42 @@ const SectionPreviewButtons = ({ section, mappings, onFocus, getTextarea }: { se
 interface ViewerPageProps {
     slides: Slide[];
     filePath: string;
-    onSave: (updatedSlides: Slide[]) => void;
     onBack: () => void;
 }
 
-export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: ViewerPageProps) {
+export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPageProps) {
     const [slides, setSlides] = useState<Slide[]>(initialSlides);
-    // History State
     const [history, setHistory] = useState<Slide[][]>([initialSlides]);
     const [historyIndex, setHistoryIndex] = useState(0);
     const [settingsOpen, setSettingsOpen] = useState(false);
-
     const [activeSlideIndex, setActiveSlideIndex] = useState(0);
     const [activeSectionIndex, setActiveSectionIndex] = useState(0);
     const textareasRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
     const [customBreak, setCustomBreak] = useState('');
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [mappings, setMappings] = useState<Record<string, any>>({});
-    const [xmlCliEnabled, setXmlCliEnabled] = useState(false);
+    const pendingSelectionRef = useRef<{ sectionIndex: number; start: number; end: number } | null>(null);
+    const { mappings, xmlCliEnabled } = useSettings();
+    const electronWindow = window as Window & { require?: (moduleName: string) => { ipcRenderer?: IpcRendererLike } };
+    const ipcRenderer = typeof electronWindow.require === 'function'
+        ? (electronWindow.require('electron').ipcRenderer ?? null)
+        : null;
+    const activeSlide = slides[activeSlideIndex] || { src: '', notes: '' };
 
-    const loadSettings = async () => {
-        if (window.electronAPI.getSpeakerMappings) {
-            const m = await window.electronAPI.getSpeakerMappings();
-            setMappings(m || {});
-        }
-        if (window.electronAPI.getXmlCliEnabled) {
-            const enabled = await window.electronAPI.getXmlCliEnabled();
-            setXmlCliEnabled(enabled);
-        }
-    };
+    function replaceSlides(nextSlides: Slide[]) {
+        setSlides(nextSlides);
+        return nextSlides;
+    }
 
-    useEffect(() => {
-        loadSettings();
-    }, []);
+    function updateActiveSlideSections(updater: (sections: NoteSection[]) => void) {
+        const sections = parseNotes(activeSlide.notes || '');
+        updater(sections);
+        const nextSlides = [...slides];
+        nextSlides[activeSlideIndex] = { ...nextSlides[activeSlideIndex], notes: formatNotes(sections) };
+        return replaceSlides(nextSlides);
+    }
 
-    // Sync State
     const [isSyncing, setIsSyncing] = useState(false);
 
-    const activeSlide = slides[activeSlideIndex] || { src: '', notes: '' };
     useEffect(() => {
         setSlides(initialSlides);
         setHistory([initialSlides]);
@@ -265,27 +247,62 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
     // Push current state to history. 
     // If 'overwrite', replaces the current history head (useful for typing sequences).
     // Usually we push new state.
-    const pushToHistory = useCallback((newSlides: Slide[]) => {
+    function pushToHistory(newSlides: Slide[]) {
         setHistory(prev => {
             const currentHistory = prev.slice(0, historyIndex + 1);
             return [...currentHistory, newSlides];
         });
         setHistoryIndex(prev => prev + 1);
-    }, [historyIndex]);
+    }
+
+    function insertWrappedTag(startTag: string, endTag: string = '') {
+        const textarea = textareasRefs.current[activeSectionIndex];
+        if (!textarea) {
+            return;
+        }
+
+        const selectionStart = textarea.selectionStart;
+        const selectionEnd = textarea.selectionEnd;
+        const nextSlides = updateActiveSlideSections((sections) => {
+            const activeSection = sections[activeSectionIndex];
+            if (!activeSection) {
+                return;
+            }
+
+            const text = activeSection.text || '';
+            const before = text.substring(0, selectionStart);
+            const selection = text.substring(selectionStart, selectionEnd);
+            const after = text.substring(selectionEnd);
+            activeSection.text = before + startTag + selection + endTag + after;
+        });
+
+        pendingSelectionRef.current = {
+            sectionIndex: activeSectionIndex,
+            start: selectionStart + startTag.length,
+            end: selectionEnd + startTag.length,
+        };
+
+        pushToHistory(nextSlides);
+    }
+
+    function insertSelfClosingTag(tag: string) {
+        insertWrappedTag(tag);
+    }
 
     const handleUndo = useCallback(() => {
         if (historyIndex > 0) {
             setHistoryIndex(prev => prev - 1);
             setSlides(history[historyIndex - 1]);
         }
-    }, [history, historyIndex]);
+    }, [historyIndex, history, setSlides]);
 
     const handleRedo = useCallback(() => {
         if (historyIndex < history.length - 1) {
             setHistoryIndex(prev => prev + 1);
             setSlides(history[historyIndex + 1]);
         }
-    }, [history, historyIndex]);
+    }, [historyIndex, history, setSlides]);
+
 
     // Keyboard Shortcuts for Undo/Redo
     useEffect(() => {
@@ -302,18 +319,33 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [handleUndo, handleRedo]);
+    }, [handleRedo, handleUndo, history, historyIndex]);
+
+    useLayoutEffect(() => {
+        const pendingSelection = pendingSelectionRef.current;
+        if (!pendingSelection || pendingSelection.sectionIndex !== activeSectionIndex) {
+            return;
+        }
+
+        const textarea = textareasRefs.current[pendingSelection.sectionIndex];
+        if (!textarea) {
+            return;
+        }
+
+        textarea.focus();
+        textarea.setSelectionRange(pendingSelection.start, pendingSelection.end);
+        pendingSelectionRef.current = null;
+    }, [activeSlide.notes, activeSectionIndex]);
 
 
     const handleSectionTextChange = (index: number, value: string) => {
-        const sections = parseNotes(activeSlide.notes || '');
-        if (!sections[index]) return;
-        sections[index].text = value;
-        const newNotes = formatNotes(sections);
-        
-        const newSlides = [...slides];
-        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], notes: newNotes };
-        setSlides(newSlides);
+        const newSlides = updateActiveSlideSections((sections) => {
+            if (!sections[index]) {
+                return;
+            }
+
+            sections[index].text = value;
+        });
 
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
@@ -322,77 +354,39 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
     };
 
     const handleSpeakerChange = (index: number, speaker: string | null) => {
-        const sections = parseNotes(activeSlide.notes || '');
-        if (!sections[index]) return;
-        sections[index].speaker = speaker || '';
-        const newNotes = formatNotes(sections);
-        
-        const newSlides = [...slides];
-        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], notes: newNotes };
-        setSlides(newSlides);
+        const newSlides = updateActiveSlideSections((sections) => {
+            if (!sections[index]) {
+                return;
+            }
+
+            sections[index].speaker = speaker || '';
+        });
         pushToHistory(newSlides);
     };
 
     const handleAddSection = () => {
-        const sections = parseNotes(activeSlide.notes || '');
-        sections.push({ speaker: '', text: '' });
-        const newNotes = formatNotes(sections);
-        const newSlides = [...slides];
-        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], notes: newNotes };
-        setSlides(newSlides);
+        const newSectionIndex = parseNotes(activeSlide.notes || '').length;
+        const newSlides = updateActiveSlideSections((sections) => {
+            sections.push({ speaker: '', text: '' });
+        });
         pushToHistory(newSlides);
-        setActiveSectionIndex(sections.length - 1);
+        setActiveSectionIndex(newSectionIndex);
     };
 
     const handleDeleteSection = (index: number) => {
-        const sections = parseNotes(activeSlide.notes || '');
-        sections.splice(index, 1);
-        const newNotes = formatNotes(sections);
-        const newSlides = [...slides];
-        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], notes: newNotes };
-        setSlides(newSlides);
+        const nextSectionCount = Math.max(0, parseNotes(activeSlide.notes || '').length - 1);
+        const newSlides = updateActiveSlideSections((sections) => {
+            sections.splice(index, 1);
+        });
         pushToHistory(newSlides);
-        if (activeSectionIndex >= sections.length) {
-            setActiveSectionIndex(Math.max(0, sections.length - 1));
+        if (activeSectionIndex >= nextSectionCount) {
+            setActiveSectionIndex(Math.max(0, nextSectionCount - 1));
         }
-    };
-
-    const insertTag = (startTag: string, endTag: string = '') => {
-        const textarea = textareasRefs.current[activeSectionIndex];
-        if (!textarea) return;
-
-        const sections = parseNotes(activeSlide.notes || '');
-        if (!sections[activeSectionIndex]) return;
-
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const text = sections[activeSectionIndex].text || '';
-
-        const before = text.substring(0, start);
-        const selection = text.substring(start, end);
-        const after = text.substring(end);
-
-        sections[activeSectionIndex].text = before + startTag + selection + endTag + after;
-        const newNotes = formatNotes(sections);
-
-        const newSlides = [...slides];
-        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], notes: newNotes };
-
-        setSlides(newSlides);
-        pushToHistory(newSlides); 
-
-        setTimeout(() => {
-            const ta = textareasRefs.current[activeSectionIndex];
-            if (ta) {
-                ta.focus();
-                ta.setSelectionRange(start + startTag.length, end + startTag.length);
-            }
-        }, 0);
     };
 
     const handleCustomBreak = () => {
         if (!customBreak) return;
-        insertTag(`<break time="${customBreak}"/>`);
+        insertSelfClosingTag(`<break time="${customBreak}"/>`);
         setCustomBreak('');
     };
 
@@ -424,76 +418,117 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
     // Video Generation State
     const [isGenerating, setIsGenerating] = useState(false);
     const [genStatus, setGenStatus] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveStatus, setSaveStatus] = useState('');
+    const [isInsertingAudio, setIsInsertingAudio] = useState(false);
+    const [insertStatus, setInsertStatus] = useState('');
+    const [isRemoving, setIsRemoving] = useState(false);
+    const [removeStatus, setRemoveStatus] = useState('');
+    const busy = isGenerating || isSaving || isSyncing || isInsertingAudio || isRemoving;
+
+    async function buildSlideAudioEntries(slidesToProcess: Slide[], onProgress?: (message: string) => void) {
+        const audioEntries: Array<{ index: number; sectionIndex: number; audioData: Uint8Array }> = [];
+
+        for (const slide of slidesToProcess) {
+            if (!slide.notes?.trim()) {
+                continue;
+            }
+
+            onProgress?.(`Generating audio for slide ${slide.index}...`);
+            const sections = parseNotes(slide.notes);
+
+            for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex += 1) {
+                const section = sections[sectionIndex];
+                if (!section.text.trim()) {
+                    continue;
+                }
+
+                const buffer = await getAudioBuffer(section.text, mappings[section.speaker] || undefined);
+                audioEntries.push({
+                    index: slide.index,
+                    sectionIndex,
+                    audioData: new Uint8Array(buffer),
+                });
+            }
+        }
+
+        return audioEntries;
+    }
+
+    async function saveNotesToFile(slidesToSave: Slide[]) {
+        const result = await availableIpcRenderer.invoke<BasicIpcResult>('save-all-notes', filePath, slidesToSave);
+        if (!result.success) {
+            throw new Error(result.error || 'Save failed');
+        }
+
+        return result;
+    }
+
+    function resetHistoryWithSlides(nextSlides: Slide[]) {
+        setSlides(nextSlides);
+        setHistory([nextSlides]);
+        setHistoryIndex(0);
+    }
+
+    async function runRemoveAudio(scope: 'slide' | 'all') {
+        const slideIndex = activeSlide.index || (activeSlideIndex + 1);
+        return availableIpcRenderer.invoke<BasicIpcResult>('remove-audio', {
+            filePath,
+            scope,
+            slideIndex,
+        });
+    }
 
     const handleGenerateVideo = async () => {
         if (isGenerating) return;
 
         try {
-            // 1. Ask for Save Path FIRST
-            if (ipcRenderer) {
-                // AUTO-SAVE: Save notes before proceeding
-                setGenStatus('Saving notes...');
-                const saveResult = await ipcRenderer.invoke('save-all-notes', filePath, slides);
-                if (!saveResult.success) {
-                    alert('Auto-save failed: ' + saveResult.error);
-                    return;
-                }
+            setGenStatus('Saving notes...');
+            await saveNotesToFile(slides);
 
-                const savePath = await ipcRenderer.invoke('get-video-save-path');
-                if (!savePath) {
-                    return; // User cancelled
-                }
-
-                setIsGenerating(true);
-                setGenStatus('Preparing audio...');
-
-                // 2. Generate Audio
-                const slidesAudioString = [];
-                for (const slide of slides) {
-                    if (slide.notes && slide.notes.trim().length > 0) {
-                        setGenStatus(`Generating audio for slide ${slide.index}...`);
-                        const buffer = await getAudioBuffer(slide.notes, undefined);
-                        slidesAudioString.push({
-                            index: slide.index,
-                            audioData: new Uint8Array(buffer)
-                        });
-                    }
-                }
-
-                setGenStatus('Rendering video (this may take a while)...');
-
-                // 3. Call Backend with savePath
-                const result = await ipcRenderer.invoke('generate-video', {
-                    filePath,
-                    slidesAudio: slidesAudioString,
-                    videoOutputPath: savePath
-                });
-
-                if (result.success) {
-                    alert('Video generated successfully at: ' + result.outputPath);
-                } else {
-                    alert('Video generation failed: ' + result.error);
-                }
-
-            } else {
-                console.error("IPC Renderer not found");
-                alert("IPC Renderer not found");
+            const savePath = await availableIpcRenderer.invoke<string | null>('get-video-save-path');
+            if (!savePath) {
+                return;
             }
 
-        } catch (e) {
-            console.error("Error preparing video generation:", e);
-            alert("Error preparing generation: " + e);
+            setIsGenerating(true);
+            setGenStatus('Preparing audio...');
+
+            const slidesAudio = [];
+            for (const slide of slides) {
+                if (!slide.notes?.trim()) {
+                    continue;
+                }
+
+                setGenStatus(`Generating audio for slide ${slide.index}...`);
+                const buffer = await getAudioBuffer(slide.notes, undefined);
+                slidesAudio.push({
+                    index: slide.index,
+                    audioData: new Uint8Array(buffer),
+                });
+            }
+
+            setGenStatus('Rendering video (this may take a while)...');
+            const result = await availableIpcRenderer.invoke<VideoIpcResult>('generate-video', {
+                filePath,
+                slidesAudio,
+                videoOutputPath: savePath,
+            });
+
+            if (result.success) {
+                alert('Video generated successfully at: ' + result.outputPath);
+            } else {
+                alert('Video generation failed: ' + result.error);
+            }
+
+        } catch (error: unknown) {
+            console.error("Error preparing video generation:", error);
+            alert("Error preparing generation: " + getErrorMessage(error));
         } finally {
             setIsGenerating(false);
             setGenStatus('');
         }
     };
-
-    // Save State
-    const [isSaving, setIsSaving] = useState(false);
-    const [saveStatus, setSaveStatus] = useState('');
-    const [isInsertingAudio, setIsInsertingAudio] = useState(false);
-    const [insertStatus, setInsertStatus] = useState('');
 
     const handleSaveAllNotes = async () => {
         if (isSaving || isInsertingAudio) return;
@@ -501,21 +536,11 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         setSaveStatus('Saving all notes...');
 
         try {
-            if (ipcRenderer) {
-                const result = await ipcRenderer.invoke('save-all-notes', filePath, slides);
-
-                if (result.success) {
-                    alert('Notes saved successfully!');
-                    onSave(slides);
-                } else {
-                    alert('Failed to save notes: ' + result.error);
-                }
-            } else {
-                onSave(slides);
-            }
-        } catch (e: any) {
-            console.error("Save failed:", e);
-            alert("Save error: " + e.message);
+            await saveNotesToFile(slides);
+            alert('Notes saved successfully!');
+        } catch (error: unknown) {
+            console.error("Save failed:", error);
+            alert("Save error: " + getErrorMessage(error));
         } finally {
             setIsSaving(false);
             if (saveStatus !== 'Saved!') setSaveStatus('');
@@ -528,22 +553,12 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         setSaveStatus(`Saving Note for Slide ${activeSlide.index}...`);
 
         try {
-            if (ipcRenderer) {
-                const result = await ipcRenderer.invoke('save-all-notes', filePath, [activeSlide]);
-
-                if (result.success) {
-                    setSaveStatus('Saved!');
-                    setTimeout(() => setSaveStatus(''), 2000);
-                    onSave(slides);
-                } else {
-                    alert('Failed to save slide note: ' + result.error);
-                }
-            } else {
-                onSave(slides);
-            }
-        } catch (e: any) {
-            console.error("Save slide failed:", e);
-            alert("Save error: " + e.message);
+            await saveNotesToFile([activeSlide]);
+            setSaveStatus('Saved!');
+            setTimeout(() => setSaveStatus(''), 2000);
+        } catch (error: unknown) {
+            console.error("Save slide failed:", error);
+            alert("Save error: " + getErrorMessage(error));
         } finally {
             setIsSaving(false);
             if (saveStatus !== 'Saved!') setSaveStatus('');
@@ -556,42 +571,26 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         setInsertStatus(`Generating audio for slide ${activeSlide.index}...`);
 
         try {
-            if (ipcRenderer) {
-                const slidesAudioString = [];
-                if (activeSlide.notes && activeSlide.notes.trim().length > 0) {
-                    const sections = parseNotes(activeSlide.notes);
-                    for (let i = 0; i < sections.length; i++) {
-                        const sec = sections[i];
-                        if (sec.text.trim().length > 0) {
-                            const urlObj = await getAudioBuffer(sec.text, mappings[sec.speaker] || undefined);
-                            slidesAudioString.push({
-                                index: activeSlide.index,
-                                sectionIndex: i,
-                                audioData: new Uint8Array(urlObj)
-                            });
-                        }
-                    }
-                }
+            const slidesAudio = await buildSlideAudioEntries([activeSlide], setInsertStatus);
 
-                if (slidesAudioString.length === 0) {
-                    alert("No notes found to generate audio.");
-                    setIsInsertingAudio(false);
-                    return;
-                }
-
-                setInsertStatus('Inserting audio...');
-                const result = await ipcRenderer.invoke('insert-audio', filePath, slidesAudioString);
-
-                if (result.success) {
-                    setInsertStatus('Audio Inserted!');
-                    setTimeout(() => setInsertStatus(''), 2000);
-                } else {
-                    alert('Failed to insert audio: ' + result.error);
-                }
+            if (slidesAudio.length === 0) {
+                alert("No notes found to generate audio.");
+                setIsInsertingAudio(false);
+                return;
             }
-        } catch (e: any) {
-            console.error("Insert audio failed:", e);
-            alert("Insert error: " + e.message);
+
+            setInsertStatus('Inserting audio...');
+            const result = await availableIpcRenderer.invoke<BasicIpcResult>('insert-audio', filePath, slidesAudio);
+
+            if (result.success) {
+                setInsertStatus('Audio Inserted!');
+                setTimeout(() => setInsertStatus(''), 2000);
+            } else {
+                alert('Failed to insert audio: ' + result.error);
+            }
+        } catch (error: unknown) {
+            console.error("Insert audio failed:", error);
+            alert("Insert error: " + getErrorMessage(error));
         } finally {
             setIsInsertingAudio(false);
             if (insertStatus !== 'Audio Inserted!') setInsertStatus('');
@@ -604,44 +603,25 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         setInsertStatus('Generating audio for all slides...');
 
         try {
-            if (ipcRenderer) {
-                const slidesAudioString = [];
-                for (const slide of slides) {
-                    if (slide.notes && slide.notes.trim().length > 0) {
-                        setInsertStatus(`Generating audio for slide ${slide.index}...`);
-                        const sections = parseNotes(slide.notes);
-                        for (let i = 0; i < sections.length; i++) {
-                            const sec = sections[i];
-                            if (sec.text.trim().length > 0) {
-                                const buffer = await getAudioBuffer(sec.text, mappings[sec.speaker] || undefined);
-                                slidesAudioString.push({
-                                    index: slide.index,
-                                    sectionIndex: i,
-                                    audioData: new Uint8Array(buffer)
-                                });
-                            }
-                        }
-                    }
-                }
+            const slidesAudio = await buildSlideAudioEntries(slides, setInsertStatus);
 
-                if (slidesAudioString.length === 0) {
-                    alert("No notes found to generate audio.");
-                    setIsInsertingAudio(false);
-                    return;
-                }
-
-                setInsertStatus('Inserting all audio...');
-                const result = await ipcRenderer.invoke('insert-audio', filePath, slidesAudioString);
-
-                if (result.success) {
-                    alert('All audio inserted successfully!');
-                } else {
-                    alert('Failed to insert audio: ' + result.error);
-                }
+            if (slidesAudio.length === 0) {
+                alert("No notes found to generate audio.");
+                setIsInsertingAudio(false);
+                return;
             }
-        } catch (e: any) {
-            console.error("Insert all audio failed:", e);
-            alert("Insert error: " + e.message);
+
+            setInsertStatus('Inserting all audio...');
+            const result = await availableIpcRenderer.invoke<BasicIpcResult>('insert-audio', filePath, slidesAudio);
+
+            if (result.success) {
+                alert('All audio inserted successfully!');
+            } else {
+                alert('Failed to insert audio: ' + result.error);
+            }
+        } catch (error: unknown) {
+            console.error("Insert all audio failed:", error);
+            alert("Insert error: " + getErrorMessage(error));
         } finally {
             setIsInsertingAudio(false);
             setInsertStatus('');
@@ -649,21 +629,15 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
     };
 
     const handlePlaySlide = async () => {
-        if (ipcRenderer) {
-            try {
-                // Determine 1-based index for PowerPoint
-                // We assume activeSlide.index is 1-based compatible or we use index + 1
-                // Let's rely on activeSlide.index if available (from backend conversion), else fallback
-                const indexToPlay = activeSlide.index || (activeSlideIndex + 1);
-
-                const result = await ipcRenderer.invoke('play-slide', indexToPlay);
-                if (!result.success) {
-                    alert('Failed to play slide: ' + result.error);
-                }
-            } catch (e: any) {
-                console.error("Play slide error:", e);
-                alert("Play slide error: " + e.message);
+        try {
+            const indexToPlay = activeSlide.index || (activeSlideIndex + 1);
+            const result = await availableIpcRenderer.invoke<BasicIpcResult>('play-slide', indexToPlay);
+            if (!result.success) {
+                alert('Failed to play slide: ' + result.error);
             }
+        } catch (error: unknown) {
+            console.error("Play slide error:", error);
+            alert("Play slide error: " + getErrorMessage(error));
         }
     };
 
@@ -677,24 +651,20 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         setIsSyncing(true);
 
         try {
-            if (ipcRenderer) {
-                const result = await ipcRenderer.invoke('convert-pptx', filePath);
+            const result = await availableIpcRenderer.invoke<SlidesIpcResult>('convert-pptx', filePath);
 
-                if (result.success && result.slides) {
-                    setSlides(result.slides);
-                    setHistory([result.slides]);
-                    setHistoryIndex(0);
+            if (result.success && result.slides) {
+                resetHistoryWithSlides(result.slides);
 
-                    if (activeSlideIndex >= result.slides.length) {
-                        setActiveSlideIndex(Math.max(0, result.slides.length - 1));
-                    }
-                } else {
-                    alert('Sync failed: ' + (result.error || 'Unknown error'));
+                if (activeSlideIndex >= result.slides.length) {
+                    setActiveSlideIndex(Math.max(0, result.slides.length - 1));
                 }
+            } else {
+                alert('Sync failed: ' + (result.error || 'Unknown error'));
             }
-        } catch (e: any) {
-            console.error("Sync error:", e);
-            alert("Sync error: " + e.message);
+        } catch (error: unknown) {
+            console.error("Sync error:", error);
+            alert("Sync error: " + getErrorMessage(error));
         } finally {
             setIsSyncing(false);
         }
@@ -710,69 +680,85 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         setIsSyncing(true);
 
         try {
-            if (ipcRenderer) {
-                // Determine 1-based index
-                const indexToSync = activeSlide.index || (activeSlideIndex + 1);
+            const indexToSync = activeSlide.index || (activeSlideIndex + 1);
+            const result = await availableIpcRenderer.invoke<SlidesIpcResult>('sync-slide', {
+                filePath,
+                slideIndex: indexToSync
+            });
 
-                // Call new handler
-                const result = await ipcRenderer.invoke('sync-slide', {
-                    filePath,
-                    slideIndex: indexToSync
-                });
-
-                if (result.success && result.slides) {
-                    setSlides(result.slides);
-                    // Update history to match
-                    setHistory([result.slides]);
-                    setHistoryIndex(0);
-                } else {
-                    alert('Sync Slide failed: ' + (result.error || 'Unknown error'));
-                }
+            if (result.success && result.slides) {
+                resetHistoryWithSlides(result.slides);
+            } else {
+                alert('Sync Slide failed: ' + (result.error || 'Unknown error'));
             }
-        } catch (e: any) {
-            console.error("Sync slide error:", e);
-            alert("Sync slide error: " + e.message);
+        } catch (error: unknown) {
+            console.error("Sync slide error:", error);
+            alert("Sync slide error: " + getErrorMessage(error));
         } finally {
             setIsSyncing(false);
         }
     };
 
-    const [isRemoving, setIsRemoving] = useState(false);
-    const [removeStatus, setRemoveStatus] = useState('');
-
-    const handleRemoveAudio = async (scope: 'slide' | 'all') => {
+    const handleRemoveSlideAudio = async () => {
         if (isGenerating || isSaving || isSyncing || isRemoving) return;
         setIsRemoving(true);
-        setRemoveStatus(scope === 'all' ? 'Removing all audio...' : 'Removing audio...');
+        setRemoveStatus('Removing audio...');
         try {
-            if (ipcRenderer) {
-                const indexToUse = activeSlide.index || (activeSlideIndex + 1);
+            const result = await runRemoveAudio('slide');
 
-                const result = await ipcRenderer.invoke('remove-audio', {
-                    filePath,
-                    scope,
-                    slideIndex: indexToUse
-                });
-
-                if (result.success) {
-                    if (scope === 'all') {
-                        alert('Successfully removed audio from all slides.');
-                    } else {
-                        setRemoveStatus('Removed!');
-                        setTimeout(() => setRemoveStatus(''), 2000);
-                    }
-                } else {
-                    alert('Failed to remove audio: ' + (result.error || 'Unknown error'));
-                }
+            if (result.success) {
+                setRemoveStatus('Removed!');
+                setTimeout(() => setRemoveStatus(''), 2000);
+            } else {
+                alert('Failed to remove audio: ' + (result.error || 'Unknown error'));
             }
-        } catch (e: any) {
-            console.error("Remove audio error:", e);
-            alert("Remove audio error: " + e.message);
+        } catch (error: unknown) {
+            console.error("Remove audio error:", error);
+            alert("Remove audio error: " + getErrorMessage(error));
         } finally {
             setIsRemoving(false);
             if (removeStatus !== 'Removed!') setRemoveStatus('');
         }
     };
+
+    const handleRemoveAllAudio = async () => {
+        if (isGenerating || isSaving || isSyncing || isRemoving) return;
+        setIsRemoving(true);
+        setRemoveStatus('Removing all audio...');
+        try {
+            const result = await runRemoveAudio('all');
+
+            if (result.success) {
+                alert('Successfully removed audio from all slides.');
+            } else {
+                alert('Failed to remove audio: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error: unknown) {
+            console.error("Remove all audio error:", error);
+            alert("Remove audio error: " + getErrorMessage(error));
+        } finally {
+            setIsRemoving(false);
+            setRemoveStatus('');
+        }
+    };
+
+    if (!ipcRenderer) {
+        return (
+            <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column' }}>
+                <Group justify="space-between" p="xs" style={{ borderBottom: '1px solid var(--mantine-color-dark-4)', background: 'var(--mantine-color-dark-7)' }}>
+                    <Button variant="subtle" size="xs" onClick={onBack}>&larr; Back</Button>
+                    <Title order={5}>Viewer</Title>
+                    <div />
+                </Group>
+                <Box p="xl">
+                    <Text c="red" fw={600} mb="sm">Electron IPC is unavailable.</Text>
+                    <Text size="sm" c="dimmed">Please run this app inside the Electron desktop shell to use viewer actions.</Text>
+                </Box>
+            </div>
+        );
+    }
+
+    const availableIpcRenderer = ipcRenderer;
 
     return (
         <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -803,7 +789,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                         leftSection={<IconRefresh size={14} className={isSyncing ? "mantine-rotate" : ""} />}
                         onClick={handleSyncAll}
                         loading={isSyncing}
-                        disabled={isGenerating || isSaving || isSyncing}
+                        disabled={busy}
                     >
                         Sync All Slides
                     </Button>
@@ -814,7 +800,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                         size="xs"
                         onClick={handleInsertAllAudio}
                         loading={isInsertingAudio}
-                        disabled={isGenerating || isSaving || isSyncing || isInsertingAudio}
+                        disabled={busy}
                     >
                         Insert All Audio
                     </Button>
@@ -824,7 +810,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                         size="xs"
                         onClick={handleSaveAllNotes}
                         loading={isSaving}
-                        disabled={isGenerating || isSaving || isSyncing || isInsertingAudio}
+                        disabled={busy}
                     >
                         Save All Slides
                     </Button>
@@ -832,9 +818,9 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                     <Button
                         variant="default"
                         size="xs"
-                        onClick={() => handleRemoveAudio('all')}
+                        onClick={handleRemoveAllAudio}
                         loading={isRemoving}
-                        disabled={isGenerating || isSaving || isSyncing || isRemoving}
+                        disabled={busy}
                     >
                         Remove All Audio
                     </Button>
@@ -845,7 +831,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                         color="blue"
                         onClick={handleGenerateVideo}
                         loading={isGenerating}
-                        disabled={isGenerating || isSaving || isSyncing}
+                        disabled={busy}
                     >
                         {isGenerating ? 'Generating...' : 'Generate Video'}
                     </Button>
@@ -944,7 +930,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                     leftSection={<IconRefresh size={14} className={isSyncing ? "mantine-rotate" : ""} />}
                                     onClick={handleSyncSlide}
                                     loading={isSyncing}
-                                    disabled={isGenerating || isSaving || isSyncing || xmlCliEnabled}
+                                    disabled={busy || xmlCliEnabled}
                                 >
                                     Sync Slide
                                 </Button>
@@ -956,7 +942,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                 size="xs"
                                 onClick={handleInsertSlideAudio}
                                 loading={isInsertingAudio}
-                                disabled={isGenerating || isSaving || isSyncing || isRemoving || isInsertingAudio}
+                                disabled={busy}
                             >
                                 Insert Audio
                             </Button>
@@ -970,7 +956,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                     size="xs"
                                     leftSection={<IconDeviceTv size={14} />}
                                     onClick={handlePlaySlide}
-                                    disabled={isGenerating || isSaving || isSyncing || isInsertingAudio || xmlCliEnabled}
+                                    disabled={busy || xmlCliEnabled}
                                 >
                                     Play
                                 </Button>
@@ -981,18 +967,18 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                 size="xs"
                                 onClick={handleSaveCurrentSlideNotes}
                                 loading={isSaving}
-                                disabled={isGenerating || isSaving || isSyncing || isRemoving || isInsertingAudio}
+                                disabled={busy}
                             >
                                 Save Slide
                             </Button>
 
-                            <Button
-                                variant="default"
-                                size="xs"
-                                onClick={() => handleRemoveAudio('slide')}
-                                loading={isRemoving}
-                                disabled={isGenerating || isSaving || isSyncing || isRemoving}
-                            >
+                                <Button
+                                    variant="default"
+                                    size="xs"
+                                    onClick={handleRemoveSlideAudio}
+                                    loading={isRemoving}
+                                    disabled={busy}
+                                >
                                 Remove Audio
                             </Button>
                             {isRemoving && removeStatus && (
@@ -1022,10 +1008,10 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                 </Menu.Target>
                                 <Menu.Dropdown>
                                     <Menu.Label>Break Duration</Menu.Label>
-                                    <Menu.Item leftSection={<IconClock size={14} />} onClick={() => insertTag('<break time="200ms"/>')}>200 ms</Menu.Item>
-                                    <Menu.Item leftSection={<IconClock size={14} />} onClick={() => insertTag('<break time="500ms"/>')}>500 ms</Menu.Item>
-                                    <Menu.Item leftSection={<IconClock size={14} />} onClick={() => insertTag('<break time="1s"/>')}>1 second</Menu.Item>
-                                    <Menu.Item leftSection={<IconClock size={14} />} onClick={() => insertTag('<break time="2s"/>')}>2 seconds</Menu.Item>
+                                    <Menu.Item leftSection={<IconClock size={14} />} onClick={() => insertSelfClosingTag('<break time="200ms"/>')}>200 ms</Menu.Item>
+                                    <Menu.Item leftSection={<IconClock size={14} />} onClick={() => insertSelfClosingTag('<break time="500ms"/>')}>500 ms</Menu.Item>
+                                    <Menu.Item leftSection={<IconClock size={14} />} onClick={() => insertSelfClosingTag('<break time="1s"/>')}>1 second</Menu.Item>
+                                    <Menu.Item leftSection={<IconClock size={14} />} onClick={() => insertSelfClosingTag('<break time="2s"/>')}>2 seconds</Menu.Item>
 
                                     <Menu.Divider />
                                     <Menu.Label>Custom</Menu.Label>
@@ -1061,12 +1047,12 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                 </Menu.Target>
                                 <Menu.Dropdown>
                                     <Menu.Label>Interpret As</Menu.Label>
-                                    <Menu.Item onClick={() => insertTag('<say-as interpret-as="spell-out">', '</say-as>')}>Spell Out</Menu.Item>
-                                    <Menu.Item onClick={() => insertTag('<say-as interpret-as="cardinal">', '</say-as>')}>Number (Cardinal)</Menu.Item>
-                                    <Menu.Item onClick={() => insertTag('<say-as interpret-as="ordinal">', '</say-as>')}>Ordinal (1st, 2nd)</Menu.Item>
-                                    <Menu.Item onClick={() => insertTag('<say-as interpret-as="digits">', '</say-as>')}>Digits</Menu.Item>
-                                    <Menu.Item onClick={() => insertTag('<say-as interpret-as="fraction">', '</say-as>')}>Fraction</Menu.Item>
-                                    <Menu.Item onClick={() => insertTag('<say-as interpret-as="expletive">', '</say-as>')}>Expletive</Menu.Item>
+                                    <Menu.Item onClick={() => insertWrappedTag('<say-as interpret-as="spell-out">', '</say-as>')}>Spell Out</Menu.Item>
+                                    <Menu.Item onClick={() => insertWrappedTag('<say-as interpret-as="cardinal">', '</say-as>')}>Number (Cardinal)</Menu.Item>
+                                    <Menu.Item onClick={() => insertWrappedTag('<say-as interpret-as="ordinal">', '</say-as>')}>Ordinal (1st, 2nd)</Menu.Item>
+                                    <Menu.Item onClick={() => insertWrappedTag('<say-as interpret-as="digits">', '</say-as>')}>Digits</Menu.Item>
+                                    <Menu.Item onClick={() => insertWrappedTag('<say-as interpret-as="fraction">', '</say-as>')}>Fraction</Menu.Item>
+                                    <Menu.Item onClick={() => insertWrappedTag('<say-as interpret-as="expletive">', '</say-as>')}>Expletive</Menu.Item>
                                 </Menu.Dropdown>
                             </Menu>
 
@@ -1079,14 +1065,14 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                 </Menu.Target>
                                 <Menu.Dropdown>
                                     <Menu.Label>Emphasis Level</Menu.Label>
-                                    <Menu.Item onClick={() => insertTag('<emphasis level="strong">', '</emphasis>')}>Strong</Menu.Item>
-                                    <Menu.Item onClick={() => insertTag('<emphasis level="moderate">', '</emphasis>')}>Moderate</Menu.Item>
-                                    <Menu.Item onClick={() => insertTag('<emphasis level="reduced">', '</emphasis>')}>Reduced</Menu.Item>
+                                    <Menu.Item onClick={() => insertWrappedTag('<emphasis level="strong">', '</emphasis>')}>Strong</Menu.Item>
+                                    <Menu.Item onClick={() => insertWrappedTag('<emphasis level="moderate">', '</emphasis>')}>Moderate</Menu.Item>
+                                    <Menu.Item onClick={() => insertWrappedTag('<emphasis level="reduced">', '</emphasis>')}>Reduced</Menu.Item>
                                 </Menu.Dropdown>
                             </Menu>
 
                             <Tooltip label="Paragraph">
-                                <ActionIcon variant="subtle" color="gray" size="lg" onClick={() => insertTag('<p>', '</p>')}>
+                                <ActionIcon variant="subtle" color="gray" size="lg" onClick={() => insertWrappedTag('<p>', '</p>')}>
                                     <IconPilcrow style={{ width: rem(18), height: rem(18) }} />
                                 </ActionIcon>
                             </Tooltip>
@@ -1103,7 +1089,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                         {/* Header */}
                                         <Group justify="space-between" px="xs" py={4} style={{ borderBottom: '1px solid var(--mantine-color-dark-4)', background: 'var(--mantine-color-dark-6)' }}>
                                             <Select
-                                                data={[{value: '', label: 'Default'}].concat(Object.keys(mappings).filter(k => k !== '_default_').map(k => ({ value: k, label: `[${k}]` })))}
+                                                data={[{ value: DEFAULT_SPEAKER_VALUE, label: DEFAULT_SPEAKER_LABEL }].concat(Object.keys(mappings).filter((key) => key !== DEFAULT_SPEAKER_KEY).map((key) => ({ value: key, label: `[${key}]` })))}
                                                 value={section.speaker}
                                                 onChange={(val) => handleSpeakerChange(index, val)}
                                                 size="xs"
@@ -1138,7 +1124,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                 </div>
             </div>
             {/* Overlays */}
-            <SettingsModal opened={settingsOpen} onClose={() => { setSettingsOpen(false); loadSettings(); }} />
+            <SettingsModal opened={settingsOpen} onClose={() => setSettingsOpen(false)} />
         </div>
     );
 }
