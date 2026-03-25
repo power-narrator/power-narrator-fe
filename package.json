@@ -5,10 +5,13 @@
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "concurrently -k \"vite\" \"npm run electron:dev\"",
-    "electron:dev": "tsc -p electron && node -e \"require('fs').writeFileSync('dist-electron/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\" && concurrently -k \"tsc -p electron -w\" \"electron .\"",
-    "build": "tsc -b && tsc -p electron && vite build",
-    "dist": "npm run build && electron-builder --mac --config electron-builder.json",
+    "dev": "concurrently -k \"vite\" \"npm run dev:electron\"",
+    "dev:electron": "npm run build:electron && node -e \"require('fs').writeFileSync('dist-electron/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\" && concurrently -k \"tsc -p electron -w\" \"electron .\"",
+    "build": "tsc && vite build && npm run build:electron",
+    "build:electron": "tsc -p electron",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:e2e": "npm run build && playwright test"
