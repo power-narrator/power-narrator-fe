@@ -9,11 +9,8 @@
         "electron/scripts/**/*"
     ],
     "mac": {
-        "target": "dmg",
-        "hardenedRuntime": true,
-        "gatekeeperAssess": false
+        "target": "dmg"
     },
-    "asar": true,
     "asarUnpack": [
         "**/*.scpt",
         "**/*.applescript",
