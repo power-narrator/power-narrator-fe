@@ -30,7 +30,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
     }
 
     async function loadProviderMode() {
-        const provider = await window.electronAPI.getTtsProvider?.();
+        const provider = await window.electronAPI.getTtsProvider();
         setProviderMode(provider || 'local');
     }
 
@@ -77,7 +77,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
 
     const addAlias = () => {
         if (newAlias.trim() && !mappings[newAlias.trim()]) {
-            saveMappings({ ...mappings, [newAlias.trim()]: { name: '', languageCodes: [], ssmlGender: '' } });
+            saveMappings({ ...mappings, [newAlias.trim()]: { name: '', languageCodes: [], ssmlGender: '', provider: '' } });
             setNewAlias('');
         }
     };
