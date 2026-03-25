@@ -4,7 +4,8 @@ import { IconSettings } from '@tabler/icons-react';
 import { LandingPage } from './components/LandingPage';
 import { ViewerPage } from './components/ViewerPage';
 import { SettingsModal } from './components/SettingsModal';
-import type { Slide } from './electron'; // Import type
+import type { Slide } from './electron';
+import { getErrorMessage } from './utils/errors';
 
 function App() {
   const [loading, setLoading] = useState(false);
@@ -41,18 +42,11 @@ function App() {
       } else {
         console.warn('Electron API not found');
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (error: unknown) {
+      setError(getErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSaveAll = async (updatedSlides: Slide[]) => {
-    // ViewerPage handles the actual saving to file (including audio) via IPC.
-    // We just need to update our local state here.
-    setSlides(updatedSlides);
-    // Optional: Show a subtle success message if needed, but ViewerPage already alerted.
   };
 
   if (loading) {
@@ -96,7 +90,7 @@ function App() {
           {loading && <Text ta="center" mt="sm">Analysing file...</Text>}
         </>
       ) : (
-        <ViewerPage slides={slides} onSave={handleSaveAll} onBack={() => setSlides(null)} filePath={currentFilePath || ''} />
+        <ViewerPage slides={slides} onBack={() => setSlides(null)} filePath={currentFilePath || ''} />
       )}
       <SettingsModal opened={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
