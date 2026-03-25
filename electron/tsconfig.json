@@ -3,11 +3,8 @@
     "target": "ESNext",
     "module": "commonjs",
     "outDir": "../dist-electron",
-    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
-  },
-  "include": ["."]
+    "skipLibCheck": true
+  }
 }
