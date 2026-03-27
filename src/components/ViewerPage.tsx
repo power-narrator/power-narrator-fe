@@ -1,4 +1,4 @@
-import { Box, Group, Button, Image, ScrollArea, Textarea, Title, ActionIcon, Tooltip, Menu, rem, TextInput, Slider, Text, Loader, Select } from '@mantine/core';
+import { Box, Group, Button, Image, ScrollArea, Textarea, Title, ActionIcon, Tooltip, Menu, rem, TextInput, Text, Select, Slider, Loader } from '@mantine/core';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
     IconPlayerPause,
@@ -16,10 +16,198 @@ import {
     IconRefresh
 } from '@tabler/icons-react';
 import type { Slide } from '../electron';
-import { generateAudio, getAudioBuffer, type VoiceOption } from '../utils/tts';
+import { generateAudio, getAudioBuffer } from '../utils/tts';
 // Removed VoiceSelector import
 import { SettingsModal } from './SettingsModal';
 const { ipcRenderer } = (window as any).require('electron');
+
+export interface NoteSection {
+    speaker: string;
+    text: string;
+}
+
+export const parseNotes = (text: string): NoteSection[] => {
+    if (!text) return [{ speaker: '', text: '' }];
+    
+    // Split more leniently but effectively. We want to avoid trailing space deletion.
+    const parts = text.split(/\r?\n---\r?\n/g);
+    if (parts.length === 1 && text.includes('---')) {
+        // Fallback if manual string didn't have exact newlines around ---
+        const fallbackParts = text.split(/^\s*---\s*$/gm);
+        return fallbackParts.map(part => {
+            const match = part.match(/^\s*\[([^\]]+)\]\s*([\s\S]*)$/);
+            if (match) return { speaker: match[1], text: match[2] };
+            // Strip up to one leading newline
+            return { speaker: '', text: part.replace(/^\s*\r?\n/, '') };
+        });
+    }
+
+    return parts.map(part => {
+        // Attempt strict match first to avoid consuming trailing spaces in tags
+        const match = part.match(/^\[([^\]]+)\]\n([\s\S]*)$/);
+        if (match) {
+            return { speaker: match[1], text: match[2] };
+        }
+        
+        // Legacy match
+        const legacyMatch = part.match(/^\[([^\]]+)\]\s*([\s\S]*)$/);
+        if (legacyMatch) {
+            return { speaker: legacyMatch[1], text: legacyMatch[2] };
+        }
+        
+        return { speaker: '', text: part };
+    });
+};
+
+export const formatNotes = (sections: NoteSection[]): string => {
+    return sections.map(sec => {
+        const speakerPart = sec.speaker && sec.speaker !== '_default_' ? `[${sec.speaker}]\n` : '';
+        return `${speakerPart}${sec.text}`;
+    }).join('\n---\n');
+};
+
+const SectionPreviewButtons = ({ section, mappings, onFocus, getTextarea }: { section: NoteSection, mappings: Record<string, any>, onFocus: () => void, getTextarea?: () => HTMLTextAreaElement | null }) => {
+    const [audioUrl, setAudioUrl] = useState<string | null>(null);
+    const [playingSpeaker, setPlayingSpeaker] = useState<string | null>(null);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const isSeekingRef = useRef(false);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const [isAudioGenerating, setIsAudioGenerating] = useState(false);
+
+    const speakers = [{ value: '', label: 'Default' }].concat(Object.keys(mappings).filter(k => k !== '_default_').map(k => ({ value: k, label: k })));
+
+    const handlePlay = async (speakerValue: string, isMainPlayer: boolean = false) => {
+        const targetSpeaker = isMainPlayer ? section.speaker : speakerValue;
+
+        if (playingSpeaker === (isMainPlayer ? 'MAIN' : targetSpeaker)) {
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current.currentTime = 0;
+            }
+            setPlayingSpeaker(null);
+            return;
+        }
+
+        let textToPlay = section.text;
+        if (getTextarea) {
+            const ta = getTextarea();
+            if (ta && ta.selectionStart !== ta.selectionEnd) {
+                textToPlay = ta.value.substring(ta.selectionStart, ta.selectionEnd);
+            }
+        }
+        if (!textToPlay) {
+            alert("No text to preview.");
+            return;
+        }
+
+        onFocus();
+        try {
+            setIsAudioGenerating(true);
+            setPlayingSpeaker(isMainPlayer ? 'MAIN' : targetSpeaker);
+            
+            const voiceOverride = targetSpeaker ? mappings[targetSpeaker] : undefined;
+            const url = await generateAudio(textToPlay, voiceOverride);
+            
+            setAudioUrl(url);
+            setTimeout(() => {
+                if (audioRef.current) {
+                    audioRef.current.currentTime = 0;
+                    audioRef.current.play().catch(e => {
+                        console.error(e);
+                        setPlayingSpeaker(null);
+                    });
+                }
+            }, 100);
+        } catch (error: any) {
+            alert("Failed to play audio: " + error.message);
+            setPlayingSpeaker(null);
+        } finally {
+            setIsAudioGenerating(false);
+        }
+    };
+
+    const formatTime = (time: number) => {
+        const minutes = Math.floor(time / 60);
+        const seconds = Math.floor(time % 60);
+        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    };
+
+    return (
+        <Box px="xs" py="xs" style={{ borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
+            <audio
+                ref={audioRef}
+                src={audioUrl || ''}
+                onTimeUpdate={() => { if (audioRef.current && !isSeekingRef.current) setCurrentTime(audioRef.current.currentTime); }}
+                onLoadedMetadata={() => { if (audioRef.current) setDuration(audioRef.current.duration); }}
+                onEnded={() => setPlayingSpeaker(null)}
+            />
+            
+            <Group gap="xs" mb="xs">
+                {speakers.map(spk => {
+                    const isPlaying = playingSpeaker === spk.value;
+                    const isGenerating = isAudioGenerating && playingSpeaker === spk.value;
+                    return (
+                        <Button
+                            key={spk.value}
+                            size="compact-sm"
+                            variant="outline"
+                            color="blue"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => handlePlay(spk.value, false)}
+                            loading={isGenerating}
+                            disabled={isAudioGenerating && !isGenerating}
+                            leftSection={isPlaying ? <IconPlayerPause size={12} /> : <IconPlayerPlay size={12} />}
+                        >
+                            {spk.label}
+                        </Button>
+                    );
+                })}
+            </Group>
+
+            <Group gap="xs">
+                <ActionIcon
+                    variant="filled"
+                    color={playingSpeaker === 'MAIN' ? "red" : "blue"}
+                    size="sm"
+                    radius="xl"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => handlePlay('', true)}
+                    disabled={(!section.text) || (isAudioGenerating && playingSpeaker !== 'MAIN')}
+                >
+                    {playingSpeaker === 'MAIN' && !isAudioGenerating ? <IconPlayerPause size={12} /> : <IconPlayerPlay size={12} />}
+                </ActionIcon>
+                <Box style={{ flex: 1, position: 'relative' }}>
+                    {isAudioGenerating && playingSpeaker === 'MAIN' ? (
+                        <div style={{ height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Loader size="xs" variant="dots" color="blue" />
+                        </div>
+                    ) : (
+                        <Group gap="xs" wrap="nowrap">
+                            <Slider
+                                style={{ flex: 1 }}
+                                size="sm"
+                                value={currentTime}
+                                min={0}
+                                max={duration || 100}
+                                onChange={(v) => { isSeekingRef.current = true; setCurrentTime(v); }}
+                                onChangeEnd={(v) => {
+                                    isSeekingRef.current = false;
+                                    if (audioRef.current) audioRef.current.currentTime = v;
+                                }}
+                                label={formatTime}
+                                disabled={!audioUrl}
+                            />
+                            <Text size="10px" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                                {formatTime(currentTime)} / {formatTime(duration)}
+                            </Text>
+                        </Group>
+                    )}
+                </Box>
+            </Group>
+        </Box>
+    );
+};
 
 interface ViewerPageProps {
     slides: Slide[];
@@ -36,15 +224,21 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
     const [settingsOpen, setSettingsOpen] = useState(false);
 
     const [activeSlideIndex, setActiveSlideIndex] = useState(0);
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const [activeSectionIndex, setActiveSectionIndex] = useState(0);
+    const textareasRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
     const [customBreak, setCustomBreak] = useState('');
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [mappings, setMappings] = useState<Record<string, any>>({});
+    const [xmlCliEnabled, setXmlCliEnabled] = useState(false);
 
     const loadSettings = async () => {
         if (window.electronAPI.getSpeakerMappings) {
             const m = await window.electronAPI.getSpeakerMappings();
             setMappings(m || {});
+        }
+        if (window.electronAPI.getXmlCliEnabled) {
+            const enabled = await window.electronAPI.getXmlCliEnabled();
+            setXmlCliEnabled(enabled);
         }
     };
 
@@ -52,136 +246,21 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         loadSettings();
     }, []);
 
-    const [audioUrl, setAudioUrl] = useState<string | null>(null);
-    const [isPlaying, setIsPlaying] = useState(false);
-    const [currentTime, setCurrentTime] = useState(0);
-    const [duration, setDuration] = useState(0);
-    const audioRef = useRef<HTMLAudioElement | null>(null);
-    const isSeekingRef = useRef(false);
-
-    const [isAudioGenerating, setIsAudioGenerating] = useState(false);
-
     // Sync State
     const [isSyncing, setIsSyncing] = useState(false);
 
     const activeSlide = slides[activeSlideIndex] || { src: '', notes: '' };
-
-    // Reset audio when slide changes
-    useEffect(() => {
-        if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.currentTime = 0;
-        }
-        setAudioUrl(null);
-        setIsPlaying(false);
-        setCurrentTime(0);
-        setDuration(0);
-    }, [activeSlideIndex]);
-
-    const handlePlayAudio = async (voiceOverride?: VoiceOption) => {
-        if (!activeSlide.notes) return;
-
-        let textToPlay = activeSlide.notes;
-
-        if (textareaRef.current) {
-            const start = textareaRef.current.selectionStart;
-            const end = textareaRef.current.selectionEnd;
-            if (start !== end) {
-                textToPlay = textToPlay.substring(start, end);
-            }
-        }
-
-        try {
-            setIsAudioGenerating(true);
-            // Generate URL (cached if possible)
-            const url = await generateAudio(textToPlay, voiceOverride);
-
-            if (url !== audioUrl) {
-                setAudioUrl(url);
-                // Wait a tick for React to update the <audio src> prop
-                setTimeout(() => {
-                    if (audioRef.current) {
-                        audioRef.current.currentTime = 0;
-                        audioRef.current.play()
-                            .then(() => setIsPlaying(true))
-                            .catch(e => console.error("Auto-play failed after generation", e));
-                    }
-                    // Restore focus and selection if we had one
-                    if (textareaRef.current) {
-                        textareaRef.current.focus();
-                    }
-                }, 100);
-            } else {
-                if (audioRef.current) {
-                    audioRef.current.currentTime = 0;
-                    audioRef.current.play()
-                        .then(() => setIsPlaying(true))
-                        .catch(e => console.error("Auto-play failed for cached audio", e));
-                }
-                // Restore focus
-                if (textareaRef.current) {
-                    textareaRef.current.focus();
-                }
-            }
-        } catch (error: any) {
-            console.error("Failed to play audio", error);
-            alert("Failed to play audio: " + error.message);
-        } finally {
-            setIsAudioGenerating(false);
-        }
-    };
-
-    const togglePlay = async () => {
-        if (isPlaying) {
-            audioRef.current?.pause();
-            setIsPlaying(false);
-        } else {
-            // ALWAYS check the generation to ensure we have the correct audio for the current text.
-            await handlePlayAudio();
-        }
-    };
-
-    const onTimeUpdate = () => {
-        if (audioRef.current && !isSeekingRef.current) {
-            setCurrentTime(audioRef.current.currentTime);
-        }
-    };
-
-    const onLoadedMetadata = () => {
-        if (audioRef.current) {
-            setDuration(audioRef.current.duration);
-        }
-    };
-
-    const onAudioEnded = () => {
-        setIsPlaying(false);
-        setCurrentTime(0);
-    };
-
-    const handleSeek = (value: number) => {
-        isSeekingRef.current = true;
-        setCurrentTime(value);
-    };
-
-    const handleSeekEnd = (value: number) => {
-        isSeekingRef.current = false;
-        if (audioRef.current) {
-            audioRef.current.currentTime = value;
-        }
-    };
-
-    const formatTime = (time: number) => {
-        const minutes = Math.floor(time / 60);
-        const seconds = Math.floor(time % 60);
-        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    };
-    // Reset index when initialSlides change (e.g. new file loaded)
     useEffect(() => {
         setSlides(initialSlides);
         setHistory([initialSlides]);
         setHistoryIndex(0);
         setActiveSlideIndex(0);
+        setActiveSectionIndex(0);
     }, [initialSlides]);
+
+    useEffect(() => {
+        setActiveSectionIndex(0);
+    }, [activeSlideIndex]);
 
     // Push current state to history. 
     // If 'overwrite', replaces the current history head (useful for typing sequences).
@@ -226,70 +305,88 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
     }, [handleUndo, handleRedo]);
 
 
-    const handleNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        const newText = e.target.value;
+    const handleSectionTextChange = (index: number, value: string) => {
+        const sections = parseNotes(activeSlide.notes || '');
+        if (!sections[index]) return;
+        sections[index].text = value;
+        const newNotes = formatNotes(sections);
+        
         const newSlides = [...slides];
-        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], notes: newText };
+        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], notes: newNotes };
         setSlides(newSlides);
 
-        // Debounce history save for typing
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
             pushToHistory(newSlides);
         }, 800);
     };
 
+    const handleSpeakerChange = (index: number, speaker: string | null) => {
+        const sections = parseNotes(activeSlide.notes || '');
+        if (!sections[index]) return;
+        sections[index].speaker = speaker || '';
+        const newNotes = formatNotes(sections);
+        
+        const newSlides = [...slides];
+        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], notes: newNotes };
+        setSlides(newSlides);
+        pushToHistory(newSlides);
+    };
+
+    const handleAddSection = () => {
+        const sections = parseNotes(activeSlide.notes || '');
+        sections.push({ speaker: '', text: '' });
+        const newNotes = formatNotes(sections);
+        const newSlides = [...slides];
+        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], notes: newNotes };
+        setSlides(newSlides);
+        pushToHistory(newSlides);
+        setActiveSectionIndex(sections.length - 1);
+    };
+
+    const handleDeleteSection = (index: number) => {
+        const sections = parseNotes(activeSlide.notes || '');
+        sections.splice(index, 1);
+        const newNotes = formatNotes(sections);
+        const newSlides = [...slides];
+        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], notes: newNotes };
+        setSlides(newSlides);
+        pushToHistory(newSlides);
+        if (activeSectionIndex >= sections.length) {
+            setActiveSectionIndex(Math.max(0, sections.length - 1));
+        }
+    };
+
     const insertTag = (startTag: string, endTag: string = '') => {
-        const textarea = textareaRef.current;
+        const textarea = textareasRefs.current[activeSectionIndex];
         if (!textarea) return;
 
-        // Force save current history state before modification to ensure we can undo this specific action
-        // Actually, if we just typed, the debounce might not have fired yet. 
-        // Ideally we want to commit "Before Tag" state if it changed.
-        // But for simplicity, we just push the NEW state after tag insertion into history.
-        // Wait, if we type "foo", wait 200ms, then insert tag. "foo" isn't in history yet?
-        // Let's rely on React state. The current 'slides' IS the latest 'foo'. 
-        // So we just need to ensure we have a history point BEFORE this change?
-        // If historyIndex points to "foo", good. If not (debounce pending), we might lose "foo" step?
-        // To be safe: clear debounce and push CURRENT slides if meaningful difference? 
-        // Simplest strategy: Just push `newSlides` to history. Undo will go back to *whatever was computed last*. 
-        // If "foo" wasn't pushed yet, Undo goes back to pre-"foo". That's bad.
-        // So: Clear debounce, push CURRENT slides (if not equal to history head), THEN apply tag and push again.
-
-        if (debounceRef.current) {
-            clearTimeout(debounceRef.current);
-            // If there were pending changes, push them first?
-            // This is getting complex. Let's stick to: "Tag insertion is a discrete history event"
-            // We assume the user stopped typing for a split second or we accept small data loss in undo stack for rapid typing+clicking.
-            // Better: Implicitly, `slides` is the latest. 
-            // We want history to look like: [State A], [State A + Tag].
-            // If we only push [State A + Tag], then pressing Undo goes to [State A] (which might be old if we didn't push A).
-            // So yes, we should push 'slides' (current state) if it's different from history[historyIndex].
-
-            // Let's implement that check ideally, or just lazy-push.
-            // For now: Just push the result.
-        }
+        const sections = parseNotes(activeSlide.notes || '');
+        if (!sections[activeSectionIndex]) return;
 
         const start = textarea.selectionStart;
         const end = textarea.selectionEnd;
-        const text = activeSlide.notes || '';
+        const text = sections[activeSectionIndex].text || '';
 
         const before = text.substring(0, start);
         const selection = text.substring(start, end);
         const after = text.substring(end);
 
-        const newText = before + startTag + selection + endTag + after;
+        sections[activeSectionIndex].text = before + startTag + selection + endTag + after;
+        const newNotes = formatNotes(sections);
 
         const newSlides = [...slides];
-        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], notes: newText };
+        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], notes: newNotes };
 
         setSlides(newSlides);
-        pushToHistory(newSlides); // Discrete Action -> immediate history
+        pushToHistory(newSlides); 
 
-        // Restore cursor / selection
         setTimeout(() => {
-            textarea.focus();
-            textarea.setSelectionRange(start + startTag.length, end + startTag.length);
+            const ta = textareasRefs.current[activeSectionIndex];
+            if (ta) {
+                ta.focus();
+                ta.setSelectionRange(start + startTag.length, end + startTag.length);
+            }
         }, 0);
     };
 
@@ -462,11 +559,18 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
             if (ipcRenderer) {
                 const slidesAudioString = [];
                 if (activeSlide.notes && activeSlide.notes.trim().length > 0) {
-                    const buffer = await getAudioBuffer(activeSlide.notes, undefined);
-                    slidesAudioString.push({
-                        index: activeSlide.index,
-                        audioData: new Uint8Array(buffer)
-                    });
+                    const sections = parseNotes(activeSlide.notes);
+                    for (let i = 0; i < sections.length; i++) {
+                        const sec = sections[i];
+                        if (sec.text.trim().length > 0) {
+                            const urlObj = await getAudioBuffer(sec.text, mappings[sec.speaker] || undefined);
+                            slidesAudioString.push({
+                                index: activeSlide.index,
+                                sectionIndex: i,
+                                audioData: new Uint8Array(urlObj)
+                            });
+                        }
+                    }
                 }
 
                 if (slidesAudioString.length === 0) {
@@ -505,11 +609,18 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                 for (const slide of slides) {
                     if (slide.notes && slide.notes.trim().length > 0) {
                         setInsertStatus(`Generating audio for slide ${slide.index}...`);
-                        const buffer = await getAudioBuffer(slide.notes, undefined);
-                        slidesAudioString.push({
-                            index: slide.index,
-                            audioData: new Uint8Array(buffer)
-                        });
+                        const sections = parseNotes(slide.notes);
+                        for (let i = 0; i < sections.length; i++) {
+                            const sec = sections[i];
+                            if (sec.text.trim().length > 0) {
+                                const buffer = await getAudioBuffer(sec.text, mappings[sec.speaker] || undefined);
+                                slidesAudioString.push({
+                                    index: slide.index,
+                                    sectionIndex: i,
+                                    audioData: new Uint8Array(buffer)
+                                });
+                            }
+                        }
                     }
                 }
 
@@ -558,6 +669,11 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
 
     const handleSyncAll = async () => {
         if (isSyncing || isSaving || isGenerating) return;
+
+        if (!window.confirm("Syncing will override any unsaved changes in your notes. Do you want to proceed?")) {
+            return;
+        }
+
         setIsSyncing(true);
 
         try {
@@ -586,6 +702,11 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
 
     const handleSyncSlide = async () => {
         if (isSyncing || isSaving || isGenerating) return;
+
+        if (!window.confirm("Syncing will override any unsaved changes in your notes. Do you want to proceed?")) {
+            return;
+        }
+
         setIsSyncing(true);
 
         try {
@@ -812,93 +933,22 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                     {/* Bottom: Notes + Toolbar */}
                     <Box style={{ flex: 1, height: `${100 - splitRatio}%`, padding: '1rem', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-                        {/* Audio Player (First) */}
-                        <Box mb="md" style={{ borderBottom: '1px solid var(--mantine-color-dark-4)', paddingBottom: '1rem' }}>
-                            <audio
-                                ref={audioRef}
-                                src={audioUrl || ''}
-                                onTimeUpdate={onTimeUpdate}
-                                onLoadedMetadata={onLoadedMetadata}
-                                onEnded={onAudioEnded}
-                            />
-
-                            <Group gap="md">
-                                <ActionIcon
-                                    variant="filled"
-                                    color={isPlaying ? "red" : "blue"}
-                                    size="lg"
-                                    radius="xl"
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={togglePlay}
-                                    disabled={!activeSlide.notes}
-                                >
-                                    {isPlaying ? <IconPlayerPause size={20} /> : <IconPlayerPlay size={20} />}
-                                </ActionIcon>
-
-                                <Box style={{ flex: 1, position: 'relative' }}>
-                                    {isAudioGenerating ? (
-                                        <div style={{ height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                            <Loader size="sm" variant="dots" color="blue" />
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <Slider
-                                                value={currentTime}
-                                                min={0}
-                                                max={duration || 100}
-                                                onChange={handleSeek}
-                                                onChangeEnd={handleSeekEnd}
-                                                label={formatTime}
-                                                disabled={!audioUrl}
-                                            />
-                                            <Group justify="space-between" mt={4}>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--mantine-color-dimmed)' }}>
-                                                    {formatTime(currentTime)}
-                                                </div>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--mantine-color-dimmed)' }}>
-                                                    {formatTime(duration)}
-                                                </div>
-                                            </Group>
-                                        </>
-                                    )}
-                                </Box>
-                            </Group>
-                        </Box>
-                        {/* Speaker Previews */}
-                        {Object.keys(mappings).length > 0 && (
-                            <Box mb="md">
-                                <Text size="xs" fw={700} c="dimmed" mb={8} style={{ textTransform: 'uppercase', letterSpacing: rem(1) }}>
-                                    Speaker Previews
-                                </Text>
-                                <Group gap="xs">
-                                    {Object.entries(mappings).map(([alias, voice]) => (
-                                        <Button
-                                            key={alias}
-                                            variant="outline"
-                                            size="compact-xs"
-                                            leftSection={<IconPlayerPlay size={12} />}
-                                            onMouseDown={(e) => e.preventDefault()}
-                                            onClick={() => handlePlayAudio(voice)}
-                                            disabled={!activeSlide.notes || isAudioGenerating}
-                                        >
-                                            {alias === '_default_' ? 'Default' : alias}
-                                        </Button>
-                                    ))}
-                                </Group>
-                            </Box>
-                        )}
-
                         <Group gap="md" py="xs" style={{ borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
-                            <Button
-                                variant="default"
-                                size="xs"
-                                leftSection={<IconRefresh size={14} className={isSyncing ? "mantine-rotate" : ""} />}
-                                onClick={handleSyncSlide}
-                                loading={isSyncing}
-                                disabled={isGenerating || isSaving || isSyncing}
+                            <Tooltip
+                                label="Individual slide sync is disabled in XML mode"
+                                disabled={!xmlCliEnabled}
                             >
-                                Sync Slide
-                            </Button>
+                                <Button
+                                    variant="default"
+                                    size="xs"
+                                    leftSection={<IconRefresh size={14} className={isSyncing ? "mantine-rotate" : ""} />}
+                                    onClick={handleSyncSlide}
+                                    loading={isSyncing}
+                                    disabled={isGenerating || isSaving || isSyncing || xmlCliEnabled}
+                                >
+                                    Sync Slide
+                                </Button>
+                            </Tooltip>
 
                             <Button
                                 variant="filled"
@@ -911,15 +961,20 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                 Insert Audio
                             </Button>
 
-                            <Button
-                                variant="default"
-                                size="xs"
-                                leftSection={<IconDeviceTv size={14} />}
-                                onClick={handlePlaySlide}
-                                disabled={isGenerating || isSaving || isSyncing || isInsertingAudio}
+                            <Tooltip
+                                label="Disabled when XML CLI is enabled"
+                                disabled={!xmlCliEnabled}
                             >
-                                Play
-                            </Button>
+                                <Button
+                                    variant="default"
+                                    size="xs"
+                                    leftSection={<IconDeviceTv size={14} />}
+                                    onClick={handlePlaySlide}
+                                    disabled={isGenerating || isSaving || isSyncing || isInsertingAudio || xmlCliEnabled}
+                                >
+                                    Play
+                                </Button>
+                            </Tooltip>
 
                             <Button
                                 variant="default"
@@ -1037,34 +1092,48 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                             </Tooltip>
 
                             <div style={{ width: 1, height: 20, background: 'var(--mantine-color-dark-4)', margin: '0 8px' }} />
-
-                            <Box style={{ width: 160 }}>
-                                <Select
-                                    placeholder="Insert Speaker Tag"
-                                    data={Object.keys(mappings).filter(k => k !== '_default_').map(k => ({ value: k, label: `[${k}]` }))}
-                                    value={null}
-                                    onChange={(val) => { if (val) insertTag(`[${val}]\n`); }}
-                                    searchable
-                                    size="xs"
-                                    w={150}
-                                />
-                            </Box>
                         </Group>
 
-                        {/* Text Box (Third) */}
-                        <Textarea
-                            ref={textareaRef}
-                            label="Presenter Notes"
-                            value={activeSlide.notes}
-                            onChange={handleNotesChange}
-                            minRows={4}
-                            maxRows={10}
-                            style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
-                            styles={{
-                                wrapper: { flex: 1, display: 'flex', flexDirection: 'column' },
-                                input: { flex: 1, resize: 'none', fontFamily: 'monospace' }
-                            }}
-                        />
+                        {/* Notes Sections (Third) */}
+                        <Text size="sm" fw={500} mb={4}>Presenter Notes</Text>
+                        <ScrollArea style={{ flex: 1 }} type="auto" styles={{ viewport: { '& > div': { display: 'flex', flexDirection: 'column', height: '100%' } } }}>
+                            <Box style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '12px' }}>
+                                {parseNotes(activeSlide.notes || '').map((section, index, arr) => (
+                                    <Box key={index} style={{ border: '1px solid var(--mantine-color-dark-4)', borderRadius: 4, display: 'flex', flexDirection: 'column', minHeight: 150, flexShrink: 0 }}>
+                                        {/* Header */}
+                                        <Group justify="space-between" px="xs" py={4} style={{ borderBottom: '1px solid var(--mantine-color-dark-4)', background: 'var(--mantine-color-dark-6)' }}>
+                                            <Select
+                                                data={[{value: '', label: 'Default'}].concat(Object.keys(mappings).filter(k => k !== '_default_').map(k => ({ value: k, label: `[${k}]` })))}
+                                                value={section.speaker}
+                                                onChange={(val) => handleSpeakerChange(index, val)}
+                                                size="xs"
+                                                w={150}
+                                                placeholder="Speaker"
+                                            />
+                                            {arr.length > 1 && (
+                                                <Button variant="subtle" color="red" size="compact-xs" onClick={() => handleDeleteSection(index)}>
+                                                    Remove Section
+                                                </Button>
+                                            )}
+                                        </Group>
+                                        {/* Audio Player and Body */}
+                                        <SectionPreviewButtons section={section} mappings={mappings} onFocus={() => setActiveSectionIndex(index)} getTextarea={() => textareasRefs.current[index]} />
+                                        <Textarea
+                                            ref={el => { textareasRefs.current[index] = el; }}
+                                            onFocus={() => setActiveSectionIndex(index)}
+                                            value={section.text}
+                                            onChange={(e) => handleSectionTextChange(index, e.target.value)}
+                                            styles={{
+                                                input: { resize: 'vertical', fontFamily: 'monospace', border: 'none', minHeight: '110px' }
+                                            }}
+                                        />
+                                    </Box>
+                                ))}
+                                <Button variant="light" size="sm" fullWidth leftSection={<IconPlus size={16}/>} onClick={handleAddSection} style={{ flexShrink: 0, marginBottom: '20px' }}>
+                                    Add Section
+                                </Button>
+                            </Box>
+                        </ScrollArea>
                     </Box>
                 </div>
             </div>

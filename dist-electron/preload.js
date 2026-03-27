@@ -14,4 +14,6 @@ window.electronAPI = {
     getSpeakerMappings: () => electron_1.ipcRenderer.invoke('get-speaker-mappings'),
     setSpeakerMappings: (mappings) => electron_1.ipcRenderer.invoke('set-speaker-mappings', mappings),
     getTtsProvider: () => electron_1.ipcRenderer.invoke('get-tts-provider'),
+    getXmlCliEnabled: () => electron_1.ipcRenderer.invoke('get-xml-cli-enabled'),
+    setXmlCliEnabled: (enabled) => electron_1.ipcRenderer.invoke('set-xml-cli-enabled', enabled),
 };

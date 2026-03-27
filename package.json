@@ -1,7 +1,7 @@
 {
   "name": "ppt-viewer",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.2",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {

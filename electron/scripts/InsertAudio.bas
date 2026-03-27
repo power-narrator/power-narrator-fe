@@ -21,6 +21,11 @@ Sub InsertAudio()
     Dim slideIndex As Integer
     Dim audioPath As String
     
+    Dim currentSlideIndex As Integer
+    Dim newAudioInsertIndex As Integer
+    currentSlideIndex = 0
+    newAudioInsertIndex = 1
+    
     ' Path construction for Mac Office sandbox
     paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/audio_params.txt"
     
@@ -88,20 +93,34 @@ Sub InsertAudio()
                 If slideIndex > 0 And slideIndex <= pres.Slides.Count Then
                     Set sld = pres.Slides(slideIndex)
                     
+                    If slideIndex <> currentSlideIndex Then
+                        currentSlideIndex = slideIndex
+                        newAudioInsertIndex = 1
+                    End If
+                    
                     ' Tag for unique identification
                     Dim audioTag As String
-                    audioTag = "ppt_audio"
+                    Dim fileName As String
+                    fileName = Mid(audioPath, InStrRev(audioPath, "/") + 1)
+                    fileName = Left(fileName, InStrRev(fileName, ".") - 1)
+                    audioTag = fileName
                     
                     ' Variables to preserve animation state
                     Dim hadExistingAudio As Boolean
                     Dim existingAnimIndex As Integer
                     Dim existingTriggerType As Integer
                     Dim existingDelay As Single
+                    Dim existingRepeatCount As Long
+                    Dim existingRepeatDuration As Single
+                    Dim existingRewindAtEnd As msoTriState
                     
                     hadExistingAudio = False
                     existingAnimIndex = 1
                     existingTriggerType = 3 ' 3 = msoAnimTriggerAfterPrevious
                     existingDelay = 0
+                    existingRepeatCount = 1
+                    existingRepeatDuration = 0
+                    existingRewindAtEnd = msoFalse
                     
                     ' Find and delete existing audio from our tool, but save its animation properties first
                     Dim s As Shape
@@ -118,6 +137,9 @@ Sub InsertAudio()
                                         existingAnimIndex = effIdx
                                         existingTriggerType = sld.TimeLine.MainSequence(effIdx).Timing.TriggerType
                                         existingDelay = sld.TimeLine.MainSequence(effIdx).Timing.TriggerDelayTime
+                                        existingRepeatCount = sld.TimeLine.MainSequence(effIdx).Timing.RepeatCount
+                                        existingRepeatDuration = sld.TimeLine.MainSequence(effIdx).Timing.RepeatDuration
+                                        existingRewindAtEnd = sld.TimeLine.MainSequence(effIdx).Timing.RewindAtEnd
                                         Exit For
                                     End If
                                 End If
@@ -148,26 +170,29 @@ Sub InsertAudio()
                         Next i
                         
                         ' 2. Add "Play" effect to Main Sequence with preserved TriggerType
-                        ' msoAnimEffectMediaPlay = 83 in some versions
                         Set eff = sld.TimeLine.MainSequence.AddEffect(shp, 83, , existingTriggerType) 
                         
                         ' 3. Apply preserved delay
                         If hadExistingAudio Then
                             eff.Timing.TriggerDelayTime = existingDelay
+                            eff.Timing.RepeatCount = existingRepeatCount
+                            eff.Timing.RepeatDuration = existingRepeatDuration
+                            eff.Timing.RewindAtEnd = existingRewindAtEnd
                         End If
                         
                         ' 4. Move to appropriate position
                         If hadExistingAudio Then
                             ' Move to previous index if valid.
-                            ' eff.MoveTo accepts absolute index. 
                             If existingAnimIndex <= sld.TimeLine.MainSequence.Count And existingAnimIndex > 0 Then
                                 eff.MoveTo existingAnimIndex
+                                newAudioInsertIndex = existingAnimIndex + 1
                             End If
                         Else
-                            ' Default: Move to Front (Make it the first animation)
-                            Do While eff.Index > 1
-                                eff.MoveTo 1
-                            Loop
+                            ' Insert audio to the FRONT of the powerpoint sequentially
+                            If sld.TimeLine.MainSequence.Count >= newAudioInsertIndex Then
+                                eff.MoveTo newAudioInsertIndex
+                            End If
+                            newAudioInsertIndex = newAudioInsertIndex + 1
                         End If
                         
                         With shp.MediaFormat
@@ -488,7 +513,7 @@ Sub RemoveAudio()
             Set sld = pres.Slides(i)
             For iShape = sld.Shapes.Count To 1 Step -1
                 Set s = sld.Shapes(iShape)
-                If s.Name = "ppt_audio" Then
+                If InStr(1, s.Name, "ppt_audio") = 1 Then
                     s.Delete
                 End If
             Next iShape
@@ -498,7 +523,7 @@ Sub RemoveAudio()
             Set sld = pres.Slides(slideIndex)
             For iShape = sld.Shapes.Count To 1 Step -1
                 Set s = sld.Shapes(iShape)
-                If s.Name = "ppt_audio" Then
+                If InStr(1, s.Name, "ppt_audio") = 1 Then
                     s.Delete
                 End If
             Next iShape

@@ -1,4 +1,4 @@
-import { Modal, Button, Text, Group, Stack, Code, Divider, TextInput, ActionIcon, Box } from '@mantine/core';
+import { Modal, Button, Text, Group, Stack, Code, Divider, TextInput, ActionIcon, Box, Switch } from '@mantine/core';
 import { useState, useEffect } from 'react';
 import { VoiceSelector, type Voice } from './VoiceSelector';
 import { IconTrash } from '@tabler/icons-react';
@@ -14,14 +14,26 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
     const [mappings, setMappings] = useState<Record<string, Voice>>({});
     const [newAlias, setNewAlias] = useState('');
     const [providerMode, setProviderMode] = useState<'gcp' | 'local'>('local');
+    const [enableXmlCli, setEnableXmlCli] = useState(false);
 
     useEffect(() => {
         if (opened) {
             checkKey();
             loadMappings();
             loadProvider();
+            loadXmlCliSetting();
         }
     }, [opened]);
+
+    const loadXmlCliSetting = async () => {
+        const enabled = await window.electronAPI.getXmlCliEnabled();
+        setEnableXmlCli(enabled);
+    };
+
+    const handleXmlCliToggle = async (checked: boolean) => {
+        setEnableXmlCli(checked);
+        await window.electronAPI.setXmlCliEnabled(checked);
+    };
 
     const loadProvider = async () => {
         if (window.electronAPI.getTtsProvider) {
@@ -161,6 +173,22 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
                 </Stack>
 
                 {error && <Text c="red" size="sm" mt="sm">{error}</Text>}
+
+                <Divider my="sm" />
+
+                <Group justify="space-between" align="center">
+                    <Box>
+                        <Text fw={500}>XML CLI Engine (Experimental)</Text>
+                        <Text size="sm" c="dimmed">
+                            Use the Python XML CLI for PPTX operations instead of AppleScript. Less features are supported but it does not require PowerPoint to be running.
+                        </Text>
+                    </Box>
+                    <Switch 
+                        checked={enableXmlCli} 
+                        onChange={(event) => handleXmlCliToggle(event.currentTarget.checked)} 
+                        size="md" 
+                    />
+                </Group>
 
                 <Group justify="flex-end" mt="md">
                     <Button onClick={onClose}>Close</Button>
