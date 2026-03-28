@@ -6,6 +6,7 @@ export class SsmlUtil {
         return /<[^>]+>/.test(text);
     }
 
+
     /**
      * Formats text for GCP TTS. Determines if the input is plain text or SSML.
      * If SSML, guarantees it is wrapped in <speak> tags.
@@ -31,7 +32,6 @@ export class SsmlUtil {
         let ssmlBody = text.trim();
 
         if (!hasTags) {
-            // Local fallback TTS uses raw SSML injection to change the voice context
             ssmlBody = `<speak><voice name="${voiceName}">${ssmlBody}</voice></speak>`;
         } else if (!ssmlBody.startsWith('<speak>')) {
             ssmlBody = `<speak>${ssmlBody}</speak>`;
