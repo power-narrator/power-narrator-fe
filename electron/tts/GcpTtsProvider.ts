@@ -1,5 +1,6 @@
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import { TtsProvider, VoiceOption } from './TtsProvider';
+import { SsmlUtil } from './SsmlUtil';
 
 export class GcpTtsProvider implements TtsProvider {
     constructor(private keyPathProvider: () => string | undefined) {}
@@ -47,18 +48,8 @@ export class GcpTtsProvider implements TtsProvider {
         const options: any = { keyFilename: keyPath };
         const client = new TextToSpeechClient(options);
 
-        const isSsml = /<[^>]+>/.test(text);
-        let input: any;
-
-        if (isSsml) {
-            let ssmlText = text;
-            if (!ssmlText.trim().startsWith('<speak>')) {
-                ssmlText = `<speak>${ssmlText}</speak>`;
-            }
-            input = { ssml: ssmlText };
-        } else {
-            input = { text: text };
-        }
+        const formatted = SsmlUtil.formatForGcp(text);
+        const input: any = formatted.isSsml ? { ssml: formatted.content } : { text: formatted.content };
 
         const request: any = {
             input: input,

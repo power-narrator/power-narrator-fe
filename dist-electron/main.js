@@ -27,7 +27,7 @@ function getTtsProvider() {
 const MacPptProvider_1 = require("./platform/MacPptProvider");
 const WindowsPptProvider_1 = require("./platform/WindowsPptProvider");
 const XmlPptProvider_1 = require("./platform/XmlPptProvider");
-const TtsManager_1 = require("./platform/TtsManager");
+const TtsManager_1 = require("./tts/TtsManager");
 const ttsManager = new TtsManager_1.TtsManager(getTtsProvider(), getGcpKeyPath);
 let basePptProvider;
 if (process.platform === 'darwin') {

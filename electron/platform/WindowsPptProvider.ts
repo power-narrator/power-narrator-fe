@@ -25,7 +25,7 @@ export class WindowsPptProvider implements PptProvider {
         return { success: false, error: 'playSlide not supported on Windows yet' };
     }
 
-    async syncSlide(filePath: string, slideIndex: number, outputDir: string): Promise<any> {
-        return { success: false, error: 'syncSlide not supported on Windows yet' };
+    async reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<any> {
+        return { success: false, error: 'reloadSlide not supported on Windows yet' };
     }
 }

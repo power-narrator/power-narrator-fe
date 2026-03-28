@@ -6,8 +6,48 @@ import { PptProvider } from './PptProvider';
 import { resolveScriptPath } from './helpers';
 
 export class XmlPptProvider implements PptProvider {
+    /**
+     * Initializes a new instance of the XmlPptProvider class.
+     * 
+     * @param baseProvider - The underlying PptProvider to use for delegated operations.
+     */
     constructor(private baseProvider: PptProvider) {}
 
+    /**
+     * Helper to safely remove temporary files or directories.
+     * 
+     * @param paths - One or more paths to remove.
+     */
+    private cleanupFiles(...paths: (string | null)[]): void {
+        for (const p of paths) {
+            if (!p) continue;
+            try {
+                if (fs.existsSync(p)) {
+                    const stats = fs.statSync(p);
+                    if (stats.isDirectory()) {
+                        fs.rmSync(p, { recursive: true, force: true });
+                    } else {
+                        fs.unlinkSync(p);
+                    }
+                }
+            } catch (e) {
+                console.error(`Cleanup failed for ${p}:`, e);
+            }
+        }
+    }
+
+    /**
+     * Executes the XML-based CLI (slide-voice-pptx) to perform PowerPoint operations.
+     * 
+     * This method handles state management by closing the presentation via the base provider
+     * before running the CLI and reopening it afterwards, ensuring consistency.
+     * 
+     * @param inputPath - Path to the input .pptx file.
+     * @param outputPath - Path where the modified .pptx file should be saved (can be same as input).
+     * @param ops - An array of operation objects to be executed by the CLI.
+     * @param options - Optional configuration for controlling presentation closing/reopening.
+     * @returns A promise resolving to the CLI execution result.
+     */
     private async runXmlCli(inputPath: string, outputPath: string | null, ops: any[], options: { skipClose?: boolean, skipReopen?: boolean } = {}): Promise<any> {
         const tempDir = app.getPath('temp');
         const reqPath = path.join(tempDir, 'request.json');
@@ -47,20 +87,35 @@ export class XmlPptProvider implements PptProvider {
             child.stderr.on('data', (d: any) => stderr += d.toString());
 
             child.on('close', (code: number) => {
+                let success = false;
+                let error = '';
+                let data = null;
+
                 if (fs.existsSync(resPath)) {
                     try {
                         const resultData = JSON.parse(fs.readFileSync(resPath, 'utf8'));
-                        if (code === 0) resolve({ success: true, data: resultData });
-                        else resolve({ success: false, error: `CLI failed with code ${code}. Stderr: ${stderr}. Result: ${JSON.stringify(resultData)}` });
+                        if (code === 0) {
+                            success = true;
+                            data = resultData;
+                        } else {
+                            error = `CLI failed with code ${code}. Stderr: ${stderr}. Result: ${JSON.stringify(resultData)}`;
+                        }
                     } catch (e: any) {
-                        resolve({ success: false, error: `Failed to parse response JSON: ${e.message}. Stderr: ${stderr}` });
+                        error = `Failed to parse response JSON: ${e.message}. Stderr: ${stderr}`;
                     }
                 } else {
-                    resolve({ success: false, error: `CLI did not produce response.json. Code: ${code}. Stderr: ${stderr}. Stdout: ${stdout}` });
+                    error = `CLI did not produce response.json. Code: ${code}. Stderr: ${stderr}. Stdout: ${stdout}`;
                 }
+
+                // Cleanup temp files
+                this.cleanupFiles(reqPath, resPath);
+
+                resolve({ success, data, error: error || undefined });
             });
             
             child.on('error', (err: any) => {
+                // Cleanup temp files on error too
+                this.cleanupFiles(reqPath, resPath);
                 resolve({ success: false, error: `Failed to start process: ${err.message}` });
             });
         });
@@ -72,6 +127,13 @@ export class XmlPptProvider implements PptProvider {
         return cliResult;
     }
 
+    /**
+     * Inserts audio into the specified PowerPoint slides.
+     * 
+     * @param filePath - Path to the .pptx file.
+     * @param slidesAudio - An array of objects containing slide indices and audio data.
+     * @returns A promise resolving to the result of the insertion operation.
+     */
     async insertAudio(filePath: string, slidesAudio: any[]): Promise<any> {
         if (!slidesAudio || slidesAudio.length === 0) return { success: true };
 
@@ -102,11 +164,19 @@ export class XmlPptProvider implements PptProvider {
         }
 
         const result = await this.runXmlCli(filePath, filePath, ops);
-        try { fs.rmSync(sessionDir, { recursive: true, force: true }); } catch (e) {}
+        this.cleanupFiles(sessionDir);
 
         return result;
     }
 
+    /**
+     * Removes audio from PowerPoint slides based on the specified scope.
+     * 
+     * @param filePath - Path to the .pptx file.
+     * @param scope - The scope of removal ('all' or 'single').
+     * @param slideIndex - The 1-based index of the slide (relevant if scope is 'single').
+     * @returns A promise resolving to the result of the removal operation.
+     */
     async removeAudio(filePath: string, scope: string, slideIndex: number): Promise<any> {
         let slideIndexBefore = 1;
         if (this.baseProvider.closePresentation) {
@@ -127,7 +197,7 @@ export class XmlPptProvider implements PptProvider {
         }
 
         const deleteOps: any[] = [];
-        let targetIndex = slideIndex - 1;
+        const targetIndex = slideIndex - 1;
 
         if (scope === 'all') {
             slideData.forEach((slide: any, idx: number) => {
@@ -162,7 +232,15 @@ export class XmlPptProvider implements PptProvider {
         return result;
     }
 
-    async saveAllNotes(filePath: string, slides: any[], slidesAudio: any[]): Promise<any> {
+    /**
+     * Saves notes for multiple slides in the PowerPoint presentation.
+     * 
+     * @param filePath - Path to the .pptx file.
+     * @param slides - An array of slide objects containing notes to be saved.
+     * @param slidesAudio - Optional audio data (currently unused in this method).
+     * @returns A promise resolving to the result of the save operation.
+     */
+    async saveAllNotes(filePath: string, slides: any[], _slidesAudio: any[]): Promise<any> {
         const ops = slides.filter((s:any) => s.notes).map((s:any) => ({
             op: 'set_slide_notes',
             args: { slide_index: s.index - 1, notes: s.notes }
@@ -173,19 +251,47 @@ export class XmlPptProvider implements PptProvider {
         return await this.runXmlCli(filePath, filePath, ops);
     }
 
+    /**
+     * Converts a PPTX file to a set of images or other formats.
+     * Delegated to the base provider.
+     * 
+     * @param filePath - Path to the .pptx file.
+     * @param outputDir - Directory where converted files should be stored.
+     */
     async convertPptx(filePath: string, outputDir: string): Promise<any> {
         return this.baseProvider.convertPptx(filePath, outputDir);
     }
     
+    /**
+     * Generates a video from the PowerPoint presentation.
+     * Delegated to the base provider.
+     * 
+     * @param filePath - Path to the .pptx file.
+     * @param videoOutputPath - Path where the generated video should be saved.
+     */
     async generateVideo(filePath: string, videoOutputPath: string): Promise<any> {
         return this.baseProvider.generateVideo(filePath, videoOutputPath);
     }
 
+    /**
+     * Shows a specific slide in PowerPoint.
+     * Delegated to the base provider.
+     * 
+     * @param slideIndex - The 1-based index of the slide to play.
+     */
     async playSlide(slideIndex: number): Promise<any> {
         return this.baseProvider.playSlide(slideIndex);
     }
 
-    async syncSlide(filePath: string, slideIndex: number, outputDir: string): Promise<any> {
-        return this.baseProvider.syncSlide(filePath, slideIndex, outputDir);
+    /**
+     * Reloads/Refreshes a specific slide.
+     * Delegated to the base provider.
+     * 
+     * @param filePath - Path to the .pptx file.
+     * @param slideIndex - The 1-based index of the slide to reload.
+     * @param outputDir - Directory for temporary output files.
+     */
+    async reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<any> {
+        return this.baseProvider.reloadSlide(filePath, slideIndex, outputDir);
     }
 }

@@ -8,5 +8,5 @@ export interface PptProvider {
     saveAllNotes(filePath: string, slides: any[], slidesAudio: any[]): Promise<any>;
     generateVideo(filePath: string, videoOutputPath: string): Promise<any>;
     playSlide(slideIndex: number): Promise<any>;
-    syncSlide(filePath: string, slideIndex: number, outputDir: string): Promise<any>;
+    reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<any>;
 }

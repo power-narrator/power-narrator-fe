@@ -246,8 +246,8 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         loadSettings();
     }, []);
 
-    // Sync State
-    const [isSyncing, setIsSyncing] = useState(false);
+    // Reload/Sync State
+    const [isReloading, setIsReloading] = useState(false);
 
     const activeSlide = slides[activeSlideIndex] || { src: '', notes: '' };
     useEffect(() => {
@@ -551,7 +551,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
     };
 
     const handleInsertSlideAudio = async () => {
-        if (isInsertingAudio || isSaving || isGenerating || isSyncing) return;
+        if (isInsertingAudio || isSaving || isGenerating || isReloading) return;
         setIsInsertingAudio(true);
         setInsertStatus(`Generating audio for slide ${activeSlide.index}...`);
 
@@ -599,7 +599,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
     };
 
     const handleInsertAllAudio = async () => {
-        if (isInsertingAudio || isSaving || isGenerating || isSyncing) return;
+        if (isInsertingAudio || isSaving || isGenerating || isReloading) return;
         setIsInsertingAudio(true);
         setInsertStatus('Generating audio for all slides...');
 
@@ -668,13 +668,13 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
     };
 
     const handleSyncAll = async () => {
-        if (isSyncing || isSaving || isGenerating) return;
+        if (isReloading || isSaving || isGenerating) return;
 
         if (!window.confirm("Syncing will override any unsaved changes in your notes. Do you want to proceed?")) {
             return;
         }
 
-        setIsSyncing(true);
+        setIsReloading(true);
 
         try {
             if (ipcRenderer) {
@@ -696,28 +696,28 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
             console.error("Sync error:", e);
             alert("Sync error: " + e.message);
         } finally {
-            setIsSyncing(false);
+            setIsReloading(false);
         }
     };
 
-    const handleSyncSlide = async () => {
-        if (isSyncing || isSaving || isGenerating) return;
+    const handleReloadSlide = async () => {
+        if (isReloading || isSaving || isGenerating) return;
 
-        if (!window.confirm("Syncing will override any unsaved changes in your notes. Do you want to proceed?")) {
+        if (!window.confirm("Reloading will override any unsaved changes in your notes. Do you want to proceed?")) {
             return;
         }
 
-        setIsSyncing(true);
+        setIsReloading(true);
 
         try {
             if (ipcRenderer) {
                 // Determine 1-based index
-                const indexToSync = activeSlide.index || (activeSlideIndex + 1);
+                const indexToReload = activeSlide.index || (activeSlideIndex + 1);
 
                 // Call new handler
-                const result = await ipcRenderer.invoke('sync-slide', {
+                const result = await ipcRenderer.invoke('reload-slide', {
                     filePath,
-                    slideIndex: indexToSync
+                    slideIndex: indexToReload
                 });
 
                 if (result.success && result.slides) {
@@ -726,14 +726,14 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                     setHistory([result.slides]);
                     setHistoryIndex(0);
                 } else {
-                    alert('Sync Slide failed: ' + (result.error || 'Unknown error'));
+                    alert('Reload Slide failed: ' + (result.error || 'Unknown error'));
                 }
             }
         } catch (e: any) {
-            console.error("Sync slide error:", e);
-            alert("Sync slide error: " + e.message);
+            console.error("Reload slide error:", e);
+            alert("Reload slide error: " + e.message);
         } finally {
-            setIsSyncing(false);
+            setIsReloading(false);
         }
     };
 
@@ -741,7 +741,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
     const [removeStatus, setRemoveStatus] = useState('');
 
     const handleRemoveAudio = async (scope: 'slide' | 'all') => {
-        if (isGenerating || isSaving || isSyncing || isRemoving) return;
+        if (isGenerating || isSaving || isReloading || isRemoving) return;
         setIsRemoving(true);
         setRemoveStatus(scope === 'all' ? 'Removing all audio...' : 'Removing audio...');
         try {
@@ -787,9 +787,9 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                 </Group>
 
                 <Group>
-                    {(isSyncing || isSaving || isInsertingAudio || isGenerating) && (
+                    {(isReloading || isSaving || isInsertingAudio || isGenerating) && (
                         <Group gap="xs" mr="xs">
-                            {isSyncing && <Text size="xs" c="dimmed">Syncing...</Text>}
+                            {isReloading && <Text size="xs" c="dimmed">Reloading...</Text>}
                             {isSaving && <Text size="xs" c="dimmed">{saveStatus}</Text>}
                             {isInsertingAudio && <Text size="xs" c="dimmed">{insertStatus}</Text>}
                             {isRemoving && <Text size="xs" c="dimmed">{removeStatus}</Text>}
@@ -800,10 +800,10 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                     <Button
                         variant="default"
                         size="xs"
-                        leftSection={<IconRefresh size={14} className={isSyncing ? "mantine-rotate" : ""} />}
+                        leftSection={<IconRefresh size={14} className={isReloading ? "mantine-rotate" : ""} />}
                         onClick={handleSyncAll}
-                        loading={isSyncing}
-                        disabled={isGenerating || isSaving || isSyncing}
+                        loading={isReloading}
+                        disabled={isGenerating || isSaving || isReloading}
                     >
                         Sync All Slides
                     </Button>
@@ -814,7 +814,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                         size="xs"
                         onClick={handleInsertAllAudio}
                         loading={isInsertingAudio}
-                        disabled={isGenerating || isSaving || isSyncing || isInsertingAudio}
+                        disabled={isGenerating || isSaving || isReloading || isInsertingAudio}
                     >
                         Insert All Audio
                     </Button>
@@ -824,7 +824,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                         size="xs"
                         onClick={handleSaveAllNotes}
                         loading={isSaving}
-                        disabled={isGenerating || isSaving || isSyncing || isInsertingAudio}
+                        disabled={isGenerating || isSaving || isReloading || isInsertingAudio}
                     >
                         Save All Slides
                     </Button>
@@ -834,7 +834,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                         size="xs"
                         onClick={() => handleRemoveAudio('all')}
                         loading={isRemoving}
-                        disabled={isGenerating || isSaving || isSyncing || isRemoving}
+                        disabled={isGenerating || isSaving || isReloading || isRemoving}
                     >
                         Remove All Audio
                     </Button>
@@ -845,7 +845,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                         color="blue"
                         onClick={handleGenerateVideo}
                         loading={isGenerating}
-                        disabled={isGenerating || isSaving || isSyncing}
+                        disabled={isGenerating || isSaving || isReloading}
                     >
                         {isGenerating ? 'Generating...' : 'Generate Video'}
                     </Button>
@@ -935,18 +935,18 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
 
                         <Group gap="md" py="xs" style={{ borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
                             <Tooltip
-                                label="Individual slide sync is disabled in XML mode"
+                                label="Individual slide reload is disabled in XML mode"
                                 disabled={!xmlCliEnabled}
                             >
                                 <Button
                                     variant="default"
                                     size="xs"
-                                    leftSection={<IconRefresh size={14} className={isSyncing ? "mantine-rotate" : ""} />}
-                                    onClick={handleSyncSlide}
-                                    loading={isSyncing}
-                                    disabled={isGenerating || isSaving || isSyncing || xmlCliEnabled}
+                                    leftSection={<IconRefresh size={14} className={isReloading ? "mantine-rotate" : ""} />}
+                                    onClick={handleReloadSlide}
+                                    loading={isReloading}
+                                    disabled={isGenerating || isSaving || isReloading || xmlCliEnabled}
                                 >
-                                    Sync Slide
+                                    Reload Slide
                                 </Button>
                             </Tooltip>
 
@@ -956,7 +956,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                 size="xs"
                                 onClick={handleInsertSlideAudio}
                                 loading={isInsertingAudio}
-                                disabled={isGenerating || isSaving || isSyncing || isRemoving || isInsertingAudio}
+                                disabled={isGenerating || isSaving || isReloading || isRemoving || isInsertingAudio}
                             >
                                 Insert Audio
                             </Button>
@@ -970,7 +970,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                     size="xs"
                                     leftSection={<IconDeviceTv size={14} />}
                                     onClick={handlePlaySlide}
-                                    disabled={isGenerating || isSaving || isSyncing || isInsertingAudio || xmlCliEnabled}
+                                    disabled={isGenerating || isSaving || isReloading || isInsertingAudio || xmlCliEnabled}
                                 >
                                     Play
                                 </Button>
@@ -981,7 +981,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                 size="xs"
                                 onClick={handleSaveCurrentSlideNotes}
                                 loading={isSaving}
-                                disabled={isGenerating || isSaving || isSyncing || isRemoving || isInsertingAudio}
+                                disabled={isGenerating || isSaving || isReloading || isRemoving || isInsertingAudio}
                             >
                                 Save Slide
                             </Button>
@@ -991,7 +991,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                 size="xs"
                                 onClick={() => handleRemoveAudio('slide')}
                                 loading={isRemoving}
-                                disabled={isGenerating || isSaving || isSyncing || isRemoving}
+                                disabled={isGenerating || isSaving || isReloading || isRemoving}
                             >
                                 Remove Audio
                             </Button>

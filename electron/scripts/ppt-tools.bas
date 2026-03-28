@@ -10,6 +10,27 @@ Attribute VB_Name = "AudioTools"
 ' 6. Restart PowerPoint to ensure the new Add-in is loaded.
 ' ==============================================================================================
 
+Function GetPresentation(targetPath As String) As Presentation
+    Dim p As Presentation
+    Set GetPresentation = Nothing
+    
+    For Each p In Application.Presentations
+        If p.FullName = targetPath Or p.Name = Dir(targetPath) Then
+            Set GetPresentation = p
+            Exit Function
+        End If
+    Next p
+    
+    Dim targetName As String
+    targetName = Mid(targetPath, InStrRev(targetPath, "/") + 1)
+    For Each p In Application.Presentations
+        If p.Name = targetName Then
+            Set GetPresentation = p
+            Exit Function
+        End If
+    Next p
+End Function
+
 Sub InsertAudio()
     Dim sld As Slide
     Dim shp As Shape
@@ -35,7 +56,6 @@ Sub InsertAudio()
     End If
     
     ' Batch Process Mode
-    Dim lineData As String
     Dim targetPath As String
     Dim hasPres As Boolean
     
@@ -59,26 +79,7 @@ Sub InsertAudio()
                     targetPath = params(2)
                     
                     ' Find the correct presentation
-                    Dim p As Presentation
-                    Set pres = Nothing
-                    For Each p In Application.Presentations
-                        If p.FullName = targetPath Or p.Name = Dir(targetPath) Then
-                            Set pres = p
-                            Exit For
-                        End If
-                    Next p
-                    
-                    ' Fallback to name search
-                    If pres Is Nothing Then
-                        Dim targetName As String
-                        targetName = Mid(targetPath, InStrRev(targetPath, "/") + 1)
-                        For Each p In Application.Presentations
-                            If p.Name = targetName Then
-                                Set pres = p
-                                Exit For
-                            End If
-                        Next p
-                    End If
+                    Set pres = GetPresentation(targetPath)
                     
                     If pres Is Nothing Then
                         MsgBox "Error: Could not find open presentation: " & targetPath
@@ -216,7 +217,6 @@ End Sub
 
 Sub UpdateNotes()
     Dim pres As Presentation
-    Dim p As Presentation
     Dim paramsPath As String
     Dim dataPath As String
     Dim targetPath As String
@@ -244,24 +244,7 @@ Sub UpdateNotes()
     dataPath = params(1)
     
     ' 2. Find Presentation
-    Set pres = Nothing
-    For Each p In Application.Presentations
-        If p.FullName = targetPath Or p.Name = Dir(targetPath) Then
-            Set pres = p
-            Exit For
-        End If
-    Next p
-    
-    If pres Is Nothing Then
-        Dim targetName As String
-        targetName = Mid(targetPath, InStrRev(targetPath, "/") + 1)
-        For Each p In Application.Presentations
-            If p.Name = targetName Then
-                Set pres = p
-                Exit For
-            End If
-        Next p
-    End If
+    Set pres = GetPresentation(targetPath)
     
     If pres Is Nothing Then
         MsgBox "Error: Presentation not found: " & targetPath
@@ -390,21 +373,20 @@ Sub PlaySlide()
 
 End Sub
 
-Sub ExportSlide()
+Sub ReloadSlide()
     Dim pres As Presentation
     Dim slideIndex As Integer
     Dim paramsPath As String
     Dim fileNum As Integer
     Dim fileContent As String
     Dim params() As String
-    Dim targetPath As String
     Dim exportPath As String
     
     ' 1. Read Parameters
-    paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/sync_slide.txt"
+    paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/reload_slide.txt"
     
     If Dir(paramsPath) = "" Then
-        MsgBox "Error: Could not find sync_slide.txt"
+        MsgBox "Error: Could not find reload_slide.txt"
         Exit Sub
     End If
     
@@ -446,7 +428,6 @@ End Sub
 
 Sub RemoveAudio()
     Dim pres As Presentation
-    Dim p As Presentation
     Dim paramsPath As String
     Dim fileNum As Integer
     Dim fileContent As String
@@ -483,24 +464,7 @@ Sub RemoveAudio()
     End If
     
     ' 2. Find Presentation
-    Set pres = Nothing
-    For Each p In Application.Presentations
-        If p.FullName = targetPath Or p.Name = Dir(targetPath) Then
-            Set pres = p
-            Exit For
-        End If
-    Next p
-    
-    If pres Is Nothing Then
-        Dim targetName As String
-        targetName = Mid(targetPath, InStrRev(targetPath, "/") + 1)
-        For Each p In Application.Presentations
-            If p.Name = targetName Then
-                Set pres = p
-                Exit For
-            End If
-        Next p
-    End If
+    Set pres = GetPresentation(targetPath)
     
     If pres Is Nothing Then
         MsgBox "Error: Presentation not found: " & targetPath

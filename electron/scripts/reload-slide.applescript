@@ -20,7 +20,7 @@ on run argv
 	set containerPath to homePath & "Library:Group Containers:UBF8T346G9.Office:"
     set containerPosix to POSIX path of containerPath
     
-	set paramsPath to containerPath & "sync_slide.txt"
+	set paramsPath to containerPath & "reload_slide.txt"
     
     -- Use Sandbox for intermediate image to avoid "Grant Access" prompts
     set sandboxImageName to "temp_slide_" & slideIndex & ".png"

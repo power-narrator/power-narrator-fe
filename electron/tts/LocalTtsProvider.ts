@@ -1,4 +1,5 @@
 import { TtsProvider, VoiceOption } from './TtsProvider';
+import { SsmlUtil } from './SsmlUtil';
 
 export class LocalTtsProvider implements TtsProvider {
     async getVoices(): Promise<VoiceOption[]> {
@@ -13,14 +14,7 @@ export class LocalTtsProvider implements TtsProvider {
         const localUrl = process.env.LOCAL_TTS_URL || 'http://localhost:59125/api/tts';
         const voice = (voiceOption && voiceOption.name) || process.env.LOCAL_TTS_VOICE || 'en_UK/apope_low';
 
-        const isSsml = /<[^>]+>/.test(text);
-        let ssmlBody = text;
-
-        if (!isSsml) {
-            ssmlBody = `<speak><voice name="${voice}">${ssmlBody}</voice></speak>`;
-        } else if (!ssmlBody.trim().startsWith('<speak>')) {
-            ssmlBody = `<speak>${ssmlBody}</speak>`;
-        }
+        const ssmlBody = SsmlUtil.formatForLocal(text, voice);
 
         const url = new URL(localUrl);
         url.searchParams.append('voice', voice);
