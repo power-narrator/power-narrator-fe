@@ -1,83 +1,242 @@
 # PPT Viewer & Video Generator
 
-An Electron-based application that views PowerPoint presentations, extracts speaker notes, generates TTS audio using a local server, and automates PowerPoint to create MP4 videos with synchronized audio.
+An Electron-based desktop application for macOS that converts PowerPoint presentations into narrated MP4 videos. It extracts slide images and speaker notes, generates AI text-to-speech audio per slide, inserts that audio back into the `.pptx` file, and exports the result as a video — all from one UI.
 
-## Prerequisites
+---
 
--   **OS**: Windows 10/11 (Required for PowerPoint automation)
--   **Software**:
-    -   [Node.js](https://nodejs.org/) (v16+)
-    -   Microsoft PowerPoint (Desktop version installed)
-    -   [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Required only for **Local/Dev** mode)
+## Architecture Overview
+
+The application is split into three layers:
+
+```
+┌─────────────────────────────────────────┐
+│           React Frontend (Vite)         │  ← src/
+│  ViewerPage · SettingsModal · LandingPage│
+└────────────────┬────────────────────────┘
+                 │  Electron IPC (ipcRenderer / ipcMain)
+┌────────────────▼────────────────────────┐
+│           Electron Main Process         │  ← electron/main.ts
+│   IPC Handlers · TtsManager · Store     │
+└──────┬─────────────────────┬────────────┘
+       │                     │
+┌──────▼──────┐     ┌────────▼────────────┐
+│ PptProvider │     │    TtsProvider       │
+│  (Platform) │     │  (TTS Backend)       │
+└──────┬──────┘     └────────┬────────────┘
+       │                     │
+  ┌────▼──────────┐    ┌─────▼────────────┐
+  │ MacPptProvider│    │ GcpTtsProvider   │
+  │ (AppleScript) │    │ LocalTtsProvider │
+  └──────┬────────┘    └──────────────────┘
+         │
+  ┌──────▼────────┐
+  │XmlPptProvider │  ← Decorator over MacPptProvider
+  │ (XML CLI)     │      uses slide-voice-pptx binary
+  └───────────────┘
+```
+
+### Key Design Patterns
+
+- **Provider Pattern** — `PptProvider` is an interface with two implementations:
+  - `MacPptProvider` — drives PowerPoint directly via AppleScript (`osascript`) and VBA macros (`.ppam` add-in).
+  - `XmlPptProvider` — a **Decorator** that wraps any `PptProvider`. Instead of VBA macros, it calls a bundled Python CLI (`slide-voice-pptx`) that directly manipulates the `.pptx` XML. It closes and reopens the presentation around each CLI invocation.
+- **Strategy Pattern** — `TtsProvider` is an interface with `GcpTtsProvider` and `LocalTtsProvider` implementations. `TtsManager` selects the active provider at startup and handles persistent audio caching.
+
+---
+
+## Data Flow
+
+### Load & Convert
+```
+User selects .pptx
+  → IPC: convert-pptx
+    → MacPptProvider.convertPptx()
+      → convert-pptx.applescript
+        → PowerPoint exports slide images + manifest.json
+    → Returns: slides[] with { index, src (image path), notes }
+```
+
+### Generate & Insert Audio (per slide or all)
+```
+User clicks "Insert Audio"
+  → Frontend: getAudioBuffer(notes text)
+    → tts.ts: splits text on [speaker] tags into segments
+      → IPC: generate-speech { text, voiceOption }
+        → TtsManager → GcpTtsProvider or LocalTtsProvider
+        → TTS audio cached to disk (SHA-256 hash key)
+    → Segments concatenated into final MP3 buffer
+  → IPC: insert-audio { filePath, slidesAudio[] }
+    → MacPptProvider: writes MP3 to Office temp dir → VBA macro InsertAudio
+    → XmlPptProvider: writes MP3 to temp dir → slide-voice-pptx CLI (save_audio_for_slide op)
+```
+
+### Generate Video
+```
+User clicks "Generate Video"
+  → Auto-save notes to .pptx (save-all-notes)
+  → Generate audio for all slides (same as above)
+  → IPC: generate-video
+    → insert-audio (all slides)
+    → export-to-video.applescript → PowerPoint exports MP4
+```
+
+### Reload Slide / Sync All
+```
+Reload Slide  → reload-slide.applescript → re-exports single slide image + notes
+Sync All      → full convert-pptx re-run, resets all slide state
+```
+
+---
+
+## Features
+
+### Presentation Viewer
+- Load any `.pptx` file and display all slides as images
+- Resizable split-pane layout (slide image / notes editor)
+- Navigate slides via a scrollable sidebar
+
+### Speaker Notes Editor
+- Edit speaker notes per slide directly in the UI
+- **Multi-section notes** — split a slide's notes into multiple sections separated by `---`
+- **Multi-speaker support** — tag each section with a `[SpeakerName]` label to assign different voices
+- Inline SSML tag toolbar: insert `<break>`, `<emphasis>`, custom `<break time="Xms"/>` at cursor
+- Undo / redo with `Cmd+Z` / `Cmd+Y`
+- Save notes for a single slide or all slides back to the `.pptx`
+
+### Text-to-Speech (TTS)
+- **Google Cloud TTS** (default) — uses Chirp 3 HD voices for high-quality narration
+- **Local TTS** (offline fallback) — uses a self-hosted [Mycroft Mimic 3](https://github.com/MycroftAI/mimic3) server
+- Per-section voice preview with inline audio player and seek bar
+- Preview a text selection only by highlighting it before clicking play
+- Persistent audio cache (SHA-256 keyed, stored in Electron `userData`)
+
+### Multi-Speaker Mapping
+- Configure named speaker aliases (e.g. `[Alice]`, `[Bob]`) in Settings
+- Assign any available TTS voice to each alias
+- Speaker tags in notes automatically route each section to the correct voice
+
+### Audio Management
+- Insert generated audio into the `.pptx` for a single slide or all slides
+- Remove audio from a single slide or the entire presentation
+- Audio insertion supports multiple sections per slide (segments stored as `ppt_audio_1.mp3`, `ppt_audio_2.mp3`, …)
+
+### Video Export
+- Auto-saves notes, generates audio for all slides, inserts it, then triggers PowerPoint's built-in video export
+- Output: MP4 with fully synchronized narration
+- User selects the output save path before generation begins
+
+### Slide Sync
+- **Reload Slide** — re-exports a single slide's image and notes from the live `.pptx` (picks up edits made in PowerPoint)
+- **Sync All** — full re-conversion of the entire presentation
+
+### XML CLI Mode (Advanced)
+- Toggle in Settings to use the `slide-voice-pptx` Python CLI instead of VBA macros
+- Supports: insert audio, remove audio, update notes, query slide data
+- The presentation is automatically closed before and reopened after each CLI operation
+
+### Settings
+- Select GCP Service Account JSON key via file picker (stored securely in Electron Store)
+- Configure speaker alias → voice mappings
+- Toggle XML CLI mode on/off
+
+---
+
+## Project Structure
+
+```
+electron/
+  main.ts               # IPC handler registration, provider & TTS manager setup
+  preload.ts            # Context bridge (electronAPI)
+  platform/
+    PptProvider.ts      # Interface definition
+    MacPptProvider.ts   # AppleScript + VBA macro implementation
+    XmlPptProvider.ts   # XML CLI decorator implementation
+    WindowsPptProvider.ts
+  tts/
+    TtsProvider.ts      # Interface definition
+    TtsManager.ts       # Provider registry + disk cache
+    GcpTtsProvider.ts   # Google Cloud TTS
+    LocalTtsProvider.ts # Mimic3 / Larynx local server
+    SsmlUtil.ts         # SSML formatting helpers
+  scripts/
+    convert-pptx.applescript
+    reload-slide.applescript
+    export-to-video.applescript
+    play-slide.applescript
+    trigger-macro.applescript
+    ppt-tools.bas       # VBA macros: InsertAudio, RemoveAudio, UpdateNotes
+    ppt-tools.ppam      # Compiled PowerPoint add-in
+    xml-cli/            # Bundled slide-voice-pptx binary (packaged app)
+
+src/
+  components/
+    ViewerPage.tsx      # Main UI: slide viewer, notes editor, toolbar
+    SettingsModal.tsx   # GCP key, speaker mappings, XML CLI toggle
+    LandingPage.tsx     # File picker entry screen
+    VoiceSelector.tsx   # Voice dropdown component
+  utils/
+    tts.ts              # Frontend: speaker-tag parsing, audio segment assembly, IPC calls
+
+xml/
+  slide-voice-app/      # Python source for the XML CLI (development)
+```
+
+---
 
 ## Setup
 
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/NorbertLoh/ppt-viewer.git
-    cd ppt-viewer
-    ```
+### Prerequisites
+- **macOS** (required — AppleScript automation)
+- **Node.js** v16+
+- **Microsoft PowerPoint** (desktop, licensed)
+- **Docker Desktop** — only for local TTS mode
 
-2.  Install dependencies:
-    ```bash
-    npm install
-    ```
-
-## Configuration
-
-### 1. Production Mode (Google Cloud TTS) - Recommended
-This mode uses Google's high-quality "Chirp 3 HD" voices.
-
-1.  **Obtain Key**: Create a Service Account in Google Cloud and download the JSON key file.
-2.  **Launch App**: Open the PPT Viewer application.
-3.  **Configure**: Click the **Settings (Gear) icon** in the top-left corner.
-4.  **Upload**: Click **"Select JSON Key"** and choose your downloaded `.json` file.
-    *   The app will securely store the path and automatically switch to Google Cloud TTS.
-
-### 2. Development Mode (Local TTS)
-Useful for offline development or testing without incurring costs. Uses Mycroft Mimic 3.
-
-**Start the Local TTS Server:**
-Run the following command in a terminal:
+### Install & Run
 
 ```bash
-docker run -it --user root -p 59125:59125 mycroftai/mimic3
-```
-
-> **Note**: This maps port `59125` locally. If you have not uploaded a GCP key, the app will attempt to fallback to this local server.
-
-### 3. PowerPoint Add-in (PPAM)
-For better stability with video export and audio insertion, install the helper add-in.
-
-1.  Open PowerPoint.
-2.  Go to **Tools** > **PowerPoint Add-ins...**
-3.  Click the **+** button.
-4.  Navigate to `electron/scripts/ppt-tools.ppam` in this project (or the release folder) and select it.
-5.  Check any security prompts to allow the macros to run.
-
-## Running the Application
-
-Once the TTS server is running, start the application in development mode:
-
-```bash
+git clone https://github.com/NorbertLoh/ppt-viewer.git
+cd ppt-viewer
+npm install
 npm run dev
 ```
 
-1.  Select a PowerPoint file (`.pptx`).
-2.  View slides and notes.
-3.  Click **"Generate Video"** to create an MP4 with AI narration.
+---
+
+## Configuration
+
+### Option 1 — Google Cloud TTS (Recommended)
+1. Create a GCP Service Account and download its JSON key.
+2. Open the app → click the **Settings (⚙)** icon → **Select JSON Key**.
+3. The app stores the path and switches to GCP automatically.
+
+### Option 2 — Local TTS (Offline)
+Start the Mimic 3 Docker container:
+```bash
+docker run -it --user root -p 59125:59125 mycroftai/mimic3
+```
+Set in `.env`:
+```
+TTS_PROVIDER=local
+LOCAL_TTS_URL=http://localhost:59125/api/tts
+LOCAL_TTS_VOICE=en_UK/apope_low
+```
+
+### Option 3 — PowerPoint Add-in (PPAM)
+For reliable VBA macro execution:
+1. Open PowerPoint → **Tools** → **PowerPoint Add-ins…**
+2. Click **+** and navigate to `electron/scripts/ppt-tools.ppam`.
+3. Allow macro execution when prompted.
+
+---
 
 ## Troubleshooting
 
-### "App cannot be opened because Apple cannot check it for malicious software"
-Since this application is not signed with an Apple Developer ID, you may see this warning on macOS.
-
-**To fix this:**
-1.  **Right-click** (or Control-click) the `PPT Viewer.app`.
-2.  Select **Open** from the context menu.
-3.  Click **Open** in the dialog box that appears.
-
-Alternatively, you can remove the quarantine attribute via terminal:
+### macOS Gatekeeper Warning
 ```bash
 xattr -cr "/path/to/PPT Viewer.app"
 ```
+Or right-click the app → **Open** → **Open**.
+
+### Local TTS Returns 500
+- Ensure the Docker container is running on port `59125`.
+- Check that `LOCAL_TTS_VOICE` in `.env` is a valid installed Mimic3 voice (e.g. `en_UK/apope_low`). The value `default` is a UI placeholder and is automatically resolved to the env var fallback.
