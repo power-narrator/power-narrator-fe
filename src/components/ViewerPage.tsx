@@ -56,8 +56,6 @@ const SectionPreviewButtons = ({ section, mappings, onFocus, getTextarea }: { se
     );
 
     const handlePlay = async (speakerValue: string) => {
-        const targetSpeaker = speakerValue || section.speaker;
-
         if (activePreviewTarget === speakerValue) {
             if (audioRef.current) {
                 audioRef.current.pause();
@@ -85,7 +83,7 @@ const SectionPreviewButtons = ({ section, mappings, onFocus, getTextarea }: { se
             setIsAudioGenerating(true);
             setActivePreviewTarget(speakerValue);
             shouldAutoplayRef.current = true;
-            const voiceOverride = targetSpeaker ? mappings[targetSpeaker] : undefined;
+            const voiceOverride = speakerValue ? mappings[speakerValue] : undefined;
             const url = await generateAudio(textToPlay, voiceOverride);
             setCurrentTime(0);
             setDuration(0);
@@ -126,7 +124,7 @@ const SectionPreviewButtons = ({ section, mappings, onFocus, getTextarea }: { se
                 onLoadedMetadata={() => { if (audioRef.current) setDuration(audioRef.current.duration); }}
                 onEnded={() => setActivePreviewTarget(null)}
             />
-            
+
             <Group gap="xs" mb="xs">
                 {speakers.map(spk => {
                     const isActive = activePreviewTarget === spk.value;
