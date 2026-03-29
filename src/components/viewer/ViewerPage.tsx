@@ -4,10 +4,11 @@ import type {
     Slide,
     SlideAudioEntry,
     SlidesElectronResult,
-} from '../../electron';
+} from '../../types/electron';
 import { useSettings } from '../../context/useSettings';
 import { getErrorMessage } from '../../utils/errors';
-import { formatNotes, parseNotes, type NoteSection } from '../../utils/notes';
+import type { NoteSection } from '../../types/notes';
+import { formatNotes, parseNotes } from '../../utils/notes';
 import { getAudioBuffer } from '../../utils/tts';
 import { SettingsModal } from '../settings/SettingsModal';
 import { NotesSectionList } from './NotesSectionList';

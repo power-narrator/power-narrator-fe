@@ -1,9 +1,5 @@
 import { DEFAULT_SPEAKER_VALUE } from '../constants/speaker';
-
-export interface NoteSection {
-    speaker: string;
-    text: string;
-}
+import type { NoteSection } from '../types/notes';
 
 export const parseNotes = (text: string): NoteSection[] => {
     if (!text) {

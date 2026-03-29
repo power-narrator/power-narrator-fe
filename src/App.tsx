@@ -4,7 +4,7 @@ import { IconSettings } from '@tabler/icons-react';
 import { LandingPage } from './components/LandingPage';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { ViewerPage } from './components/viewer/ViewerPage';
-import type { Slide } from './electron';
+import type { Slide } from './types/electron';
 import { getErrorMessage } from './utils/errors';
 
 type AppViewState = 'idle' | 'loading' | 'error' | 'viewing';

@@ -1,7 +1,7 @@
 import { ActionIcon, Box, Button, Group, Loader, Slider, Text } from '@mantine/core';
 import { IconPlayerPlay, IconPlayerStop } from '@tabler/icons-react';
 import { useRef, useState } from 'react';
-import type { NoteSection } from '../../utils/notes';
+import type { NoteSection } from '../../types/notes';
 import { getErrorMessage } from '../../utils/errors';
 import { getSpeakerOptions } from '../../utils/viewer';
 import { generateAudio } from '../../utils/tts';

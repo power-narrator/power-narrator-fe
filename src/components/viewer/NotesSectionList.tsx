@@ -1,6 +1,6 @@
 import { Box, Button, Group, ScrollArea, Select, Text, Textarea } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
-import type { NoteSection } from '../../utils/notes';
+import type { NoteSection } from '../../types/notes';
 import { getSpeakerOptions } from '../../utils/viewer';
 import type { Voice } from '../../types/voice';
 import { SectionPreviewButtons } from './SectionPreviewButtons';
