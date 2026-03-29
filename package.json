@@ -1,7 +1,7 @@
 {
   "name": "ppt-viewer",
-  "private": true,
   "version": "0.4.2",
+  "private": true,
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -13,6 +13,7 @@
     "dist:win": "npm run build && electron-builder --win",
     "dist:linux": "npm run build && electron-builder --linux",
     "lint": "eslint",
+    "format": "oxfmt",
     "preview": "vite preview",
     "test:e2e": "npm run build && playwright test"
   },
@@ -40,6 +41,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
+    "oxfmt": "^0.42.0",
     "playwright": "^1.58.2",
     "pptxgenjs": "^4.0.1",
     "typescript": "~5.9.3",
