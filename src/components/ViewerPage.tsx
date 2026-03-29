@@ -810,7 +810,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
                         loading={isSaving}
                         disabled={busy}
                     >
-                        Save All Slides
+                        Save All Slide Notes
                     </Button>
 
                     <Button
@@ -967,16 +967,16 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
                                 loading={isSaving}
                                 disabled={busy}
                             >
-                                Save Slide
+                                Save Slide Notes
                             </Button>
 
-                                <Button
-                                    variant="default"
-                                    size="xs"
-                                    onClick={handleRemoveSlideAudio}
-                                    loading={isRemoving}
-                                    disabled={busy}
-                                >
+                            <Button
+                                variant="default"
+                                size="xs"
+                                onClick={handleRemoveSlideAudio}
+                                loading={isRemoving}
+                                disabled={busy}
+                            >
                                 Remove Audio
                             </Button>
                             {isRemoving && removeStatus && (
@@ -1113,7 +1113,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
                                         />
                                     </Box>
                                 ))}
-                                <Button variant="light" size="sm" fullWidth leftSection={<IconPlus size={16}/>} onClick={handleAddSection} style={{ flexShrink: 0, marginBottom: '20px' }}>
+                                <Button variant="light" size="sm" fullWidth leftSection={<IconPlus size={16} />} onClick={handleAddSection} style={{ flexShrink: 0, marginBottom: '20px' }}>
                                     Add Section
                                 </Button>
                             </Box>
