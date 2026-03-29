@@ -1,16 +1,16 @@
-import { useState } from 'react';
-import { ActionIcon, Button, Center, Text } from '@mantine/core';
-import { IconSettings } from '@tabler/icons-react';
-import { LandingPage } from './components/LandingPage';
-import { SettingsModal } from './components/settings/SettingsModal';
-import { ViewerPage } from './components/viewer/ViewerPage';
-import type { Slide } from './types/electron';
-import { getErrorMessage } from './utils/errors';
+import { useState } from "react";
+import { ActionIcon, Button, Center, Text } from "@mantine/core";
+import { IconSettings } from "@tabler/icons-react";
+import { LandingPage } from "./components/LandingPage";
+import { SettingsModal } from "./components/settings/SettingsModal";
+import { ViewerPage } from "./components/viewer/ViewerPage";
+import type { Slide } from "./types/electron";
+import { getErrorMessage } from "./utils/errors";
 
-type AppViewState = 'idle' | 'loading' | 'error' | 'viewing';
+type AppViewState = "idle" | "loading" | "error" | "viewing";
 
 function App() {
-  const [viewState, setViewState] = useState<AppViewState>('idle');
+  const [viewState, setViewState] = useState<AppViewState>("idle");
   const [slides, setSlides] = useState<Slide[] | null>(null);
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -20,26 +20,26 @@ function App() {
     setSlides(null);
     setCurrentFilePath(null);
     setError(null);
-    setViewState('idle');
+    setViewState("idle");
   };
 
   const processFile = async (filePath: string) => {
-    setViewState('loading');
+    setViewState("loading");
     setError(null);
     setCurrentFilePath(filePath);
 
     try {
       const response = await window.electronAPI.convertPptx(filePath);
       if (!response.success) {
-        throw new Error(response.error || 'Conversion failed');
+        throw new Error(response.error || "Conversion failed");
       }
 
       setSlides(response.slides);
-      setViewState('viewing');
+      setViewState("viewing");
     } catch (error: unknown) {
       setSlides(null);
       setError(getErrorMessage(error));
-      setViewState('error');
+      setViewState("error");
     }
   };
 
@@ -52,11 +52,11 @@ function App() {
     } catch (error: unknown) {
       console.error(error);
       setError(getErrorMessage(error));
-      setViewState('error');
+      setViewState("error");
     }
   };
 
-  if (viewState === 'loading') {
+  if (viewState === "loading") {
     return (
       <Center h="100vh">
         <Text ml="md">Processing...</Text>
@@ -64,19 +64,23 @@ function App() {
     );
   }
 
-  if (viewState === 'error' && error) {
+  if (viewState === "error" && error) {
     return (
-      <Center h="100vh" style={{ flexDirection: 'column', gap: '1rem' }}>
-        <Text c="red" size="xl">Error: {error}</Text>
-        <Button variant="light" onClick={resetViewer}>Try Again</Button>
+      <Center h="100vh" style={{ flexDirection: "column", gap: "1rem" }}>
+        <Text c="red" size="xl">
+          Error: {error}
+        </Text>
+        <Button variant="light" onClick={resetViewer}>
+          Try Again
+        </Button>
       </Center>
     );
   }
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {viewState === 'viewing' && slides ? (
-        <ViewerPage slides={slides} onBack={resetViewer} filePath={currentFilePath || ''} />
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+      {viewState === "viewing" && slides ? (
+        <ViewerPage slides={slides} onBack={resetViewer} filePath={currentFilePath || ""} />
       ) : (
         <>
           <ActionIcon

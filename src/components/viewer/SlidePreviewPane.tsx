@@ -1,15 +1,11 @@
-import { Image } from '@mantine/core';
+import { Image } from "@mantine/core";
 
 interface SlidePreviewPaneProps {
-    activeSlideSrc: string;
+  activeSlideSrc: string;
 }
 
 export function SlidePreviewPane({ activeSlideSrc }: SlidePreviewPaneProps) {
-    return (
-        <Image
-            src={activeSlideSrc}
-            fit="contain"
-            style={{ maxHeight: '100%', maxWidth: '100%' }}
-        />
-    );
+  return (
+    <Image src={activeSlideSrc} fit="contain" style={{ maxHeight: "100%", maxWidth: "100%" }} />
+  );
 }
