@@ -17,7 +17,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
     const [newAlias, setNewAlias] = useState('');
     const [voices, setVoices] = useState<Voice[]>([]);
     const [providerMode, setProviderMode] = useState<'gcp' | 'local'>('local');
-    const { mappings, xmlCliEnabled, refreshSettings, saveMappings, setXmlCliEnabled } = useSettings();
+    const { mappings, xmlCliEnabled, saveMappings, setXmlCliEnabled } = useSettings();
 
     async function checkKey() {
         const path = await window.electronAPI.getGcpKeyPath();
@@ -36,7 +36,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
 
     useEffect(() => {
         async function loadOpenedSettings() {
-            await Promise.all([checkKey(), refreshSettings(), loadVoices(), loadProviderMode()]);
+            await Promise.all([checkKey(), loadVoices(), loadProviderMode()]);
         }
 
         if (opened) {
@@ -44,7 +44,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
                 console.error(error);
             });
         }
-    }, [opened, refreshSettings]);
+    }, [opened]);
 
     const handleXmlCliToggle = async (checked: boolean) => {
         await setXmlCliEnabled(checked);
@@ -124,7 +124,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
                 <Stack gap="xs">
                     {/* Default Voice */}
                     <Group justify="space-between" align="center" p="xs" style={{ backgroundColor: 'var(--mantine-color-dark-6)', borderRadius: 4 }}>
-                            <Text size="sm" fw={600}>Default Voice (No Tag)</Text>
+                        <Text size="sm" fw={600}>Default Voice (No Tag)</Text>
                         <VoiceSelector
                             value={mappings[DEFAULT_SPEAKER_KEY] || null}
                             onChange={(v) => updateMapping(DEFAULT_SPEAKER_KEY, v)}
@@ -175,10 +175,10 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
                             Use the Python XML CLI for PPTX operations instead of AppleScript. Less features are supported but it does not require PowerPoint to be running.
                         </Text>
                     </Box>
-                    <Switch 
-                        checked={xmlCliEnabled} 
-                        onChange={(event) => handleXmlCliToggle(event.currentTarget.checked)} 
-                        size="md" 
+                    <Switch
+                        checked={xmlCliEnabled}
+                        onChange={(event) => handleXmlCliToggle(event.currentTarget.checked)}
+                        size="md"
                     />
                 </Group>
 

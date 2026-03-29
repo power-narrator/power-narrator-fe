@@ -5,7 +5,6 @@ import type { Voice } from '../types/voice';
 interface SettingsContextValue {
     mappings: Record<string, Voice>;
     xmlCliEnabled: boolean;
-    refreshSettings: () => Promise<void>;
     saveMappings: (newMappings: Record<string, Voice>) => Promise<void>;
     setXmlCliEnabled: (enabled: boolean) => Promise<void>;
 }
@@ -28,13 +27,6 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         };
     }, []);
 
-    const refreshSettings = useCallback(async () => {
-        const { speakerMappings, xmlEnabled } = await loadSettings();
-
-        setMappings(speakerMappings);
-        setXmlCliEnabledState(xmlEnabled);
-    }, [loadSettings]);
-
     const saveMappings = useCallback(async (newMappings: Record<string, Voice>) => {
         setMappings(newMappings);
         await window.electronAPI.setSpeakerMappings(newMappings);
@@ -45,10 +37,20 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         await window.electronAPI.setXmlCliEnabled(enabled);
     }, []);
 
+    useEffect(() => {
+        loadSettings()
+            .then(({ speakerMappings, xmlEnabled }) => {
+                setMappings(speakerMappings);
+                setXmlCliEnabledState(xmlEnabled);
+            })
+            .catch((error) => {
+                console.error('Failed to load settings:', error);
+            });
+    }, [loadSettings]);
+
     const value = {
         mappings,
         xmlCliEnabled,
-        refreshSettings,
         saveMappings,
         setXmlCliEnabled,
     };
