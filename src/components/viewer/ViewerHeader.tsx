@@ -40,6 +40,14 @@ export function ViewerHeader({
     removeStatus,
     genStatus,
 }: ViewerHeaderProps) {
+    const statusItems = [
+        isSyncing ? 'Syncing...' : '',
+        isSaving ? saveStatus : '',
+        isInsertingAudio ? insertStatus : '',
+        isRemoving ? removeStatus : '',
+        isGenerating ? genStatus : '',
+    ].filter(Boolean);
+
     return (
         <Group justify="space-between" p="xs" style={{ borderBottom: '1px solid var(--mantine-color-dark-4)', background: 'var(--mantine-color-dark-7)' }}>
             <Group>
@@ -51,13 +59,11 @@ export function ViewerHeader({
             </Group>
 
             <Group>
-                {(isSyncing || isSaving || isInsertingAudio || isRemoving || isGenerating) && (
+                {statusItems.length > 0 && (
                     <Group gap="xs" mr="xs">
-                        {isSyncing && <Text size="xs" c="dimmed">Syncing...</Text>}
-                        {isSaving && <Text size="xs" c="dimmed">{saveStatus}</Text>}
-                        {isInsertingAudio && <Text size="xs" c="dimmed">{insertStatus}</Text>}
-                        {isRemoving && <Text size="xs" c="dimmed">{removeStatus}</Text>}
-                        {isGenerating && <Text size="xs" c="dimmed">{genStatus}</Text>}
+                        {statusItems.map((status, index) => (
+                            <Text key={`${status}-${index}`} size="xs" c="dimmed">{status}</Text>
+                        ))}
                     </Group>
                 )}
 

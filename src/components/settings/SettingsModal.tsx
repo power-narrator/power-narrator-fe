@@ -1,15 +1,17 @@
-import { Modal, Button, Text, Group, Stack, Code, Divider, TextInput, ActionIcon, Box, Switch } from '@mantine/core';
-import { useState, useEffect } from 'react';
-import { VoiceSelector } from './VoiceSelector';
+import { ActionIcon, Box, Button, Code, Divider, Group, Modal, Stack, Switch, Text, TextInput } from '@mantine/core';
 import { IconTrash } from '@tabler/icons-react';
-import { useSettings } from '../context/useSettings';
-import { DEFAULT_SPEAKER_KEY } from '../constants/speakers';
-import type { Voice } from '../types/voice';
+import { useEffect, useState } from 'react';
+import { DEFAULT_SPEAKER_KEY } from '../../constants/speaker';
+import { useSettings } from '../../context/useSettings';
+import type { Voice } from '../../types/voice';
+import { VoiceSelector } from './VoiceSelector';
 
 interface SettingsModalProps {
     opened: boolean;
     onClose: () => void;
 }
+
+const EMPTY_VOICE: Voice = { name: '', languageCodes: [], ssmlGender: '', provider: '' };
 
 export function SettingsModal({ opened, onClose }: SettingsModalProps) {
     const [keyPath, setKeyPath] = useState<string | null>(null);
@@ -18,36 +20,46 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
     const [voices, setVoices] = useState<Voice[]>([]);
     const [providerMode, setProviderMode] = useState<'gcp' | 'local'>('local');
     const { mappings, xmlCliEnabled, saveMappings, setXmlCliEnabled } = useSettings();
-
-    async function checkKey() {
-        const path = await window.electronAPI.getGcpKeyPath();
-        setKeyPath(path || null);
-    }
-
-    async function loadVoices() {
-        const loadedVoices = await window.electronAPI.getVoices();
-        setVoices(loadedVoices || []);
-    }
-
-    async function loadProviderMode() {
-        const provider = await window.electronAPI.getTtsProvider();
-        setProviderMode(provider || 'local');
-    }
+    const mappedVoices = Object.entries(mappings).filter(([key]) => key !== DEFAULT_SPEAKER_KEY);
 
     useEffect(() => {
-        async function loadOpenedSettings() {
-            await Promise.all([checkKey(), loadVoices(), loadProviderMode()]);
+        if (!opened) {
+            return;
         }
 
-        if (opened) {
-            loadOpenedSettings().catch((error) => {
-                console.error(error);
+        Promise.all([
+            window.electronAPI.getGcpKeyPath(),
+            window.electronAPI.getVoices(),
+            window.electronAPI.getTtsProvider(),
+        ])
+            .then(([path, loadedVoices, provider]) => {
+                setKeyPath(path || null);
+                setVoices(loadedVoices || []);
+                setProviderMode(provider || 'local');
+            })
+            .catch((loadError) => {
+                console.error(loadError);
             });
-        }
     }, [opened]);
 
-    const handleXmlCliToggle = async (checked: boolean) => {
-        await setXmlCliEnabled(checked);
+    const updateMapping = (alias: string, voice: Voice) => {
+        void saveMappings({ ...mappings, [alias]: voice });
+    };
+
+    const removeMapping = (alias: string) => {
+        const nextMappings = { ...mappings };
+        delete nextMappings[alias];
+        void saveMappings(nextMappings);
+    };
+
+    const addAlias = () => {
+        const trimmedAlias = newAlias.trim();
+        if (!trimmedAlias || mappings[trimmedAlias]) {
+            return;
+        }
+
+        void saveMappings({ ...mappings, [trimmedAlias]: EMPTY_VOICE });
+        setNewAlias('');
     };
 
     const handleSetKey = async () => {
@@ -56,29 +68,15 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
             const result = await window.electronAPI.setGcpKey();
             if (result.success && result.path) {
                 setKeyPath(result.path);
-            } else if (result.error) {
+                return;
+            }
+
+            if (result.error) {
                 setError(result.error);
             }
-        } catch (err) {
-            console.error(err);
-            setError("Failed to set key");
-        }
-    };
-
-    const updateMapping = (alias: string, voice: Voice) => {
-        saveMappings({ ...mappings, [alias]: voice });
-    };
-
-    const removeMapping = (alias: string) => {
-        const newM = { ...mappings };
-        delete newM[alias];
-        saveMappings(newM);
-    };
-
-    const addAlias = () => {
-        if (newAlias.trim() && !mappings[newAlias.trim()]) {
-            saveMappings({ ...mappings, [newAlias.trim()]: { name: '', languageCodes: [], ssmlGender: '', provider: '' } });
-            setNewAlias('');
+        } catch (setKeyError) {
+            console.error(setKeyError);
+            setError('Failed to set key');
         }
     };
 
@@ -122,25 +120,23 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
                 </Group>
 
                 <Stack gap="xs">
-                    {/* Default Voice */}
                     <Group justify="space-between" align="center" p="xs" style={{ backgroundColor: 'var(--mantine-color-dark-6)', borderRadius: 4 }}>
                         <Text size="sm" fw={600}>Default Voice (No Tag)</Text>
                         <VoiceSelector
                             value={mappings[DEFAULT_SPEAKER_KEY] || null}
-                            onChange={(v) => updateMapping(DEFAULT_SPEAKER_KEY, v)}
+                            onChange={(voice) => updateMapping(DEFAULT_SPEAKER_KEY, voice)}
                             voices={voices}
                             providerFilter={providerMode}
                         />
                     </Group>
 
-                    {/* Mapped Voices */}
-                    {Object.entries(mappings).filter(([key]) => key !== DEFAULT_SPEAKER_KEY).map(([alias, voice]) => (
+                    {mappedVoices.map(([alias, voice]) => (
                         <Group key={alias} justify="space-between" align="center" p="xs" style={{ border: '1px solid var(--mantine-color-dark-4)', borderRadius: 4 }}>
                             <Code>[{alias}]</Code>
                             <Group gap="xs">
                                 <VoiceSelector
                                     value={voice}
-                                    onChange={(v) => updateMapping(alias, v)}
+                                    onChange={(nextVoice) => updateMapping(alias, nextVoice)}
                                     voices={voices}
                                     providerFilter={providerMode}
                                 />
@@ -156,11 +152,17 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
                             placeholder="New alias (e.g. speaker 1)"
                             size="xs"
                             value={newAlias}
-                            onChange={(e) => setNewAlias(e.currentTarget.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && addAlias()}
+                            onChange={(event) => setNewAlias(event.currentTarget.value)}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                    addAlias();
+                                }
+                            }}
                             style={{ flex: 1 }}
                         />
-                        <Button size="xs" onClick={addAlias} disabled={!newAlias.trim()}>Add Mapping</Button>
+                        <Button size="xs" onClick={addAlias} disabled={!newAlias.trim()}>
+                            Add Mapping
+                        </Button>
                     </Group>
                 </Stack>
 
@@ -177,7 +179,9 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
                     </Box>
                     <Switch
                         checked={xmlCliEnabled}
-                        onChange={(event) => handleXmlCliToggle(event.currentTarget.checked)}
+                        onChange={(event) => {
+                            void setXmlCliEnabled(event.currentTarget.checked);
+                        }}
                         size="md"
                     />
                 </Group>
