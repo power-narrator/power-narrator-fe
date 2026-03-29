@@ -1,5 +1,5 @@
 import { Box, Image, ScrollArea } from '@mantine/core';
-import type { Slide } from '../../electron';
+import type { Slide } from '../../types/electron';
 
 interface SlideThumbnailListProps {
     slides: Slide[];
