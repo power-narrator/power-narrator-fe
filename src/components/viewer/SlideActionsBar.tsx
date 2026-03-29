@@ -30,6 +30,8 @@ export function SlideActionsBar({
     onSaveCurrentSlideNotes,
     onRemoveSlideAudio,
 }: SlideActionsBarProps) {
+    const disabledByXmlCli = busy || xmlCliEnabled;
+
     return (
         <Group gap="md" py="xs" style={{ borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
             <Tooltip
@@ -42,7 +44,7 @@ export function SlideActionsBar({
                     leftSection={<IconRefresh size={14} className={isSyncing ? 'mantine-rotate' : ''} />}
                     onClick={onSyncSlide}
                     loading={isSyncing}
-                    disabled={busy || xmlCliEnabled}
+                    disabled={disabledByXmlCli}
                 >
                     Sync Slide
                 </Button>
@@ -68,7 +70,7 @@ export function SlideActionsBar({
                     size="xs"
                     leftSection={<IconDeviceTv size={14} />}
                     onClick={onPlaySlide}
-                    disabled={busy || xmlCliEnabled}
+                    disabled={disabledByXmlCli}
                 >
                     Play
                 </Button>

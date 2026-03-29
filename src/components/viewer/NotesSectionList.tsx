@@ -1,7 +1,7 @@
 import { Box, Button, Group, ScrollArea, Select, Text, Textarea } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
-import { DEFAULT_SPEAKER_KEY, DEFAULT_SPEAKER_LABEL, DEFAULT_SPEAKER_VALUE } from '../../constants/speakers';
 import type { NoteSection } from '../../utils/notes';
+import { getSpeakerOptions } from '../../utils/viewer';
 import type { Voice } from '../../types/voice';
 import { SectionPreviewButtons } from './SectionPreviewButtons';
 
@@ -28,11 +28,7 @@ export function NotesSectionList({
     assignTextareaRef,
     getTextarea,
 }: NotesSectionListProps) {
-    const speakerOptions = [{ value: DEFAULT_SPEAKER_VALUE, label: DEFAULT_SPEAKER_LABEL }].concat(
-        Object.keys(mappings)
-            .filter((key) => key !== DEFAULT_SPEAKER_KEY)
-            .map((key) => ({ value: key, label: `[${key}]` }))
-    );
+    const speakerOptions = getSpeakerOptions(mappings);
 
     return (
         <>

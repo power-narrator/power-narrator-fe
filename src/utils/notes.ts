@@ -1,4 +1,4 @@
-import { DEFAULT_SPEAKER_VALUE } from "../constants/speakers";
+import { DEFAULT_SPEAKER_VALUE } from '../constants/speaker';
 
 export interface NoteSection {
     speaker: string;

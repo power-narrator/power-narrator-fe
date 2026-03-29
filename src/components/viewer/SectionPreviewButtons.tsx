@@ -1,9 +1,9 @@
 import { ActionIcon, Box, Button, Group, Loader, Slider, Text } from '@mantine/core';
 import { IconPlayerPlay, IconPlayerStop } from '@tabler/icons-react';
 import { useRef, useState } from 'react';
-import { DEFAULT_SPEAKER_KEY, DEFAULT_SPEAKER_LABEL, DEFAULT_SPEAKER_VALUE } from '../../constants/speakers';
 import type { NoteSection } from '../../utils/notes';
 import { getErrorMessage } from '../../utils/errors';
+import { getSpeakerOptions } from '../../utils/viewer';
 import { generateAudio } from '../../utils/tts';
 import type { Voice } from '../../types/voice';
 
@@ -25,9 +25,7 @@ export function SectionPreviewButtons({ section, mappings, onFocus, getTextarea 
     const previewRequestIdRef = useRef(0);
     const autoplayRequestIdRef = useRef<number | null>(null);
 
-    const speakers = [{ value: DEFAULT_SPEAKER_VALUE, label: DEFAULT_SPEAKER_LABEL }].concat(
-        Object.keys(mappings).filter((key) => key !== DEFAULT_SPEAKER_KEY).map((key) => ({ value: key, label: key }))
-    );
+    const speakers = getSpeakerOptions(mappings);
 
     const stopPlayback = () => {
         previewRequestIdRef.current += 1;
