@@ -1,31 +1,31 @@
 export interface Slide {
-    index: number;
-    image: string;
-    src: string;
-    notes: string;
+  index: number;
+  image: string;
+  src: string;
+  notes: string;
 }
 
 export interface ConvertResponse {
-    success: boolean;
-    slides: Slide[];
-    error?: string;
+  success: boolean;
+  slides: Slide[];
+  error?: string;
 }
 
 export interface BasicElectronResult {
-    success: boolean;
-    error?: string;
+  success: boolean;
+  error?: string;
 }
 
 export interface SlidesElectronResult extends BasicElectronResult {
-    slides?: Slide[];
+  slides?: Slide[];
 }
 
 export interface VideoElectronResult extends BasicElectronResult {
-    outputPath?: string;
+  outputPath?: string;
 }
 
 export interface SlideAudioEntry {
-    index: number;
-    sectionIndex?: number;
-    audioData: Uint8Array;
+  index: number;
+  sectionIndex?: number;
+  audioData: Uint8Array;
 }

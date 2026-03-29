@@ -1,4 +1,4 @@
 export interface NoteSection {
-    speaker: string;
-    text: string;
+  speaker: string;
+  text: string;
 }
