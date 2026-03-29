@@ -1,4 +1,4 @@
-import { DEFAULT_SPEAKER_KEY, DEFAULT_SPEAKER_VALUE } from "../constants/speakers";
+import { DEFAULT_SPEAKER_VALUE } from "../constants/speakers";
 
 export interface NoteSection {
     speaker: string;
@@ -24,7 +24,7 @@ export const parseNotes = (text: string): NoteSection[] => {
 export const formatNotes = (sections: NoteSection[]): string => {
     return sections
         .map((section) => {
-            const speakerPart = section.speaker !== DEFAULT_SPEAKER_KEY ? `[${section.speaker}]\n` : '';
+            const speakerPart = section.speaker !== DEFAULT_SPEAKER_VALUE ? `[${section.speaker}]\n` : '';
             return `${speakerPart}${section.text}`;
         })
         .join('\n---\n');
