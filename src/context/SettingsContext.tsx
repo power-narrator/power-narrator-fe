@@ -1,4 +1,4 @@
-import { createContext, useState } from 'react';
+import { createContext, useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Voice } from '../types/voice';
 
@@ -16,25 +16,34 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     const [mappings, setMappings] = useState<Record<string, Voice>>({});
     const [xmlCliEnabled, setXmlCliEnabledState] = useState(false);
 
-    async function refreshSettings() {
+    const loadSettings = useCallback(async () => {
         const [speakerMappings, xmlEnabled] = await Promise.all([
             window.electronAPI.getSpeakerMappings(),
             window.electronAPI.getXmlCliEnabled(),
         ]);
 
-        setMappings(speakerMappings ?? {});
-        setXmlCliEnabledState(xmlEnabled);
-    }
+        return {
+            speakerMappings: speakerMappings ?? {},
+            xmlEnabled,
+        };
+    }, []);
 
-    async function saveMappings(newMappings: Record<string, Voice>) {
+    const refreshSettings = useCallback(async () => {
+        const { speakerMappings, xmlEnabled } = await loadSettings();
+
+        setMappings(speakerMappings);
+        setXmlCliEnabledState(xmlEnabled);
+    }, [loadSettings]);
+
+    const saveMappings = useCallback(async (newMappings: Record<string, Voice>) => {
         setMappings(newMappings);
         await window.electronAPI.setSpeakerMappings(newMappings);
-    }
+    }, []);
 
-    async function setXmlCliEnabled(enabled: boolean) {
+    const setXmlCliEnabled = useCallback(async (enabled: boolean) => {
         setXmlCliEnabledState(enabled);
         await window.electronAPI.setXmlCliEnabled(enabled);
-    }
+    }, []);
 
     const value = {
         mappings,
