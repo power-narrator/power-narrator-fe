@@ -1,5 +1,5 @@
 import { ActionIcon, Box, Button, Group, Loader, Slider, Text } from '@mantine/core';
-import { IconPlayerPause, IconPlayerPlay } from '@tabler/icons-react';
+import { IconPlayerPlay, IconPlayerStop } from '@tabler/icons-react';
 import { useRef, useState } from 'react';
 import { DEFAULT_SPEAKER_KEY, DEFAULT_SPEAKER_LABEL, DEFAULT_SPEAKER_VALUE } from '../../constants/speakers';
 import type { NoteSection } from '../../utils/notes';
@@ -22,20 +22,28 @@ export function SectionPreviewButtons({ section, mappings, onFocus, getTextarea 
     const isSeekingRef = useRef(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [isAudioGenerating, setIsAudioGenerating] = useState(false);
-    const shouldAutoplayRef = useRef(false);
+    const previewRequestIdRef = useRef(0);
+    const autoplayRequestIdRef = useRef<number | null>(null);
 
     const speakers = [{ value: DEFAULT_SPEAKER_VALUE, label: DEFAULT_SPEAKER_LABEL }].concat(
         Object.keys(mappings).filter((key) => key !== DEFAULT_SPEAKER_KEY).map((key) => ({ value: key, label: key }))
     );
 
+    const stopPlayback = () => {
+        previewRequestIdRef.current += 1;
+        autoplayRequestIdRef.current = null;
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+        }
+        setCurrentTime(0);
+        setActivePreviewTarget(null);
+        setIsAudioGenerating(false);
+    };
+
     const handlePlay = async (speakerValue: string) => {
         if (activePreviewTarget === speakerValue) {
-            if (audioRef.current) {
-                audioRef.current.pause();
-                audioRef.current.currentTime = 0;
-            }
-            shouldAutoplayRef.current = false;
-            setActivePreviewTarget(null);
+            stopPlayback();
             return;
         }
 
@@ -53,21 +61,35 @@ export function SectionPreviewButtons({ section, mappings, onFocus, getTextarea 
         }
 
         onFocus();
+        const requestId = previewRequestIdRef.current + 1;
+        previewRequestIdRef.current = requestId;
+        autoplayRequestIdRef.current = requestId;
+
         try {
             setIsAudioGenerating(true);
             setActivePreviewTarget(speakerValue);
-            shouldAutoplayRef.current = true;
             const voiceOverride = speakerValue ? mappings[speakerValue] : undefined;
             const url = await generateAudio(textToPlay, voiceOverride);
+
+            if (previewRequestIdRef.current !== requestId) {
+                return;
+            }
+
             setCurrentTime(0);
             setDuration(0);
             setAudioUrl(url);
         } catch (error: unknown) {
+            if (previewRequestIdRef.current !== requestId) {
+                return;
+            }
+
             alert(`Failed to play audio: ${getErrorMessage(error)}`);
-            shouldAutoplayRef.current = false;
+            autoplayRequestIdRef.current = null;
             setActivePreviewTarget(null);
         } finally {
-            setIsAudioGenerating(false);
+            if (previewRequestIdRef.current === requestId) {
+                setIsAudioGenerating(false);
+            }
         }
     };
 
@@ -77,17 +99,22 @@ export function SectionPreviewButtons({ section, mappings, onFocus, getTextarea 
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
     };
 
+    const isAnyPreviewActive = activePreviewTarget !== null;
+
     return (
         <Box px="xs" py="xs" style={{ borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
             <audio
                 ref={audioRef}
                 src={audioUrl || ''}
                 onCanPlay={() => {
-                    if (!shouldAutoplayRef.current || !audioRef.current) {
+                    if (
+                        autoplayRequestIdRef.current !== previewRequestIdRef.current
+                        || !audioRef.current
+                    ) {
                         return;
                     }
 
-                    shouldAutoplayRef.current = false;
+                    autoplayRequestIdRef.current = null;
                     audioRef.current.currentTime = 0;
                     audioRef.current.play().catch((error) => {
                         console.error(error);
@@ -104,7 +131,10 @@ export function SectionPreviewButtons({ section, mappings, onFocus, getTextarea 
                         setDuration(audioRef.current.duration);
                     }
                 }}
-                onEnded={() => setActivePreviewTarget(null)}
+                onEnded={() => {
+                    autoplayRequestIdRef.current = null;
+                    setActivePreviewTarget(null);
+                }}
             />
 
             <Group gap="xs" mb="xs">
@@ -120,8 +150,8 @@ export function SectionPreviewButtons({ section, mappings, onFocus, getTextarea 
                             onMouseDown={(event) => event.preventDefault()}
                             onClick={() => handlePlay(speaker.value)}
                             loading={isGenerating}
-                            disabled={isAudioGenerating && !isGenerating}
-                            leftSection={isActive ? <IconPlayerPause size={12} /> : <IconPlayerPlay size={12} />}
+                            disabled={!section.text || isGenerating}
+                            leftSection={isActive ? <IconPlayerStop size={12} /> : <IconPlayerPlay size={12} />}
                         >
                             {speaker.label}
                         </Button>
@@ -132,17 +162,24 @@ export function SectionPreviewButtons({ section, mappings, onFocus, getTextarea 
             <Group gap="xs">
                 <ActionIcon
                     variant="filled"
-                    color={activePreviewTarget === section.speaker ? 'red' : 'blue'}
+                    color="blue"
                     size="sm"
                     radius="xl"
                     onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => handlePlay(DEFAULT_SPEAKER_VALUE)}
-                    disabled={!section.text || (isAudioGenerating && activePreviewTarget !== section.speaker)}
+                    onClick={() => {
+                        if (isAnyPreviewActive) {
+                            stopPlayback();
+                            return;
+                        }
+
+                        void handlePlay(section.speaker);
+                    }}
+                    disabled={!section.text || isAudioGenerating}
                 >
-                    {activePreviewTarget === section.speaker && !isAudioGenerating ? <IconPlayerPause size={12} /> : <IconPlayerPlay size={12} />}
+                    {isAnyPreviewActive ? <IconPlayerStop size={12} /> : <IconPlayerPlay size={12} />}
                 </ActionIcon>
                 <Box style={{ flex: 1, position: 'relative' }}>
-                    {isAudioGenerating && activePreviewTarget === section.speaker ? (
+                    {isAudioGenerating ? (
                         <div style={{ height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <Loader size="xs" variant="dots" color="blue" />
                         </div>
