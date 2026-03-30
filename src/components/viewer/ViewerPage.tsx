@@ -322,15 +322,6 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
     }
   };
 
-  const handleCustomBreak = () => {
-    if (!customBreak) {
-      return;
-    }
-
-    insertSelfClosingTag(`<break time="${customBreak}"/>`);
-    setCustomBreak("");
-  };
-
   const assignTextareaRef = (index: number, element: HTMLTextAreaElement | null) => {
     textareasRefs.current[index] = element;
   };
@@ -770,11 +761,8 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
             <SsmlToolbar
               historyIndex={historyIndex}
               historyLength={history.length}
-              customBreak={customBreak}
               onUndo={handleUndo}
               onRedo={handleRedo}
-              onCustomBreakChange={setCustomBreak}
-              onSubmitCustomBreak={handleCustomBreak}
               onInsertSelfClosingTag={insertSelfClosingTag}
               onInsertWrappedTag={insertWrappedTag}
             />

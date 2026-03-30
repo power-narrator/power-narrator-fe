@@ -10,15 +10,13 @@ import {
   IconPlus,
   IconVolume,
 } from "@tabler/icons-react";
+import { useState } from "react";
 
 interface SsmlToolbarProps {
   historyIndex: number;
   historyLength: number;
-  customBreak: string;
   onUndo: () => void;
   onRedo: () => void;
-  onCustomBreakChange: (value: string) => void;
-  onSubmitCustomBreak: () => void;
   onInsertSelfClosingTag: (tag: string) => void;
   onInsertWrappedTag: (startTag: string, endTag?: string) => void;
 }
@@ -26,14 +24,23 @@ interface SsmlToolbarProps {
 export function SsmlToolbar({
   historyIndex,
   historyLength,
-  customBreak,
   onUndo,
   onRedo,
-  onCustomBreakChange,
-  onSubmitCustomBreak,
   onInsertSelfClosingTag,
   onInsertWrappedTag,
 }: SsmlToolbarProps) {
+  const [customBreak, setCustomBreak] = useState("");
+
+  const submitCustomBreak = () => {
+    const trimmedBreak = customBreak.trim();
+    if (!trimmedBreak) {
+      return;
+    }
+
+    onInsertSelfClosingTag(`<break time="${trimmedBreak}"/>`);
+    setCustomBreak("");
+  };
+
   return (
     <Group
       gap={0}
@@ -117,15 +124,15 @@ export function SsmlToolbar({
                 placeholder="e.g. 3s or 500ms"
                 size="xs"
                 value={customBreak}
-                onChange={(event) => onCustomBreakChange(event.currentTarget.value)}
+                onChange={(event) => setCustomBreak(event.currentTarget.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
-                    onSubmitCustomBreak();
+                    submitCustomBreak();
                   }
                 }}
                 style={{ flex: 1 }}
               />
-              <ActionIcon variant="filled" color="blue" size="sm" onClick={onSubmitCustomBreak}>
+              <ActionIcon variant="filled" color="blue" size="sm" onClick={submitCustomBreak}>
                 <IconPlus size={14} />
               </ActionIcon>
             </Group>
