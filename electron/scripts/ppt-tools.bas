@@ -154,8 +154,24 @@ Sub InsertAudio()
                     
                     If Not shp Is Nothing Then
                         shp.Name = audioTag
-                        shp.Left = -100
-                        shp.Top = -100
+                        
+                        Dim margin As Single: margin = 10
+                        Dim audioCount As Integer: audioCount = 0
+                        Dim tempShape As Shape
+                        
+                        ' Count existing audio shapes to determine vertical stack position
+                        For Each tempShape In sld.Shapes
+                            If InStr(1, tempShape.Name, "ppt_audio") = 1 Then
+                                audioCount = audioCount + 1
+                            End If
+                        Next tempShape
+                        
+                        ' Position on the right using SlideWidth and native shape Width
+                        shp.Left = pres.PageSetup.SlideWidth + margin
+                        
+                        ' Prevent stacking by spacing them vertically using their native Height
+                        ' (audioCount includes the newly added shape, so subtract 1)
+                        shp.Top = margin + (audioCount - 1) * (shp.Height + margin)
                         
                         ' --- Animation Configuration ---
                         Dim eff As Effect

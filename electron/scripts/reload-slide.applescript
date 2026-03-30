@@ -71,7 +71,7 @@ on run argv
         -- Run Export Macro
 		try
             -- Run the macro which reads the text file we just wrote
-			run VB macro macro name "ExportSlide"
+			run VB macro macro name "ReloadSlide"
 		on error errMsg
              error "VBA Macro Failed: " & errMsg
 		end try

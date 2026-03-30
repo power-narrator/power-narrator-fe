@@ -15,6 +15,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
     const [newAlias, setNewAlias] = useState('');
     const [providerMode, setProviderMode] = useState<'gcp' | 'local'>('local');
     const [enableXmlCli, setEnableXmlCli] = useState(false);
+    const [refreshBit, setRefreshBit] = useState(0);
 
     useEffect(() => {
         if (opened) {
@@ -22,8 +23,10 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
             loadMappings();
             loadProvider();
             loadXmlCliSetting();
+            setRefreshBit(prev => prev + 1);
         }
     }, [opened]);
+// ... (omitted changes for handleSetKey and VoiceSelector calls)
 
     const loadXmlCliSetting = async () => {
         const enabled = await window.electronAPI.getXmlCliEnabled();
@@ -63,6 +66,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
             const result = await window.electronAPI.setGcpKey();
             if (result.success && result.path) {
                 setKeyPath(result.path);
+                setRefreshBit(prev => prev + 1);
             } else if (result.error) {
                 setError(result.error);
             }
@@ -139,6 +143,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
                             value={mappings['_default_'] || null}
                             onChange={(v) => updateMapping('_default_', v)}
                             providerFilter={providerMode}
+                            refreshBit={refreshBit}
                         />
                     </Group>
 
@@ -151,6 +156,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
                                     value={voice}
                                     onChange={(v) => updateMapping(alias, v)}
                                     providerFilter={providerMode}
+                                    refreshBit={refreshBit}
                                 />
                                 <ActionIcon color="red" variant="subtle" onClick={() => removeMapping(alias)}>
                                     <IconTrash size={16} />

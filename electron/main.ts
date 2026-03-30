@@ -13,8 +13,19 @@ const store = new Store();
 
 // --- Helper to get GCP Key Path ---
 function getGcpKeyPath(): string | undefined {
-    // Priority: 1. ENV var (dev/runtime override), 2. Stored path
-    return process.env.GOOGLE_APPLICATION_CREDENTIALS || store.get('gcpKeyPath') as string;
+    // Priority: 1. ENV var (dev/runtime override, resolve to absolute if provided)
+    const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    if (envPath) {
+        const resolvedPath = path.resolve(envPath);
+        if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isFile()) {
+            return resolvedPath;
+        } else {
+            console.warn(`GOOGLE_APPLICATION_CREDENTIALS path not found or not a file: ${resolvedPath}`);
+        }
+    }
+    
+    // 2. Stored path from Settings GUI
+    return store.get('gcpKeyPath') as string;
 }
 
 function getTtsProvider(): string {

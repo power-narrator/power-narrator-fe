@@ -13,8 +13,19 @@ const electron_store_1 = __importDefault(require("electron-store"));
 const store = new electron_store_1.default();
 // --- Helper to get GCP Key Path ---
 function getGcpKeyPath() {
-    // Priority: 1. ENV var (dev/runtime override), 2. Stored path
-    return process.env.GOOGLE_APPLICATION_CREDENTIALS || store.get('gcpKeyPath');
+    // Priority: 1. ENV var (dev/runtime override, resolve to absolute if provided)
+    const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    if (envPath) {
+        const resolvedPath = path_1.default.resolve(envPath);
+        if (fs_1.default.existsSync(resolvedPath) && fs_1.default.statSync(resolvedPath).isFile()) {
+            return resolvedPath;
+        }
+        else {
+            console.warn(`GOOGLE_APPLICATION_CREDENTIALS path not found or not a file: ${resolvedPath}`);
+        }
+    }
+    // 2. Stored path from Settings GUI
+    return store.get('gcpKeyPath');
 }
 function getTtsProvider() {
     // Priority: 1. ENV var, 2. Stored Key -> implies GCP, 3. Default to GCP (so we prompt for key)
@@ -83,10 +94,11 @@ electron_1.app.on('window-all-closed', () => {
         electron_1.app.quit();
     }
 });
-// IPC Handlers
+// ==========================================
+// File & Dialog Handlers
+// ==========================================
 electron_1.ipcMain.handle('select-file', async () => {
-    const { dialog } = require('electron');
-    const result = await dialog.showOpenDialog({
+    const result = await electron_1.dialog.showOpenDialog({
         properties: ['openFile'],
         filters: [{ name: 'PowerPoint', extensions: ['pptx'] }]
     });
@@ -95,20 +107,35 @@ electron_1.ipcMain.handle('select-file', async () => {
     }
     return result.filePaths[0];
 });
-// --- PPT Lifecycle Helpers ---
-// (Moved to Providers)
+electron_1.ipcMain.handle('get-video-save-path', async () => {
+    const win = electron_1.BrowserWindow.getFocusedWindow();
+    const result = await electron_1.dialog.showSaveDialog(win, {
+        title: 'Save Video As',
+        defaultPath: path_1.default.join(electron_1.app.getPath('documents'), 'Output.mp4'),
+        filters: [{ name: 'MPEG-4 Video', extensions: ['mp4'] }]
+    });
+    if (result.canceled || !result.filePath) {
+        return null;
+    }
+    return result.filePath;
+});
+// ==========================================
+// PowerPoint Lifecycle Handlers
+// ==========================================
 electron_1.ipcMain.handle('convert-pptx', async (event, filePath) => {
     console.log('Convert request for (raw):', filePath);
     const absolutePath = path_1.default.resolve(filePath);
     console.log('Convert request for (absolute):', absolutePath);
-    const fs = require('fs');
-    if (!fs.existsSync(absolutePath)) {
+    if (!fs_1.default.existsSync(absolutePath)) {
         return { success: false, error: `File not found: ${absolutePath}` };
     }
     const tempDir = electron_1.app.getPath('temp');
     const outputDir = path_1.default.join(tempDir, 'ppt-viewer', path_1.default.basename(absolutePath, path_1.default.extname(absolutePath)));
     return await getActivePptProvider().convertPptx(absolutePath, outputDir);
 });
+// ==========================================
+// PowerPoint Action Handlers
+// ==========================================
 electron_1.ipcMain.handle('save-all-notes', async (event, filePath, slides, slidesAudio) => {
     const absolutePath = path_1.default.resolve(filePath);
     if (!fs_1.default.existsSync(absolutePath))
@@ -121,20 +148,23 @@ electron_1.ipcMain.handle('insert-audio', async (event, filePath, slidesAudio) =
         return { success: false, error: 'File not found' };
     return await getActivePptProvider().insertAudio(absolutePath, slidesAudio);
 });
-electron_1.ipcMain.handle('get-video-save-path', async () => {
-    const { dialog } = require('electron');
-    const win = require('electron').BrowserWindow.getFocusedWindow();
-    const app = require('electron').app;
-    const path = require('path');
-    const result = await dialog.showSaveDialog(win, {
-        title: 'Save Video As',
-        defaultPath: path.join(app.getPath('documents'), 'Output.mp4'),
-        filters: [{ name: 'MPEG-4 Video', extensions: ['mp4'] }]
-    });
-    if (result.canceled || !result.filePath) {
-        return null;
+electron_1.ipcMain.handle('remove-audio', async (event, { filePath, scope, slideIndex }) => {
+    const absolutePath = path_1.default.resolve(filePath);
+    if (!fs_1.default.existsSync(absolutePath))
+        return { success: false, error: 'File not found' };
+    return await getActivePptProvider().removeAudio(absolutePath, scope, slideIndex);
+});
+electron_1.ipcMain.handle('play-slide', async (event, slideIndex) => {
+    return await getActivePptProvider().playSlide(slideIndex);
+});
+electron_1.ipcMain.handle('reload-slide', async (event, { filePath, slideIndex }) => {
+    const absolutePath = path_1.default.resolve(filePath);
+    const tempDir = electron_1.app.getPath('temp');
+    const outputDir = path_1.default.join(tempDir, 'ppt-viewer', path_1.default.basename(absolutePath, path_1.default.extname(absolutePath)));
+    if (!fs_1.default.existsSync(outputDir)) {
+        return { success: false, error: 'Conversion directory not found. Please sync all first.' };
     }
-    return result.filePath;
+    return await getActivePptProvider().reloadSlide(absolutePath, slideIndex, outputDir);
 });
 electron_1.ipcMain.handle('generate-video', async (event, { filePath, slidesAudio, videoOutputPath }) => {
     if (!videoOutputPath)
@@ -142,8 +172,9 @@ electron_1.ipcMain.handle('generate-video', async (event, { filePath, slidesAudi
     const absolutePath = path_1.default.resolve(filePath);
     return await getActivePptProvider().generateVideo(absolutePath, videoOutputPath);
 });
-// --- TTS Handler ---
-// --- Settings Handler ---
+// ==========================================
+// Settings Handlers
+// ==========================================
 electron_1.ipcMain.handle('get-tts-provider', async () => {
     return getTtsProvider();
 });
@@ -168,8 +199,7 @@ electron_1.ipcMain.handle('set-gcp-key', async () => {
     const keyPath = filePaths[0];
     // Basic validation
     try {
-        const fs = require('fs');
-        const content = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
+        const content = JSON.parse(fs_1.default.readFileSync(keyPath, 'utf8'));
         if (!content.type || content.type !== 'service_account') {
             return { success: false, error: 'Invalid Service Account Key JSON' };
         }
@@ -187,28 +217,9 @@ electron_1.ipcMain.handle('set-xml-cli-enabled', async (event, enabled) => {
     store.set('xmlCliEnabled', enabled);
     return { success: true };
 });
-// --- Remove Audio Handler ---
-electron_1.ipcMain.handle('remove-audio', async (event, { filePath, scope, slideIndex }) => {
-    const absolutePath = path_1.default.resolve(filePath);
-    if (!fs_1.default.existsSync(absolutePath))
-        return { success: false, error: 'File not found' };
-    return await getActivePptProvider().removeAudio(absolutePath, scope, slideIndex);
-});
-// --- Play Slide Handler ---
-electron_1.ipcMain.handle('play-slide', async (event, slideIndex) => {
-    return await getActivePptProvider().playSlide(slideIndex);
-});
-// --- Sync Slide Handler ---
-electron_1.ipcMain.handle('sync-slide', async (event, { filePath, slideIndex }) => {
-    const absolutePath = path_1.default.resolve(filePath);
-    const tempDir = require('electron').app.getPath('temp');
-    const outputDir = path_1.default.join(tempDir, 'ppt-viewer', path_1.default.basename(absolutePath, path_1.default.extname(absolutePath)));
-    if (!fs_1.default.existsSync(outputDir)) {
-        return { success: false, error: 'Conversion directory not found. Please sync all first.' };
-    }
-    return await getActivePptProvider().syncSlide(absolutePath, slideIndex, outputDir);
-});
-// --- TTS Handler ---
+// ==========================================
+// TTS Handlers
+// ==========================================
 electron_1.ipcMain.handle('get-voices', async () => {
     return await ttsManager.getVoices();
 });

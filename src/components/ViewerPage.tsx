@@ -28,7 +28,7 @@ export interface NoteSection {
 
 export const parseNotes = (text: string): NoteSection[] => {
     if (!text) return [{ speaker: '', text: '' }];
-    
+
     // Split more leniently but effectively. We want to avoid trailing space deletion.
     const parts = text.split(/\r?\n---\r?\n/g);
     if (parts.length === 1 && text.includes('---')) {
@@ -48,13 +48,13 @@ export const parseNotes = (text: string): NoteSection[] => {
         if (match) {
             return { speaker: match[1], text: match[2] };
         }
-        
+
         // Legacy match
         const legacyMatch = part.match(/^\[([^\]]+)\]\s*([\s\S]*)$/);
         if (legacyMatch) {
             return { speaker: legacyMatch[1], text: legacyMatch[2] };
         }
-        
+
         return { speaker: '', text: part };
     });
 };
@@ -105,10 +105,10 @@ const SectionPreviewButtons = ({ section, mappings, onFocus, getTextarea }: { se
         try {
             setIsAudioGenerating(true);
             setPlayingSpeaker(isMainPlayer ? 'MAIN' : targetSpeaker);
-            
+
             const voiceOverride = targetSpeaker ? mappings[targetSpeaker] : undefined;
             const url = await generateAudio(textToPlay, voiceOverride);
-            
+
             setAudioUrl(url);
             setTimeout(() => {
                 if (audioRef.current) {
@@ -142,7 +142,7 @@ const SectionPreviewButtons = ({ section, mappings, onFocus, getTextarea }: { se
                 onLoadedMetadata={() => { if (audioRef.current) setDuration(audioRef.current.duration); }}
                 onEnded={() => setPlayingSpeaker(null)}
             />
-            
+
             <Group gap="xs" mb="xs">
                 {speakers.map(spk => {
                     const isPlaying = playingSpeaker === spk.value;
@@ -310,7 +310,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         if (!sections[index]) return;
         sections[index].text = value;
         const newNotes = formatNotes(sections);
-        
+
         const newSlides = [...slides];
         newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], notes: newNotes };
         setSlides(newSlides);
@@ -326,7 +326,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         if (!sections[index]) return;
         sections[index].speaker = speaker || '';
         const newNotes = formatNotes(sections);
-        
+
         const newSlides = [...slides];
         newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], notes: newNotes };
         setSlides(newSlides);
@@ -379,7 +379,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
         newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], notes: newNotes };
 
         setSlides(newSlides);
-        pushToHistory(newSlides); 
+        pushToHistory(newSlides);
 
         setTimeout(() => {
             const ta = textareasRefs.current[activeSectionIndex];
@@ -1103,7 +1103,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                         {/* Header */}
                                         <Group justify="space-between" px="xs" py={4} style={{ borderBottom: '1px solid var(--mantine-color-dark-4)', background: 'var(--mantine-color-dark-6)' }}>
                                             <Select
-                                                data={[{value: '', label: 'Default'}].concat(Object.keys(mappings).filter(k => k !== '_default_').map(k => ({ value: k, label: `[${k}]` })))}
+                                                data={[{ value: '', label: 'Default' }].concat(Object.keys(mappings).filter(k => k !== '_default_').map(k => ({ value: k, label: `[${k}]` })))}
                                                 value={section.speaker}
                                                 onChange={(val) => handleSpeakerChange(index, val)}
                                                 size="xs"
@@ -1129,7 +1129,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onSave, onBack }: 
                                         />
                                     </Box>
                                 ))}
-                                <Button variant="light" size="sm" fullWidth leftSection={<IconPlus size={16}/>} onClick={handleAddSection} style={{ flexShrink: 0, marginBottom: '20px' }}>
+                                <Button variant="light" size="sm" fullWidth leftSection={<IconPlus size={16} />} onClick={handleAddSection} style={{ flexShrink: 0, marginBottom: '20px' }}>
                                     Add Section
                                 </Button>
                             </Box>
