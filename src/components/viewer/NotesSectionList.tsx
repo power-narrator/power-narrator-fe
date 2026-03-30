@@ -1,4 +1,4 @@
-import { Box, Button, Group, ScrollArea, Select, Text, Textarea } from "@mantine/core";
+import { Button, Group, ScrollArea, Select, Stack, Text, Textarea } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
 import type { NoteSection } from "../../types/notes";
 import { getSpeakerOptions } from "../../utils/viewer";
@@ -31,37 +31,18 @@ export function NotesSectionList({
   const speakerOptions = getSpeakerOptions(mappings);
 
   return (
-    <>
-      <Text size="sm" fw={500} mb={4}>
-        Presenter Notes
-      </Text>
-      <ScrollArea
-        style={{ flex: 1 }}
-        type="auto"
-        styles={{
-          viewport: { "& > div": { display: "flex", flexDirection: "column", height: "100%" } },
-        }}
-      >
-        <Box style={{ display: "flex", flexDirection: "column", gap: "8px", paddingRight: "12px" }}>
+    <Stack gap="xs" mih="0">
+      <Text size="sm">Presenter Notes</Text>
+      <ScrollArea type="auto">
+        <Stack>
           {sections.map((section, index) => (
-            <Box
-              key={index}
-              style={{
-                border: "1px solid var(--mantine-color-dark-4)",
-                borderRadius: 4,
-                display: "flex",
-                flexDirection: "column",
-                minHeight: 150,
-                flexShrink: 0,
-              }}
-            >
+            <Stack gap="0" key={index} bd="1px solid dark.4" bdrs="4">
               <Group
                 justify="space-between"
-                px="xs"
-                py={4}
+                p="xs"
+                bg="dark.6"
                 style={{
-                  borderBottom: "1px solid var(--mantine-color-dark-4)",
-                  background: "var(--mantine-color-dark-6)",
+                  borderBottom: "1px solid dark.4",
                 }}
               >
                 <Select
@@ -69,19 +50,16 @@ export function NotesSectionList({
                   value={section.speaker}
                   onChange={(value) => onSpeakerChange(index, value)}
                   size="xs"
-                  w={150}
                   placeholder="Speaker"
                 />
-                {sections.length > 1 && (
-                  <Button
-                    variant="subtle"
-                    color="red"
-                    size="compact-xs"
-                    onClick={() => onDeleteSection(index)}
-                  >
-                    Remove Section
-                  </Button>
-                )}
+                <Button
+                  variant="subtle"
+                  color="red"
+                  size="xs"
+                  onClick={() => onDeleteSection(index)}
+                >
+                  Remove Section
+                </Button>
               </Group>
 
               <SectionPreviewButtons
@@ -96,29 +74,26 @@ export function NotesSectionList({
                 onFocus={() => onFocusSection(index)}
                 value={section.text}
                 onChange={(event) => onSectionTextChange(index, event.target.value)}
+                ff="monospace"
+                resize="vertical"
                 styles={{
                   input: {
-                    resize: "vertical",
-                    fontFamily: "monospace",
-                    border: "none",
                     minHeight: "110px",
                   },
                 }}
               />
-            </Box>
+            </Stack>
           ))}
           <Button
             variant="light"
             size="sm"
-            fullWidth
             leftSection={<IconPlus size={16} />}
             onClick={onAddSection}
-            style={{ flexShrink: 0, marginBottom: "20px" }}
           >
             Add Section
           </Button>
-        </Box>
+        </Stack>
       </ScrollArea>
-    </>
+    </Stack>
   );
 }
