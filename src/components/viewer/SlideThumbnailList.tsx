@@ -1,4 +1,4 @@
-import { Box, Image, ScrollArea } from "@mantine/core";
+import { Box, Image, ScrollArea, Stack } from "@mantine/core";
 import type { Slide } from "../../types/electron";
 
 interface SlideThumbnailListProps {
@@ -13,54 +13,41 @@ export function SlideThumbnailList({
   onSelectSlide,
 }: SlideThumbnailListProps) {
   return (
-    <div
-      style={{
-        width: "250px",
-        height: "100%",
-        borderRight: "1px solid var(--mantine-color-dark-4)",
-        display: "flex",
-        flexDirection: "column",
-      }}
+    <ScrollArea
+      w="250"
+      type="auto"
+      style={{ borderRight: "1px solid var(--mantine-color-default-border)" }}
     >
-      <ScrollArea style={{ flex: 1 }} type="auto">
-        <Box p="md">
-          {slides.map((slide, index) => (
+      <Stack gap="xs" p="md">
+        {slides.map((slide, index) => (
+          <Box
+            key={slide.index}
+            onClick={() => onSelectSlide(index)}
+            bdrs="xs"
+            pos="relative"
+            bd={activeSlideIndex === index ? "2 solid blue.6" : "2 solid transparent"}
+            style={{
+              cursor: "pointer",
+            }}
+          >
             <Box
-              key={slide.index}
-              onClick={() => onSelectSlide(index)}
+              pos="absolute"
+              top={4}
+              left={4}
+              bg="rgba(0,0,0,0.6)"
+              p="2 6"
+              bdrs="xs"
+              fz="xs"
               style={{
-                marginBottom: "1rem",
-                cursor: "pointer",
-                border:
-                  activeSlideIndex === index
-                    ? "2px solid var(--mantine-color-blue-6)"
-                    : "2px solid transparent",
-                borderRadius: "4px",
-                position: "relative",
+                zIndex: 10,
               }}
             >
-              <div
-                style={{
-                  position: "absolute",
-                  top: 4,
-                  left: 4,
-                  zIndex: 10,
-                  background: "rgba(0,0,0,0.6)",
-                  color: "white",
-                  padding: "2px 6px",
-                  borderRadius: "4px",
-                  fontSize: "10px",
-                  fontWeight: "bold",
-                  pointerEvents: "none",
-                }}
-              >
-                {index + 1}
-              </div>
-              <Image src={slide.src} radius="sm" />
+              {index + 1}
             </Box>
-          ))}
-        </Box>
-      </ScrollArea>
-    </div>
+            <Image src={slide.src} radius="sm" />
+          </Box>
+        ))}
+      </Stack>
+    </ScrollArea>
   );
 }

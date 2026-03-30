@@ -42,7 +42,7 @@ export function SsmlToolbar({
   };
 
   return (
-    <Group bd="1px solid dark.4" p="4" bg="6">
+    <Group bd="1px solid dark.4" p="4" bg="dark.6">
       <ActionIcon
         variant="subtle"
         color="gray"

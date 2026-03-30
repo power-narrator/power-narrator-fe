@@ -1,4 +1,4 @@
-import { ActionIcon, Box, Button, Group, Loader, Slider, Text } from "@mantine/core";
+import { ActionIcon, Box, Button, Center, Group, Loader, Slider, Stack, Text } from "@mantine/core";
 import { IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react";
 import { useRef, useState } from "react";
 import type { NoteSection } from "../../types/notes";
@@ -105,7 +105,7 @@ export function SectionPreviewButtons({
   const isAnyPreviewActive = activePreviewTarget !== null;
 
   return (
-    <Box px="xs" py="xs" style={{ borderBottom: "1px solid var(--mantine-color-dark-4)" }}>
+    <Stack p="xs" gap="xs" style={{ borderBottom: "1px solid dark.4" }}>
       <audio
         ref={audioRef}
         src={audioUrl || ""}
@@ -137,7 +137,7 @@ export function SectionPreviewButtons({
         }}
       />
 
-      <Group gap="xs" mb="xs">
+      <Group gap="xs">
         {speakers.map((speaker) => {
           const isActive = activePreviewTarget === speaker.value;
           const isGenerating = isAudioGenerating && isActive;
@@ -161,7 +161,6 @@ export function SectionPreviewButtons({
 
       <Group gap="xs">
         <ActionIcon
-          variant="filled"
           color="blue"
           size="sm"
           radius="xl"
@@ -172,7 +171,7 @@ export function SectionPreviewButtons({
               return;
             }
 
-            void handlePlay(section.speaker);
+            handlePlay(section.speaker);
           }}
           disabled={!section.text || isAudioGenerating}
         >
@@ -180,20 +179,13 @@ export function SectionPreviewButtons({
         </ActionIcon>
         <Box style={{ flex: 1, position: "relative" }}>
           {isAudioGenerating ? (
-            <div
-              style={{
-                height: "20px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
+            <Center>
               <Loader size="xs" variant="dots" color="blue" />
-            </div>
+            </Center>
           ) : (
-            <Group gap="xs" wrap="nowrap">
+            <Group gap="xs">
               <Slider
-                style={{ flex: 1 }}
+                style={{ flexGrow: 1 }}
                 size="sm"
                 value={currentTime}
                 min={0}
@@ -211,13 +203,13 @@ export function SectionPreviewButtons({
                 label={formatTime}
                 disabled={!audioUrl}
               />
-              <Text size="10px" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+              <Text size="xs" c="dimmed">
                 {formatTime(currentTime)} / {formatTime(duration)}
               </Text>
             </Group>
           )}
         </Box>
       </Group>
-    </Box>
+    </Stack>
   );
 }

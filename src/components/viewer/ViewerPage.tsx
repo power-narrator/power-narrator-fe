@@ -742,16 +742,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
           onSelectSlide={setActiveSlideIndex}
         />
 
-        <div
-          ref={splitContainerRef}
-          style={{
-            flex: 1,
-            height: "100%",
-            display: "flex",
-            flexDirection: "column",
-            backgroundColor: "var(--mantine-color-body)",
-          }}
-        >
+        <Stack ref={splitContainerRef} flex="1">
           <Box
             style={{
               height: `${splitRatio}%`,
@@ -822,7 +813,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
               getTextarea={getTextarea}
             />
           </Stack>
-        </div>
+        </Stack>
       </div>
 
       <SettingsModal opened={settingsOpen} onClose={() => setSettingsOpen(false)} />
