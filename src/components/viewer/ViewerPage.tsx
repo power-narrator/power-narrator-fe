@@ -1,5 +1,6 @@
-import { Box, Button, Group, Text, Title } from "@mantine/core";
+import { Box, Button, Group, Stack, Text, Title } from "@mantine/core";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { ActionButtonState } from "../../types/actions";
 import type { Slide, SlideAudioEntry, SlidesElectronResult } from "../../types/electron";
 import { useSettings } from "../../context/useSettings";
 import { getErrorMessage } from "../../utils/errors";
@@ -8,11 +9,11 @@ import { formatNotes, parseNotes } from "../../utils/notes";
 import { getAudioBuffer } from "../../utils/tts";
 import { SettingsModal } from "../settings/SettingsModal";
 import { NotesSectionList } from "./NotesSectionList";
-import { SlideActionsBar } from "./SlideActionsBar";
+import { SlideActionsBar, type SlideActionBarKey } from "./SlideActionsBar";
 import { SlidePreviewPane } from "./SlidePreviewPane";
 import { SlideThumbnailList } from "./SlideThumbnailList";
 import { SsmlToolbar } from "./SsmlToolbar";
-import { ViewerHeader } from "./ViewerHeader";
+import { ViewerHeader, type ViewerHeaderActionKey } from "./ViewerHeader";
 
 interface ViewerPageProps {
   slides: Slide[];
@@ -39,9 +40,9 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
-  const [customBreak, setCustomBreak] = useState("");
   const [splitRatio, setSplitRatio] = useState(40);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [genStatus, setGenStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -50,6 +51,8 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
   const [insertStatus, setInsertStatus] = useState("");
   const [isRemoving, setIsRemoving] = useState(false);
   const [removeStatus, setRemoveStatus] = useState("");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playStatus, setPlayStatus] = useState("");
 
   const textareasRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
   const splitContainerRef = useRef<HTMLDivElement>(null);
@@ -58,12 +61,36 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
     null,
   );
   const statusTimeoutsRef = useRef<number[]>([]);
-  const { mappings, xmlCliEnabled } = useSettings();
+  const { mappings } = useSettings();
   const electronAPI = window.electronAPI;
+  const busy = isGenerating || isSaving || isSyncing || isInsertingAudio || isRemoving || isPlaying;
+
+  const headerActionStates: Record<ViewerHeaderActionKey, ActionButtonState> = {
+    syncAll: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
+    insertAllAudio: {
+      loading: isInsertingAudio,
+      busy: busy && !isInsertingAudio,
+      status: insertStatus,
+    },
+    saveAllNotes: { loading: isSaving, busy: busy && !isSaving, status: saveStatus },
+    removeAllAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
+    generateVideo: { loading: isGenerating, busy: busy && !isGenerating, status: genStatus },
+  };
+
+  const slideActionStates: Record<SlideActionBarKey, ActionButtonState> = {
+    syncSlide: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
+    insertSlideAudio: {
+      loading: isInsertingAudio,
+      busy: busy && !isInsertingAudio,
+      status: insertStatus,
+    },
+    playSlide: { loading: isPlaying, busy: busy && !isPlaying, status: playStatus },
+    saveSlideNotes: { loading: isSaving, busy: busy && !isSaving, status: saveStatus },
+    removeSlideAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
+  };
 
   const activeSlide = slides[activeSlideIndex] ?? { ...EMPTY_SLIDE, index: activeSlideIndex + 1 };
   const activeSections = parseNotes(activeSlide.notes || "");
-  const busy = isGenerating || isSaving || isSyncing || isInsertingAudio || isRemoving;
 
   function clearDebounce() {
     if (debounceRef.current) {
@@ -351,21 +378,22 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
   };
 
   const handleGenerateVideo = async () => {
-    if (isGenerating) {
+    if (busy) {
       return;
     }
 
     try {
+      setIsGenerating(true);
       setGenStatus("Saving notes...");
       await saveNotesToFile(slides);
 
       const savePath = await electronAPI.getVideoSavePath();
       if (!savePath) {
+        setIsGenerating(false);
         setGenStatus("");
         return;
       }
 
-      setIsGenerating(true);
       setGenStatus("Preparing audio...");
 
       const slidesAudio: SlideAudioEntry[] = [];
@@ -382,7 +410,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
         });
       }
 
-      setGenStatus("Rendering video (this may take a while)...");
+      setGenStatus("Rendering video...");
       const result = await electronAPI.generateVideo({
         filePath,
         slidesAudio,
@@ -391,19 +419,22 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
 
       if (result.success) {
         alert(`Video generated successfully at: ${result.outputPath}`);
+        setGenStatus("Generated!");
+        scheduleStatusClear(setGenStatus);
       } else {
         alert(`Video generation failed: ${result.error}`);
+        setGenStatus("");
       }
     } catch (error: unknown) {
       alertError("Error preparing generation", error);
+      setGenStatus("");
     } finally {
       setIsGenerating(false);
-      setGenStatus("");
     }
   };
 
   const handleSaveAllNotes = async () => {
-    if (isSaving || isInsertingAudio) {
+    if (busy) {
       return;
     }
 
@@ -413,21 +444,23 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
     try {
       await saveNotesToFile(slides);
       alert("Notes saved successfully!");
+      setSaveStatus("Saved!");
+      scheduleStatusClear(setSaveStatus);
     } catch (error: unknown) {
       alertError("Save error", error);
+      setSaveStatus("");
     } finally {
       setIsSaving(false);
-      setSaveStatus("");
     }
   };
 
   const handleSaveCurrentSlideNotes = async () => {
-    if (isSaving || isInsertingAudio) {
+    if (busy) {
       return;
     }
 
     setIsSaving(true);
-    setSaveStatus(`Saving Note for Slide ${activeSlide.index}...`);
+    setSaveStatus(`Saving slide ${activeSlide.index}...`);
 
     try {
       await saveNotesToFile([activeSlide]);
@@ -442,7 +475,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
   };
 
   const handleInsertSlideAudio = async () => {
-    if (isInsertingAudio || isSaving || isGenerating || isSyncing) {
+    if (busy) {
       return;
     }
 
@@ -466,7 +499,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
         return;
       }
 
-      setInsertStatus("Audio Inserted!");
+      setInsertStatus("Inserted!");
       scheduleStatusClear(setInsertStatus);
     } catch (error: unknown) {
       alertError("Insert error", error);
@@ -477,12 +510,12 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
   };
 
   const handleInsertAllAudio = async () => {
-    if (isInsertingAudio || isSaving || isGenerating || isSyncing) {
+    if (busy) {
       return;
     }
 
     setIsInsertingAudio(true);
-    setInsertStatus("Generating audio for all slides...");
+    setInsertStatus("Generating all audio...");
 
     try {
       const slidesAudio = await buildSlideAudioEntries(slides, setInsertStatus);
@@ -497,25 +530,42 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
 
       if (result.success) {
         alert("All audio inserted successfully!");
+        setInsertStatus("Inserted!");
+        scheduleStatusClear(setInsertStatus);
       } else {
         alert(`Failed to insert audio: ${result.error}`);
+        setInsertStatus("");
       }
     } catch (error: unknown) {
       alertError("Insert error", error);
+      setInsertStatus("");
     } finally {
       setIsInsertingAudio(false);
-      setInsertStatus("");
     }
   };
 
   const handlePlaySlide = async () => {
+    if (busy) {
+      return;
+    }
+
     try {
+      setIsPlaying(true);
+      setPlayStatus(`Playing slide ${activeSlide.index}...`);
       const result = await electronAPI.playSlide(getSlideNumber(activeSlide, activeSlideIndex));
       if (!result.success) {
         alert(`Failed to play slide: ${result.error}`);
+        setPlayStatus("");
+        return;
       }
+
+      setPlayStatus("Played");
+      scheduleStatusClear(setPlayStatus, 1200);
     } catch (error: unknown) {
       alertError("Play slide error", error);
+      setPlayStatus("");
+    } finally {
+      setIsPlaying(false);
     }
   };
 
@@ -524,17 +574,23 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
       "Syncing will override any unsaved changes in your notes. Do you want to proceed?",
     );
 
-  const syncSlides = async (request: Promise<SlidesElectronResult>, failureMessage: string) => {
+  const syncSlides = async (
+    request: Promise<SlidesElectronResult>,
+    failureMessage: string,
+    progressMessage: string,
+  ) => {
     if (!confirmSync()) {
       return;
     }
 
     setIsSyncing(true);
+    setSyncStatus(progressMessage);
 
     try {
       const result = await request;
       if (!result.success || !result.slides) {
         alert(`${failureMessage}: ${result.error || "Unknown error"}`);
+        setSyncStatus("");
         return;
       }
 
@@ -542,23 +598,26 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
       setActiveSlideIndex((currentIndex) =>
         Math.min(currentIndex, Math.max(0, result.slides!.length - 1)),
       );
+      setSyncStatus("Synced!");
+      scheduleStatusClear(setSyncStatus);
     } catch (error: unknown) {
       alertError(failureMessage, error);
+      setSyncStatus("");
     } finally {
       setIsSyncing(false);
     }
   };
 
   const handleSyncAll = async () => {
-    if (isSyncing || isSaving || isGenerating) {
+    if (busy) {
       return;
     }
 
-    await syncSlides(electronAPI.convertPptx(filePath), "Sync error");
+    await syncSlides(electronAPI.convertPptx(filePath), "Sync error", "Syncing all slides...");
   };
 
   const handleSyncSlide = async () => {
-    if (isSyncing || isSaving || isGenerating) {
+    if (busy) {
       return;
     }
 
@@ -568,11 +627,12 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
         slideIndex: getSlideNumber(activeSlide, activeSlideIndex),
       }),
       "Sync slide error",
+      `Syncing slide ${activeSlide.index}...`,
     );
   };
 
   const handleRemoveSlideAudio = async () => {
-    if (isGenerating || isSaving || isSyncing || isRemoving) {
+    if (busy) {
       return;
     }
 
@@ -598,7 +658,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
   };
 
   const handleRemoveAllAudio = async () => {
-    if (isGenerating || isSaving || isSyncing || isRemoving) {
+    if (busy) {
       return;
     }
 
@@ -609,14 +669,17 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
       const result = await runRemoveAudio("all");
       if (result.success) {
         alert("Successfully removed audio from all slides.");
+        setRemoveStatus("Removed!");
+        scheduleStatusClear(setRemoveStatus);
       } else {
         alert(`Failed to remove audio: ${result.error || "Unknown error"}`);
+        setRemoveStatus("");
       }
     } catch (error: unknown) {
       alertError("Remove audio error", error);
+      setRemoveStatus("");
     } finally {
       setIsRemoving(false);
-      setRemoveStatus("");
     }
   };
 
@@ -662,21 +725,14 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
       <ViewerHeader
         onBack={onBack}
         onOpenSettings={() => setSettingsOpen(true)}
-        onSyncAll={handleSyncAll}
-        onInsertAllAudio={handleInsertAllAudio}
-        onSaveAllNotes={handleSaveAllNotes}
-        onRemoveAllAudio={handleRemoveAllAudio}
-        onGenerateVideo={handleGenerateVideo}
-        isSyncing={isSyncing}
-        isSaving={isSaving}
-        isInsertingAudio={isInsertingAudio}
-        isRemoving={isRemoving}
-        isGenerating={isGenerating}
-        busy={busy}
-        saveStatus={saveStatus}
-        insertStatus={insertStatus}
-        removeStatus={removeStatus}
-        genStatus={genStatus}
+        actionStates={headerActionStates}
+        handlers={{
+          syncAll: handleSyncAll,
+          insertAllAudio: handleInsertAllAudio,
+          saveAllNotes: handleSaveAllNotes,
+          removeAllAudio: handleRemoveAllAudio,
+          generateVideo: handleGenerateVideo,
+        }}
       />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
@@ -733,29 +789,16 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
             />
           </div>
 
-          <Box
-            style={{
-              flex: 1,
-              height: `${100 - splitRatio}%`,
-              padding: "1rem",
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-            }}
-          >
+          <Stack p="md" h={`${100 - splitRatio}%`}>
             <SlideActionsBar
-              busy={busy}
-              xmlCliEnabled={xmlCliEnabled}
-              isSyncing={isSyncing}
-              isInsertingAudio={isInsertingAudio}
-              isSaving={isSaving}
-              isRemoving={isRemoving}
-              removeStatus={removeStatus}
-              onSyncSlide={handleSyncSlide}
-              onInsertSlideAudio={handleInsertSlideAudio}
-              onPlaySlide={handlePlaySlide}
-              onSaveCurrentSlideNotes={handleSaveCurrentSlideNotes}
-              onRemoveSlideAudio={handleRemoveSlideAudio}
+              actionStates={slideActionStates}
+              handlers={{
+                syncSlide: handleSyncSlide,
+                insertSlideAudio: handleInsertSlideAudio,
+                playSlide: handlePlaySlide,
+                saveSlideNotes: handleSaveCurrentSlideNotes,
+                removeSlideAudio: handleRemoveSlideAudio,
+              }}
             />
 
             <SsmlToolbar
@@ -778,7 +821,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
               assignTextareaRef={assignTextareaRef}
               getTextarea={getTextarea}
             />
-          </Box>
+          </Stack>
         </div>
       </div>
 

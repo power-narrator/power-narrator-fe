@@ -1,4 +1,4 @@
-import { ActionIcon, Box, Group, Menu, rem, TextInput, Tooltip } from "@mantine/core";
+import { ActionIcon, Box, Divider, Group, Menu, rem, TextInput, Tooltip } from "@mantine/core";
 import {
   IconArrowBackUp,
   IconArrowForwardUp,
@@ -42,16 +42,7 @@ export function SsmlToolbar({
   };
 
   return (
-    <Group
-      gap={0}
-      mb="xs"
-      style={{
-        border: "1px solid var(--mantine-color-dark-4)",
-        borderRadius: "4px",
-        padding: "4px",
-        background: "var(--mantine-color-dark-6)",
-      }}
-    >
+    <Group bd="1px solid dark.4" p="4" bg="6">
       <ActionIcon
         variant="subtle"
         color="gray"
@@ -71,9 +62,7 @@ export function SsmlToolbar({
         <IconArrowForwardUp style={{ width: rem(18), height: rem(18) }} />
       </ActionIcon>
 
-      <div
-        style={{ width: 1, height: 20, background: "var(--mantine-color-dark-4)", margin: "0 8px" }}
-      />
+      <Divider orientation="vertical" />
 
       <Menu
         shadow="md"
@@ -217,10 +206,6 @@ export function SsmlToolbar({
           <IconPilcrow style={{ width: rem(18), height: rem(18) }} />
         </ActionIcon>
       </Tooltip>
-
-      <div
-        style={{ width: 1, height: 20, background: "var(--mantine-color-dark-4)", margin: "0 8px" }}
-      />
     </Group>
   );
 }
