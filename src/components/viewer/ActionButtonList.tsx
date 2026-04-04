@@ -1,6 +1,6 @@
 import { Button, Group } from "@mantine/core";
 import type { ReactNode } from "react";
-import type { ActionButtonState } from "../../types/actions";
+import type { ActionButtonState } from "../../types/viewer";
 
 export interface ActionButtonItem<TKey extends string> {
   key: TKey;

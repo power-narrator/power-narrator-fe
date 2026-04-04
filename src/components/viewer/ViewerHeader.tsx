@@ -1,7 +1,7 @@
 import { ActionIcon, Button, Group } from "@mantine/core";
 import { IconRefresh, IconSettings } from "@tabler/icons-react";
 import type { ReactNode } from "react";
-import type { ActionButtonState } from "../../types/actions";
+import type { ActionButtonState } from "../../types/viewer";
 import { ActionButtonList } from "./ActionButtonList";
 
 export type ViewerHeaderActionKey =

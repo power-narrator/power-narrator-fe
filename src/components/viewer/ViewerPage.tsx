@@ -1,6 +1,6 @@
 import { Stack } from "@mantine/core";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { ActionButtonState } from "../../types/actions";
+import type { ActionButtonState } from "../../types/viewer";
 import type { Slide, SlideAudioEntry, SlidesElectronResult } from "../../types/electron";
 import { useSettings } from "../../context/useSettings";
 import { getErrorMessage } from "../../utils/errors";
