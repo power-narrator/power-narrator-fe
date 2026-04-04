@@ -1,4 +1,4 @@
-import { Box, Button, Group, Stack, Text, Title } from "@mantine/core";
+import { Stack } from "@mantine/core";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ActionButtonState } from "../../types/actions";
 import type { Slide, SlideAudioEntry, SlidesElectronResult } from "../../types/electron";
@@ -661,37 +661,8 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
     }
   };
 
-  if (!electronAPI) {
-    return (
-      <div style={{ height: "100vh", width: "100vw", display: "flex", flexDirection: "column" }}>
-        <Group
-          justify="space-between"
-          p="xs"
-          style={{
-            borderBottom: "1px solid var(--mantine-color-dark-4)",
-            background: "var(--mantine-color-dark-7)",
-          }}
-        >
-          <Button variant="subtle" size="xs" onClick={onBack}>
-            &larr; Back
-          </Button>
-          <Title order={5}>Viewer</Title>
-          <div />
-        </Group>
-        <Box p="xl">
-          <Text c="red" fw={600} mb="sm">
-            Electron preload API is unavailable.
-          </Text>
-          <Text size="sm" c="dimmed">
-            Please run this app inside the Electron desktop shell to use viewer actions.
-          </Text>
-        </Box>
-      </div>
-    );
-  }
-
   return (
-    <Stack gap="0" h="100vh">
+    <Stack gap="0" mih={0}>
       <ViewerHeader
         onBack={onBack}
         onOpenSettings={() => setSettingsOpen(true)}

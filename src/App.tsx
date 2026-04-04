@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActionIcon, Button, Center, Text } from "@mantine/core";
+import { ActionIcon, Button, Group, Loader, Stack, Text } from "@mantine/core";
 import { IconSettings } from "@tabler/icons-react";
 import { LandingPage } from "./components/LandingPage";
 import { SettingsModal } from "./components/settings/SettingsModal";
@@ -56,49 +56,53 @@ function App() {
     }
   };
 
-  if (viewState === "loading") {
-    return (
-      <Center h="100vh">
-        <Text ml="md">Processing...</Text>
-      </Center>
-    );
-  }
+  let content;
 
-  if (viewState === "error" && error) {
-    return (
-      <Center h="100vh" style={{ flexDirection: "column", gap: "1rem" }}>
+  if (viewState === "loading") {
+    content = (
+      <Group>
+        <Loader />
+        <Text>Processing...</Text>
+      </Group>
+    );
+  } else if (viewState === "error" && error) {
+    content = (
+      <>
         <Text c="red" size="xl">
           Error: {error}
         </Text>
         <Button variant="light" onClick={resetViewer}>
           Try Again
         </Button>
-      </Center>
+      </>
+    );
+  } else if (viewState === "viewing" && slides) {
+    content = <ViewerPage slides={slides} onBack={resetViewer} filePath={currentFilePath || ""} />;
+  } else {
+    content = (
+      <>
+        <ActionIcon
+          variant="subtle"
+          size="lg"
+          pos="absolute"
+          top={10}
+          left={10}
+          onClick={() => setSettingsOpen(true)}
+        >
+          <IconSettings size={24} />
+        </ActionIcon>
+        <LandingPage onSelectFile={handleManualSelect} />
+      </>
     );
   }
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
-      {viewState === "viewing" && slides ? (
-        <ViewerPage slides={slides} onBack={resetViewer} filePath={currentFilePath || ""} />
-      ) : (
-        <>
-          <ActionIcon
-            variant="subtle"
-            size="lg"
-            pos="absolute"
-            top={10}
-            left={10}
-            onClick={() => setSettingsOpen(true)}
-          >
-            <IconSettings size={24} />
-          </ActionIcon>
-          <LandingPage onSelectFile={handleManualSelect} />
-        </>
-      )}
-
+    <>
+      <Stack h="100dvh" justify="center" align={viewState === "viewing" ? "stretch" : "center"}>
+        {content}
+      </Stack>
       <SettingsModal opened={settingsOpen} onClose={() => setSettingsOpen(false)} />
-    </div>
+    </>
   );
 }
 
