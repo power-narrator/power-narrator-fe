@@ -51,9 +51,8 @@ const createWindow = () => {
         },
     });
 
-    if (!app.isPackaged) {
+    if (!app.isPackaged && !( process.env.NODE_ENV === "test" )) {
         mainWindow.loadURL('http://localhost:5173');
-        mainWindow.webContents.openDevTools();
     } else {
         mainWindow.loadFile(path.join(__dirname, '../dist-vite/index.html'));
         // Optional: Open DevTools on specific key combination for debugging production builds
