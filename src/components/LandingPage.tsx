@@ -1,4 +1,4 @@
-import { Text, Button } from "@mantine/core";
+import { Button, Stack, Text } from "@mantine/core";
 
 interface LandingPageProps {
   onSelectFile?: () => void;
@@ -6,22 +6,11 @@ interface LandingPageProps {
 
 export function LandingPage({ onSelectFile }: LandingPageProps) {
   return (
-    <div
-      style={{
-        height: "100%",
-        width: "100%",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        flexDirection: "column",
-      }}
-    >
+    <Stack>
       <Button onClick={onSelectFile} size="xl" variant="filled" color="blue">
         Select PowerPoint File
       </Button>
-      <Text c="dimmed" mt="md">
-        Select a .pptx file to begin
-      </Text>
-    </div>
+      <Text c="dimmed">Select a .pptx file to begin</Text>
+    </Stack>
   );
 }
