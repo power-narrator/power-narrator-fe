@@ -1,4 +1,4 @@
-import { ActionIcon, Divider, Group, Menu, TextInput } from "@mantine/core";
+import { ActionIcon, Divider, Group, Menu, Paper, TextInput } from "@mantine/core";
 import {
   IconArrowBackUp,
   IconArrowForwardUp,
@@ -68,11 +68,7 @@ export function SsmlToolbar({
   };
 
   return (
-    <Group
-      bd="1px solid var(--mantine-color-default-border)"
-      p="4"
-      bg="var(--mantine-color-default)"
-    >
+    <Paper component={Group} withBorder p="4" bg="var(--mantine-color-default)">
       <SsmlToolbarButton
         label="Undo"
         icon={<IconArrowBackUp size={18} />}
@@ -146,6 +142,6 @@ export function SsmlToolbar({
         icon={<IconPilcrow size={18} />}
         onClick={() => onInsertWrappedTag("<p>", "</p>")}
       />
-    </Group>
+    </Paper>
   );
 }
