@@ -714,15 +714,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
   }
 
   return (
-    <div
-      style={{
-        height: "100vh",
-        width: "100vw",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-      }}
-    >
+    <Stack h="100vh" w="100vw">
       <ViewerHeader
         onBack={onBack}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -818,6 +810,6 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
       </div>
 
       <SettingsModal opened={settingsOpen} onClose={() => setSettingsOpen(false)} />
-    </div>
+    </Stack>
   );
 }

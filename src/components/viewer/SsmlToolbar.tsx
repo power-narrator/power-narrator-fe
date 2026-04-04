@@ -42,40 +42,41 @@ export function SsmlToolbar({
   };
 
   return (
-    <Group bd="1px solid dark.4" p="4" bg="dark.6">
-      <ActionIcon
-        variant="subtle"
-        color="gray"
-        size="lg"
-        onClick={onUndo}
-        disabled={historyIndex === 0}
-      >
-        <IconArrowBackUp style={{ width: rem(18), height: rem(18) }} />
-      </ActionIcon>
-      <ActionIcon
-        variant="subtle"
-        color="gray"
-        size="lg"
-        onClick={onRedo}
-        disabled={historyIndex === historyLength - 1}
-      >
-        <IconArrowForwardUp style={{ width: rem(18), height: rem(18) }} />
-      </ActionIcon>
+    <Group
+      bd="1px solid var(--mantine-color-default-border)"
+      p="4"
+      bg="var(--mantine-color-default)"
+    >
+      <Tooltip label="Undo">
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          size="lg"
+          onClick={onUndo}
+          disabled={historyIndex === 0}
+        >
+          <IconArrowBackUp size={18} />
+        </ActionIcon>
+      </Tooltip>
+      <Tooltip label="Redo">
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          size="lg"
+          onClick={onRedo}
+          disabled={historyIndex === historyLength - 1}
+        >
+          <IconArrowForwardUp size={18} />
+        </ActionIcon>
+      </Tooltip>
 
       <Divider orientation="vertical" />
 
-      <Menu
-        shadow="md"
-        width={220}
-        trigger="click"
-        position="bottom-start"
-        offset={0}
-        closeOnItemClick={false}
-      >
+      <Menu trigger="hover" offset={0} closeOnItemClick={false}>
         <Menu.Target>
-          <ActionIcon variant="subtle" color="gray" size="lg" aria-label="Break time">
-            <IconPlayerPause style={{ width: rem(18), height: rem(18) }} />
-            <IconChevronDown style={{ width: rem(12), height: rem(12), marginLeft: 4 }} />
+          <ActionIcon variant="subtle" color="gray" size="lg">
+            <IconPlayerPause size={18} />
+            <IconChevronDown size={12} />
           </ActionIcon>
         </Menu.Target>
         <Menu.Dropdown>
@@ -106,12 +107,14 @@ export function SsmlToolbar({
           </Menu.Item>
 
           <Menu.Divider />
+
           <Menu.Label>Custom</Menu.Label>
-          <Box p="xs" pt={0}>
+          <Menu.Item>
             <Group gap={5}>
               <TextInput
                 placeholder="e.g. 3s or 500ms"
                 size="xs"
+                flex="1"
                 value={customBreak}
                 onChange={(event) => setCustomBreak(event.currentTarget.value)}
                 onKeyDown={(event) => {
@@ -119,21 +122,20 @@ export function SsmlToolbar({
                     submitCustomBreak();
                   }
                 }}
-                style={{ flex: 1 }}
               />
               <ActionIcon variant="filled" color="blue" size="sm" onClick={submitCustomBreak}>
                 <IconPlus size={14} />
               </ActionIcon>
             </Group>
-          </Box>
+          </Menu.Item>
         </Menu.Dropdown>
       </Menu>
 
-      <Menu shadow="md" width={200} trigger="hover" position="bottom-start" offset={0}>
+      <Menu trigger="hover" offset={0}>
         <Menu.Target>
-          <ActionIcon variant="subtle" color="gray" size="lg" aria-label="Say As">
-            <IconKeyboard style={{ width: rem(18), height: rem(18) }} />
-            <IconChevronDown style={{ width: rem(12), height: rem(12), marginLeft: 4 }} />
+          <ActionIcon variant="subtle" color="gray" size="lg">
+            <IconKeyboard size={18} />
+            <IconChevronDown size={12} />
           </ActionIcon>
         </Menu.Target>
         <Menu.Dropdown>
@@ -171,11 +173,11 @@ export function SsmlToolbar({
         </Menu.Dropdown>
       </Menu>
 
-      <Menu shadow="md" width={200} trigger="hover" position="bottom-start" offset={0}>
+      <Menu trigger="hover" offset={0}>
         <Menu.Target>
-          <ActionIcon variant="subtle" color="gray" size="lg" aria-label="Emphasis">
-            <IconVolume style={{ width: rem(18), height: rem(18) }} />
-            <IconChevronDown style={{ width: rem(12), height: rem(12), marginLeft: 4 }} />
+          <ActionIcon variant="subtle" color="gray" size="lg">
+            <IconVolume size={18} />
+            <IconChevronDown size={12} />
           </ActionIcon>
         </Menu.Target>
         <Menu.Dropdown>
@@ -203,7 +205,7 @@ export function SsmlToolbar({
           size="lg"
           onClick={() => onInsertWrappedTag("<p>", "</p>")}
         >
-          <IconPilcrow style={{ width: rem(18), height: rem(18) }} />
+          <IconPilcrow size={18} />
         </ActionIcon>
       </Tooltip>
     </Group>

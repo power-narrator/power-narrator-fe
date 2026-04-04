@@ -5,7 +5,5 @@ interface SlidePreviewPaneProps {
 }
 
 export function SlidePreviewPane({ activeSlideSrc }: SlidePreviewPaneProps) {
-  return (
-    <Image src={activeSlideSrc} fit="contain" style={{ maxHeight: "100%", maxWidth: "100%" }} />
-  );
+  return <Image src={activeSlideSrc} fit="contain" mah="100%" />;
 }
