@@ -31,7 +31,7 @@ export function NotesSectionList({
   const speakerOptions = getSpeakerOptions(mappings);
 
   return (
-    <Stack gap="xs" mih="0">
+    <Stack gap="xs" mih={0}>
       <Text size="sm">Presenter Notes</Text>
       <ScrollArea type="auto">
         <Stack>

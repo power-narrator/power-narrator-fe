@@ -13,11 +13,7 @@ export function SlideThumbnailList({
   onSelectSlide,
 }: SlideThumbnailListProps) {
   return (
-    <ScrollArea
-      w="250"
-      type="auto"
-      style={{ borderRight: "1px solid var(--mantine-color-default-border)" }}
-    >
+    <ScrollArea type="auto" h="100%">
       <Stack gap="xs" p="md">
         {slides.map((slide, index) => (
           <Box
