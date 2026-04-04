@@ -77,7 +77,14 @@ function App() {
       </>
     );
   } else if (viewState === "viewing" && slides) {
-    content = <ViewerPage slides={slides} onBack={resetViewer} filePath={currentFilePath || ""} />;
+    content = (
+      <ViewerPage
+        slides={slides}
+        onBack={resetViewer}
+        onOpenSettings={() => setSettingsOpen(true)}
+        filePath={currentFilePath || ""}
+      />
+    );
   } else {
     content = (
       <>
