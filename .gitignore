@@ -36,3 +36,7 @@ release_package/
 # Python
 __pycache__/
 *.pyc
+
+# Tests
+playwright-report/
+test-results/
