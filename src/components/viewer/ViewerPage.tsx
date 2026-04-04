@@ -7,7 +7,6 @@ import { getErrorMessage } from "../../utils/errors";
 import type { NoteSection } from "../../types/notes";
 import { formatNotes, parseNotes } from "../../utils/notes";
 import { getAudioBuffer } from "../../utils/tts";
-import { SettingsModal } from "../settings/SettingsModal";
 import { NotesSectionList } from "./NotesSectionList";
 import { SlideActionsBar, type SlideActionBarKey } from "./SlideActionsBar";
 import { SlidePreviewPane } from "./SlidePreviewPane";
@@ -20,6 +19,7 @@ interface ViewerPageProps {
   slides: Slide[];
   filePath: string;
   onBack: () => void;
+  onOpenSettings: () => void;
 }
 
 const EMPTY_SLIDE: Slide = {
@@ -33,12 +33,11 @@ function getSlideNumber(slide: Slide, fallbackIndex: number) {
   return slide.index || fallbackIndex + 1;
 }
 
-export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPageProps) {
+export function ViewerPage({ slides: initialSlides, filePath, onBack, onOpenSettings }: ViewerPageProps) {
   const [slides, setSlides] = useState<Slide[]>(initialSlides);
   const [history, setHistory] = useState<Slide[][]>([initialSlides]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const historyIndexRef = useRef(0);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -665,7 +664,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
     <Stack gap="0" mih={0}>
       <ViewerHeader
         onBack={onBack}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={onOpenSettings}
         actionStates={headerActionStates}
         handlers={{
           syncAll: handleSyncAll,
@@ -733,8 +732,6 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
           </Split>
         </Split.Pane>
       </Split>
-
-      <SettingsModal opened={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </Stack>
   );
 }
