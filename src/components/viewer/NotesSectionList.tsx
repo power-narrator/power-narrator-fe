@@ -1,9 +1,19 @@
-import { Button, Group, ScrollArea, Select, Stack, Text, Textarea } from "@mantine/core";
-import { IconPlus } from "@tabler/icons-react";
+import {
+  Button,
+  Divider,
+  Group,
+  Paper,
+  ScrollArea,
+  Select,
+  Stack,
+  Text,
+  Textarea,
+} from "@mantine/core";
 import type { NoteSection } from "../../types/notes";
 import { getSpeakerOptions } from "../../utils/viewer";
 import type { Voice } from "../../types/voice";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
+import { IconPlus } from "@tabler/icons-react";
 
 interface NotesSectionListProps {
   sections: NoteSection[];
@@ -36,20 +46,15 @@ export function NotesSectionList({
       <ScrollArea type="auto">
         <Stack>
           {sections.map((section, index) => (
-            <Stack
+            <Paper
+              component={Stack}
+              withBorder
+              bg="var(--mantine-color-default)"
               gap="0"
               key={index} // oxlint-disable-line react/no-array-index-key cannot be unique with data to refocus
-              bd="1px solid var(--mantine-color-default-border)"
               bdrs="4"
             >
-              <Group
-                justify="space-between"
-                p="xs"
-                bg="var(--mantine-color-default)"
-                style={{
-                  borderBottom: "1px solid var(--mantine-color-default-border)",
-                }}
-              >
+              <Group justify="space-between" p="xs">
                 <Select
                   data={speakerOptions}
                   value={section.speaker}
@@ -66,12 +71,14 @@ export function NotesSectionList({
                   Remove Section
                 </Button>
               </Group>
+              <Divider />
               <SectionPreviewButtons
                 section={section}
                 mappings={mappings}
                 onFocus={() => onFocusSection(index)}
                 getTextarea={() => getTextarea(index)}
               />
+              <Divider />
               <Textarea
                 ref={(element) => assignTextareaRef(index, element)}
                 onFocus={() => onFocusSection(index)}
@@ -79,13 +86,8 @@ export function NotesSectionList({
                 onChange={(event) => onSectionTextChange(index, event.target.value)}
                 ff="monospace"
                 resize="vertical"
-                styles={{
-                  input: {
-                    minHeight: "110px",
-                  },
-                }}
               />
-            </Stack>
+            </Paper>
           ))}
           <Button
             variant="light"
