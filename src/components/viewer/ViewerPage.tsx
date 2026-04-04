@@ -61,9 +61,10 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
     null,
   );
   const statusTimeoutsRef = useRef<number[]>([]);
-  const { mappings } = useSettings();
+  const { mappings, xmlCliEnabled } = useSettings();
   const electronAPI = window.electronAPI;
   const busy = isGenerating || isSaving || isSyncing || isInsertingAudio || isRemoving || isPlaying;
+  const busyOrXml = busy || xmlCliEnabled;
 
   const headerActionStates: Record<ViewerHeaderActionKey, ActionButtonState> = {
     syncAll: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
@@ -74,7 +75,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
     },
     saveAllNotes: { loading: isSaving, busy: busy && !isSaving, status: saveStatus },
     removeAllAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
-    generateVideo: { loading: isGenerating, busy: busy && !isGenerating, status: genStatus },
+    generateVideo: { loading: isGenerating, busy: busyOrXml && !isGenerating, status: genStatus },
   };
 
   const slideActionStates: Record<SlideActionBarKey, ActionButtonState> = {
@@ -84,7 +85,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
       busy: busy && !isInsertingAudio,
       status: insertStatus,
     },
-    playSlide: { loading: isPlaying, busy: busy && !isPlaying, status: playStatus },
+    playSlide: { loading: isPlaying, busy: busyOrXml && !isPlaying, status: playStatus },
     saveSlideNotes: { loading: isSaving, busy: busy && !isSaving, status: saveStatus },
     removeSlideAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
   };
