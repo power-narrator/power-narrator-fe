@@ -1,7 +1,7 @@
 import { Stack } from "@mantine/core";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ActionButtonState } from "../../types/viewer";
-import type { Slide, SlideAudioEntry, SlidesElectronResult } from "../../types/electron";
+import type { Slide, SlidesElectronResult } from "../../types/electron";
 import { useSettings } from "../../context/useSettings";
 import { getErrorMessage } from "../../utils/errors";
 import type { NoteSection } from "../../types/notes";
@@ -33,7 +33,12 @@ function getSlideNumber(slide: Slide, fallbackIndex: number) {
   return slide.index || fallbackIndex + 1;
 }
 
-export function ViewerPage({ slides: initialSlides, filePath, onBack, onOpenSettings }: ViewerPageProps) {
+export function ViewerPage({
+  slides: initialSlides,
+  filePath,
+  onBack,
+  onOpenSettings,
+}: ViewerPageProps) {
   const [slides, setSlides] = useState<Slide[]>(initialSlides);
   const [history, setHistory] = useState<Slide[][]>([initialSlides]);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -150,32 +155,37 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack, onOpenSett
     slidesToProcess: Slide[],
     onProgress: (message: string) => void,
   ) {
-    const audioEntries: SlideAudioEntry[] = [];
-
-    for (const slide of slidesToProcess) {
-      if (!slide.notes?.trim()) {
-        continue;
-      }
-
-      onProgress(`Generating audio for slide ${slide.index}...`);
-      const sections = parseNotes(slide.notes);
-
-      for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex += 1) {
-        const section = sections[sectionIndex];
-        if (!section.text.trim()) {
-          continue;
+    const slideAudioGroups = await Promise.all(
+      slidesToProcess.map(async (slide) => {
+        if (!slide.notes?.trim()) {
+          return [];
         }
 
-        const buffer = await getAudioBuffer(section.text, mappings[section.speaker] || undefined);
-        audioEntries.push({
-          index: slide.index,
-          sectionIndex,
-          audioData: new Uint8Array(buffer),
-        });
-      }
-    }
+        onProgress(`Generating audio for slide ${slide.index}...`);
+        const sections = parseNotes(slide.notes);
+        const sectionAudioEntries = await Promise.all(
+          sections.map(async (section, sectionIndex) => {
+            if (!section.text.trim()) {
+              return null;
+            }
 
-    return audioEntries;
+            const buffer = await getAudioBuffer(
+              section.text,
+              mappings[section.speaker] || undefined,
+            );
+            return {
+              index: slide.index,
+              sectionIndex,
+              audioData: new Uint8Array(buffer),
+            };
+          }),
+        );
+
+        return sectionAudioEntries.filter((entry) => entry !== null);
+      }),
+    );
+
+    return slideAudioGroups.flat();
   }
 
   function runRemoveAudio(scope: "slide" | "all") {
@@ -373,19 +383,17 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack, onOpenSett
 
       setGenStatus("Preparing audio...");
 
-      const slidesAudio: SlideAudioEntry[] = [];
-      for (const slide of slides) {
-        if (!slide.notes?.trim()) {
-          continue;
-        }
-
-        setGenStatus(`Generating audio for slide ${slide.index}...`);
-        const buffer = await getAudioBuffer(slide.notes, undefined);
-        slidesAudio.push({
-          index: slide.index,
-          audioData: new Uint8Array(buffer),
-        });
-      }
+      const audioSlides = slides.filter((slide) => slide.notes?.trim());
+      const slidesAudio = await Promise.all(
+        audioSlides.map(async (slide) => {
+          setGenStatus(`Generating audio for slide ${slide.index}...`);
+          const buffer = await getAudioBuffer(slide.notes, undefined);
+          return {
+            index: slide.index,
+            audioData: new Uint8Array(buffer),
+          };
+        }),
+      );
 
       setGenStatus("Rendering video...");
       const result = await electronAPI.generateVideo({
