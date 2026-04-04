@@ -20,7 +20,7 @@ export function ActionButtonList<TKey extends string>({
   handlers,
 }: ActionButtonListProps<TKey>) {
   return (
-    <Group gap="md">
+    <Group>
       {items.map((item) => {
         const actionState = actionStates[item.key];
 

@@ -36,13 +36,13 @@ export function NotesSectionList({
       <ScrollArea type="auto">
         <Stack>
           {sections.map((section, index) => (
-            <Stack gap="0" key={index} bd="1px solid dark.4" bdrs="4">
+            <Stack gap="0" key={index} bd="1px solid var(--mantine-color-default-border)" bdrs="4">
               <Group
                 justify="space-between"
                 p="xs"
-                bg="dark.6"
+                bg="var(--mantine-color-default)"
                 style={{
-                  borderBottom: "1px solid dark.4",
+                  borderBottom: "1px solid var(--mantine-color-default-border)",
                 }}
               >
                 <Select

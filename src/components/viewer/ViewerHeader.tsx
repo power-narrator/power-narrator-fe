@@ -37,7 +37,7 @@ export function ViewerHeader({
       justify="space-between"
       p="xs"
       style={{
-        borderBottom: "1px solid var(--mantine-color-dark-4)",
+        borderBottom: "1px solid var(--mantine-color-default-border)",
       }}
     >
       <Group>

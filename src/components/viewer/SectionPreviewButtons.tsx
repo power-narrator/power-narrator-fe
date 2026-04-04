@@ -105,7 +105,11 @@ export function SectionPreviewButtons({
   const isAnyPreviewActive = activePreviewTarget !== null;
 
   return (
-    <Stack p="xs" gap="xs" style={{ borderBottom: "1px solid dark.4" }}>
+    <Stack
+      p="xs"
+      gap="xs"
+      style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}
+    >
       <audio
         ref={audioRef}
         src={audioUrl || ""}
