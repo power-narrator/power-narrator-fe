@@ -1,4 +1,4 @@
-import { createContext, useCallback, useEffect, useState } from "react";
+import { createContext, useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { Voice } from "../types/voice";
 
@@ -48,12 +48,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       });
   }, [loadSettings]);
 
-  const value = {
-    mappings,
-    xmlCliEnabled,
-    saveMappings,
-    setXmlCliEnabled,
-  };
+  const value = useMemo(
+    () => ({
+      mappings,
+      xmlCliEnabled,
+      saveMappings,
+      setXmlCliEnabled,
+    }),
+    [mappings, saveMappings, setXmlCliEnabled, xmlCliEnabled],
+  );
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
