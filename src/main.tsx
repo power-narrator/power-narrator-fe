@@ -4,6 +4,7 @@ import { MantineProvider } from "@mantine/core";
 import App from "./App.tsx";
 import { SettingsProvider } from "./context/SettingsContext.tsx";
 import "@mantine/core/styles.css";
+import "@gfazioli/mantine-split-pane/styles.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

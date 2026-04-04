@@ -14,6 +14,7 @@ import { SlidePreviewPane } from "./SlidePreviewPane";
 import { SlideThumbnailList } from "./SlideThumbnailList";
 import { SsmlToolbar } from "./SsmlToolbar";
 import { ViewerHeader, type ViewerHeaderActionKey } from "./ViewerHeader";
+import { Split } from "@gfazioli/mantine-split-pane";
 
 interface ViewerPageProps {
   slides: Slide[];
@@ -40,7 +41,6 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
-  const [splitRatio, setSplitRatio] = useState(40);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -55,7 +55,6 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
   const [playStatus, setPlayStatus] = useState("");
 
   const textareasRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
-  const splitContainerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSelectionRef = useRef<{ sectionIndex: number; start: number; end: number } | null>(
     null,
@@ -355,28 +354,6 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
   };
 
   const getTextarea = (index: number) => textareasRefs.current[index] || null;
-
-  const handleResizeMouseDown = (event: React.MouseEvent) => {
-    event.preventDefault();
-    const startY = event.clientY;
-    const startSplit = splitRatio;
-    const containerHeight = splitContainerRef.current?.clientHeight || 1;
-
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      const deltaY = moveEvent.clientY - startY;
-      const deltaPercentage = (deltaY / containerHeight) * 100;
-      const nextSplit = Math.min(Math.max(startSplit + deltaPercentage, 20), 80);
-      setSplitRatio(nextSplit);
-    };
-
-    const onMouseUp = () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-    };
-
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  };
 
   const handleGenerateVideo = async () => {
     if (busy) {
@@ -714,7 +691,7 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
   }
 
   return (
-    <Stack h="100vh" w="100vw">
+    <Stack gap="0" h="100vh">
       <ViewerHeader
         onBack={onBack}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -728,86 +705,63 @@ export function ViewerPage({ slides: initialSlides, filePath, onBack }: ViewerPa
         }}
       />
 
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        <SlideThumbnailList
-          slides={slides}
-          activeSlideIndex={activeSlideIndex}
-          onSelectSlide={setActiveSlideIndex}
-        />
+      <Split mih={0}>
+        <Split.Pane initialWidth="10%">
+          <SlideThumbnailList
+            slides={slides}
+            activeSlideIndex={activeSlideIndex}
+            onSelectSlide={setActiveSlideIndex}
+          />
+        </Split.Pane>
 
-        <Stack ref={splitContainerRef} flex="1">
-          <Box
-            style={{
-              height: `${splitRatio}%`,
-              position: "relative",
-              padding: "1rem",
-              background: "var(--mantine-color-dark-8)",
-              overflow: "hidden",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <SlidePreviewPane activeSlideSrc={activeSlide.src} />
-          </Box>
+        <Split.Resizer />
 
-          <div
-            onMouseDown={handleResizeMouseDown}
-            style={{
-              height: "6px",
-              background: "var(--mantine-color-dark-4)",
-              cursor: "ns-resize",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 10,
-            }}
-          >
-            <div
-              style={{
-                width: 30,
-                height: 2,
-                background: "var(--mantine-color-dimmed)",
-                borderRadius: 1,
-              }}
-            />
-          </div>
+        <Split.Pane grow>
+          <Split orientation="horizontal" h="100%">
+            <Split.Pane initialHeight="30%">
+              <SlidePreviewPane activeSlideSrc={activeSlide.src} />
+            </Split.Pane>
 
-          <Stack p="md" h={`${100 - splitRatio}%`}>
-            <SlideActionsBar
-              actionStates={slideActionStates}
-              handlers={{
-                syncSlide: handleSyncSlide,
-                insertSlideAudio: handleInsertSlideAudio,
-                playSlide: handlePlaySlide,
-                saveSlideNotes: handleSaveCurrentSlideNotes,
-                removeSlideAudio: handleRemoveSlideAudio,
-              }}
-            />
+            <Split.Resizer />
 
-            <SsmlToolbar
-              historyIndex={historyIndex}
-              historyLength={history.length}
-              onUndo={handleUndo}
-              onRedo={handleRedo}
-              onInsertSelfClosingTag={insertSelfClosingTag}
-              onInsertWrappedTag={insertWrappedTag}
-            />
+            <Split.Pane grow>
+              <Stack p="md" h="100%">
+                <SlideActionsBar
+                  actionStates={slideActionStates}
+                  handlers={{
+                    syncSlide: handleSyncSlide,
+                    insertSlideAudio: handleInsertSlideAudio,
+                    playSlide: handlePlaySlide,
+                    saveSlideNotes: handleSaveCurrentSlideNotes,
+                    removeSlideAudio: handleRemoveSlideAudio,
+                  }}
+                />
 
-            <NotesSectionList
-              sections={activeSections}
-              mappings={mappings}
-              onFocusSection={setActiveSectionIndex}
-              onSpeakerChange={handleSpeakerChange}
-              onSectionTextChange={handleSectionTextChange}
-              onDeleteSection={handleDeleteSection}
-              onAddSection={handleAddSection}
-              assignTextareaRef={assignTextareaRef}
-              getTextarea={getTextarea}
-            />
-          </Stack>
-        </Stack>
-      </div>
+                <SsmlToolbar
+                  historyIndex={historyIndex}
+                  historyLength={history.length}
+                  onUndo={handleUndo}
+                  onRedo={handleRedo}
+                  onInsertSelfClosingTag={insertSelfClosingTag}
+                  onInsertWrappedTag={insertWrappedTag}
+                />
+
+                <NotesSectionList
+                  sections={activeSections}
+                  mappings={mappings}
+                  onFocusSection={setActiveSectionIndex}
+                  onSpeakerChange={handleSpeakerChange}
+                  onSectionTextChange={handleSectionTextChange}
+                  onDeleteSection={handleDeleteSection}
+                  onAddSection={handleAddSection}
+                  assignTextareaRef={assignTextareaRef}
+                  getTextarea={getTextarea}
+                />
+              </Stack>
+            </Split.Pane>
+          </Split>
+        </Split.Pane>
+      </Split>
 
       <SettingsModal opened={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </Stack>
