@@ -95,27 +95,24 @@ export function SsmlToolbar({
         }))}
       >
         <Menu.Divider />
-
         <Menu.Label>Custom</Menu.Label>
-        <Menu.Item>
-          <Group gap="xs">
-            <TextInput
-              placeholder="e.g. 3s or 500ms"
-              size="xs"
-              flex="1"
-              value={customBreak}
-              onChange={(event) => setCustomBreak(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  submitCustomBreak();
-                }
-              }}
-            />
-            <ActionIcon variant="filled" color="blue" size="sm" onClick={submitCustomBreak}>
-              <IconPlus size={14} />
-            </ActionIcon>
-          </Group>
-        </Menu.Item>
+        <Group gap="xs">
+          <TextInput
+            placeholder="e.g. 3s or 500ms"
+            size="xs"
+            flex="1"
+            value={customBreak}
+            onChange={(event) => setCustomBreak(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                submitCustomBreak();
+              }
+            }}
+          />
+          <ActionIcon variant="filled" color="blue" size="sm" onClick={submitCustomBreak}>
+            <IconPlus size={14} />
+          </ActionIcon>
+        </Group>
       </SsmlToolbarMenu>
 
       <SsmlToolbarMenu
