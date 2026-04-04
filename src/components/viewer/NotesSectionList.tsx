@@ -36,7 +36,12 @@ export function NotesSectionList({
       <ScrollArea type="auto">
         <Stack>
           {sections.map((section, index) => (
-            <Stack gap="0" key={index} bd="1px solid var(--mantine-color-default-border)" bdrs="4">
+            <Stack
+              gap="0"
+              key={index} // oxlint-disable-line react/no-array-index-key cannot be unique with data to refocus
+              bd="1px solid var(--mantine-color-default-border)"
+              bdrs="4"
+            >
               <Group
                 justify="space-between"
                 p="xs"
@@ -61,14 +66,12 @@ export function NotesSectionList({
                   Remove Section
                 </Button>
               </Group>
-
               <SectionPreviewButtons
                 section={section}
                 mappings={mappings}
                 onFocus={() => onFocusSection(index)}
                 getTextarea={() => getTextarea(index)}
               />
-
               <Textarea
                 ref={(element) => assignTextareaRef(index, element)}
                 onFocus={() => onFocusSection(index)}
