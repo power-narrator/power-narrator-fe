@@ -25,6 +25,7 @@ interface NotesSectionListProps {
   onAddSection: () => void;
   assignTextareaRef: (index: number, element: HTMLTextAreaElement | null) => void;
   getTextarea: (index: number) => HTMLTextAreaElement | null;
+  slideIndex: number;
 }
 
 export function NotesSectionList({
@@ -37,6 +38,7 @@ export function NotesSectionList({
   onAddSection,
   assignTextareaRef,
   getTextarea,
+  slideIndex,
 }: NotesSectionListProps) {
   const speakerOptions = getSpeakerOptions(mappings);
 
@@ -73,6 +75,7 @@ export function NotesSectionList({
               </Group>
               <Divider />
               <SectionPreviewButtons
+                id={`${slideIndex}-${index}`}
                 section={section}
                 mappings={mappings}
                 onFocus={() => onFocusSection(index)}

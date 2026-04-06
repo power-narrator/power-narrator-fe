@@ -724,10 +724,11 @@ export function ViewerPage({
                   onInsertWrappedTag={insertWrappedTag}
                 />
 
-                <NotesSectionList
-                  sections={activeSections}
-                  mappings={mappings}
-                  onFocusSection={setActiveSectionIndex}
+                  <NotesSectionList
+                    sections={activeSections}
+                    mappings={mappings}
+                    slideIndex={activeSlide.index}
+                    onFocusSection={setActiveSectionIndex}
                   onSpeakerChange={handleSpeakerChange}
                   onSectionTextChange={handleSectionTextChange}
                   onDeleteSection={handleDeleteSection}
