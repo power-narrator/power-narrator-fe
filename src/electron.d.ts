@@ -40,7 +40,7 @@ declare global {
         slideIndex: number;
       }) => Promise<BasicElectronResult>;
       playSlide: (slideIndex: number) => Promise<BasicElectronResult>;
-      syncSlide: (payload: {
+      reloadSlide: (payload: {
         filePath: string;
         slideIndex: number;
       }) => Promise<SlidesElectronResult>;

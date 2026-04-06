@@ -82,7 +82,7 @@ export function ViewerPage({
   };
 
   const slideActionStates: Record<SlideActionBarKey, ActionButtonState> = {
-    syncSlide: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
+    reloadSlide: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
     insertSlideAudio: {
       loading: isInsertingAudio,
       busy: busy && !isInsertingAudio,
@@ -601,13 +601,13 @@ export function ViewerPage({
     await syncSlides(electronAPI.convertPptx(filePath), "Sync error", "Syncing all slides...");
   };
 
-  const handleSyncSlide = async () => {
+  const handleReloadSlide = async () => {
     if (busy) {
       return;
     }
 
     await syncSlides(
-      electronAPI.syncSlide({
+      electronAPI.reloadSlide({
         filePath,
         slideIndex: getSlideNumber(activeSlide, activeSlideIndex),
       }),
@@ -707,7 +707,7 @@ export function ViewerPage({
                 <SlideActionsBar
                   actionStates={slideActionStates}
                   handlers={{
-                    syncSlide: handleSyncSlide,
+                    reloadSlide: handleReloadSlide,
                     insertSlideAudio: handleInsertSlideAudio,
                     playSlide: handlePlaySlide,
                     saveSlideNotes: handleSaveCurrentSlideNotes,

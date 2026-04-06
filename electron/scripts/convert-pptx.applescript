@@ -223,6 +223,11 @@ on cleanNotes(str)
     set text item delimiters to "   " 
     set str to itemsList as text
     
+    set text item delimiters to (return & linefeed)
+    set itemsList to text items of str
+    set text item delimiters to "\\n"
+    set str to itemsList as text
+    
     set text item delimiters to return
     set itemsList to text items of str
     set text item delimiters to "\\n"

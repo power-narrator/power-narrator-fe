@@ -20,7 +20,7 @@ const electronAPI = {
     generateVideo: (payload: { filePath: string; slidesAudio: unknown[]; videoOutputPath: string }) => ipcRenderer.invoke('generate-video', payload),
     removeAudio: (payload: { filePath: string; scope: 'slide' | 'all'; slideIndex: number }) => ipcRenderer.invoke('remove-audio', payload),
     playSlide: (slideIndex: number) => ipcRenderer.invoke('play-slide', slideIndex),
-    syncSlide: (payload: { filePath: string; slideIndex: number }) => ipcRenderer.invoke('sync-slide', payload),
+    reloadSlide: (payload: { filePath: string; slideIndex: number }) => ipcRenderer.invoke('reload-slide', payload),
     getVideoSavePath: () => ipcRenderer.invoke('get-video-save-path'),
 };
 

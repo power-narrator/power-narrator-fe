@@ -25,10 +25,10 @@ export class LocalTtsProvider implements TtsProvider {
         const sanitizedText = ssmlBody.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
 
         const resp = await fetch(url.toString(), {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: sanitizedText
-        });
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: sanitizedText
+            });
 
         if (!resp.ok) {
             throw new Error(`Local TTS failed: ${resp.status} ${resp.statusText}`);

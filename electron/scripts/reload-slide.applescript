@@ -116,7 +116,8 @@ on run argv
     end if
 	
 	-- Return Format: ImageRelPath|||Notes
-	return "slides/" & slideName & "|||" & notesText
+	set safeNotes to my cleanNotes(notesText)
+	return "slides/" & slideName & "|||" & safeNotes
 	
 end run
 
@@ -125,3 +126,60 @@ on coveredPOSIXPath(thePath)
     -- Just return the path, usually fine.
     return thePath
 end coveredPOSIXPath
+
+on cleanNotes(str)
+    if str is missing value then return ""
+    set str to str as text
+    set text item delimiters to "|||"
+    set itemsList to text items of str
+    set text item delimiters to "   " 
+    set str to itemsList as text
+    
+    set text item delimiters to (return & linefeed)
+    set itemsList to text items of str
+    set text item delimiters to "\\n"
+    set str to itemsList as text
+    
+    set text item delimiters to return
+    set itemsList to text items of str
+    set text item delimiters to "\\n"
+    set str to itemsList as text
+    
+    set text item delimiters to linefeed
+    set itemsList to text items of str
+    set text item delimiters to "\\n"
+    set str to itemsList as text
+    
+    -- Replace smart quotes and dashes to prevent encoding issues
+    set text item delimiters to "’"
+    set itemsList to text items of str
+    set text item delimiters to "'"
+    set str to itemsList as text
+    
+    set text item delimiters to "‘"
+    set itemsList to text items of str
+    set text item delimiters to "'"
+    set str to itemsList as text
+    
+    set text item delimiters to "“"
+    set itemsList to text items of str
+    set text item delimiters to "\""
+    set str to itemsList as text
+    
+    set text item delimiters to "”"
+    set itemsList to text items of str
+    set text item delimiters to "\""
+    set str to itemsList as text
+    
+    set text item delimiters to "–" -- En dash
+    set itemsList to text items of str
+    set text item delimiters to "-"
+    set str to itemsList as text
+    
+    set text item delimiters to "—" -- Em dash
+    set itemsList to text items of str
+    set text item delimiters to "--"
+    set str to itemsList as text
+
+    return str
+end cleanNotes
