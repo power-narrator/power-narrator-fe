@@ -669,7 +669,7 @@ export function ViewerPage({
   };
 
   return (
-    <Stack gap="0" mih={0}>
+    <Stack gap="0" h="100%" mih={0}>
       <ViewerHeader
         onBack={onBack}
         onOpenSettings={onOpenSettings}
@@ -683,7 +683,7 @@ export function ViewerPage({
         }}
       />
 
-      <Split mih={0}>
+      <Split mih={0} flex={1}>
         <Split.Pane initialWidth="10%">
           <SlideThumbnailList
             slides={slides}
