@@ -40,3 +40,4 @@ __pycache__/
 # Tests
 playwright-report/
 test-results/
+release/
