@@ -1,124 +1,115 @@
-import { useState } from 'react';
-import { Center, Text, ActionIcon } from '@mantine/core';
-import { IconSettings } from '@tabler/icons-react';
-import { LandingPage } from './components/LandingPage';
-import { ViewerPage } from './components/ViewerPage';
-import { SettingsModal } from './components/SettingsModal';
-import type { Slide } from './electron'; // Import type
+import { useState } from "react";
+import { ActionIcon, Button, Group, Loader, Stack, Text } from "@mantine/core";
+import { IconSettings } from "@tabler/icons-react";
+import { LandingPage } from "./components/LandingPage";
+import { SettingsModal } from "./components/settings/SettingsModal";
+import { ViewerPage } from "./components/viewer/ViewerPage";
+import type { Slide } from "./types/electron";
+import { getErrorMessage } from "./utils/errors";
+
+type AppViewState = "idle" | "loading" | "error" | "viewing";
 
 function App() {
-  const [loading, setLoading] = useState(false);
+  const [viewState, setViewState] = useState<AppViewState>("idle");
   const [slides, setSlides] = useState<Slide[] | null>(null);
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const handleManualSelect = async () => {
-    if (window.electronAPI) {
-      try {
-        const path = await window.electronAPI.selectFile();
-        if (path) {
-          processFile(path);
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    }
+  const resetViewer = () => {
+    setSlides(null);
+    setCurrentFilePath(null);
+    setError(null);
+    setViewState("idle");
   };
 
   const processFile = async (filePath: string) => {
-    setLoading(true);
+    setViewState("loading");
     setError(null);
     setCurrentFilePath(filePath);
+
     try {
-      if (window.electronAPI) {
-        const response = await window.electronAPI.convertPptx(filePath);
-        if (response.success) {
-          setSlides(response.slides);
-        } else {
-          setError(response.error || 'Conversion failed');
-        }
-      } else {
-        console.warn('Electron API not found');
+      const response = await window.electronAPI.convertPptx(filePath);
+      if (!response.success) {
+        throw new Error(response.error || "Conversion failed");
       }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+
+      setSlides(response.slides);
+      setViewState("viewing");
+    } catch (error: unknown) {
+      setSlides(null);
+      setError(getErrorMessage(error));
+      setViewState("error");
     }
   };
 
-  const handleSaveAll = async (updatedSlides: Slide[]) => {
-    // ViewerPage handles the actual saving to file (including audio) via IPC.
-    // We just need to update our local state here.
-    setSlides(updatedSlides);
-    // Optional: Show a subtle success message if needed, but ViewerPage already alerted.
-  };
-
-  const handleFileDrop = async (files: File[]) => {
-    if (files.length > 0) {
-      const file = files[0];
-      // With contextIsolation: false, path should be available directly on the file object
-      // or via our simplified preload
-      let filePath = (file as any).path;
-
-      console.log('File Object:', file);
-      console.log('Detected Path:', filePath);
-
-      if (!filePath) {
-        setError('Could not detect file path. Please try using the "Select File" button below.');
-        return;
+  const handleManualSelect = async () => {
+    try {
+      const path = await window.electronAPI.selectFile();
+      if (path) {
+        await processFile(path);
       }
-
-      processFile(filePath);
+    } catch (error: unknown) {
+      console.error(error);
+      setError(getErrorMessage(error));
+      setViewState("error");
     }
   };
 
-  if (loading) {
-    return (
-      <Center h="100vh">
-        <Text ml="md">Processing...</Text>
-      </Center>
+  let content;
+
+  if (viewState === "loading") {
+    content = (
+      <Group>
+        <Loader />
+        <Text>Processing...</Text>
+      </Group>
     );
-  }
-
-  if (error) {
-    return (
-      <Center h="100vh" style={{ flexDirection: 'column' }}>
-        <Text c="red" size="xl">Error: {error}</Text>
-        <Text
-          c="blue"
-          style={{ cursor: 'pointer', marginTop: '1rem' }}
-          onClick={() => { setError(null); setSlides(null); }}
-        >
-          Try Again
+  } else if (viewState === "error" && error) {
+    content = (
+      <>
+        <Text c="red" size="xl">
+          Error: {error}
         </Text>
-      </Center>
+        <Button variant="light" onClick={resetViewer}>
+          Try Again
+        </Button>
+      </>
+    );
+  } else if (viewState === "viewing" && slides) {
+    content = (
+      <ViewerPage
+        slides={slides}
+        onBack={resetViewer}
+        onOpenSettings={() => setSettingsOpen(true)}
+        filePath={currentFilePath || ""}
+      />
+    );
+  } else {
+    content = (
+      <>
+        <ActionIcon
+          variant="subtle"
+          size="lg"
+          pos="absolute"
+          top={10}
+          left={10}
+          onClick={() => setSettingsOpen(true)}
+        >
+          <IconSettings size={24} />
+        </ActionIcon>
+        <LandingPage onSelectFile={handleManualSelect} />
+      </>
     );
   }
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {!slides ? (
-        <>
-          <ActionIcon
-            variant="subtle"
-            size="lg"
-            pos="absolute"
-            top={10}
-            left={10}
-            onClick={() => setSettingsOpen(true)}
-          >
-            <IconSettings size={24} />
-          </ActionIcon>
-          <LandingPage onDrop={handleFileDrop} onSelectFile={handleManualSelect} />
-          {loading && <Text ta="center" mt="sm">Analysing file...</Text>}
-        </>
-      ) : (
-        <ViewerPage slides={slides} onSave={handleSaveAll} onBack={() => setSlides(null)} filePath={currentFilePath || ''} />
-      )}
+    <>
+      <Stack h="100dvh" justify="center" align={viewState === "viewing" ? "stretch" : "center"}>
+        {content}
+      </Stack>
       <SettingsModal opened={settingsOpen} onClose={() => setSettingsOpen(false)} />
-    </div>
+    </>
   );
 }
 

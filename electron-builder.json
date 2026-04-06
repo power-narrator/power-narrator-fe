@@ -1,26 +1,10 @@
 {
-    "appId": "com.norbertloh.pptviewer",
-    "productName": "PPT Viewer",
-    "directories": {
-        "output": "release"
-    },
-    "files": [
-        "dist/**/*",
-        "dist-electron/**/*"
-    ],
-    "extraResources": [
-        "electron/scripts/**/*"
-    ],
-    "mac": {
-        "target": "dmg",
-        "hardenedRuntime": true,
-        "gatekeeperAssess": false
-    },
-    "asar": true,
-    "asarUnpack": [
-        "**/*.scpt",
-        "**/*.applescript",
-        "**/*.bas",
-        "**/*.vba"
-    ]
+  "appId": "com.norbertloh.pptviewer",
+  "productName": "PPT Viewer",
+  "files": ["dist-vite", "dist-electron"],
+  "extraResources": ["electron/scripts/**/*"],
+  "mac": {
+    "target": "dmg"
+  },
+  "asarUnpack": ["**/*.scpt", "**/*.applescript", "**/*.bas", "**/*.vba"]
 }

@@ -25,8 +25,8 @@ dist-ssr
 .env
 
 # Build Output
-release/
 dist-electron/
+dist-vite/
 
 # Temporary
 slides_debug/
@@ -36,3 +36,8 @@ release_package/
 # Python
 __pycache__/
 *.pyc
+
+# Tests
+playwright-report/
+test-results/
+release/

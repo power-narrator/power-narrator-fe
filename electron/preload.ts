@@ -1,18 +1,31 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
 
-// When contextIsolation is false, we can attach directly to window
-(window as any).electronAPI = {
+const electronAPI = {
     convertPptx: (filePath: string) => ipcRenderer.invoke('convert-pptx', filePath),
-    onConversionUpdate: (callback: (event: any, value: any) => void) => ipcRenderer.on('conversion-update', callback),
-    getPathForFile: (file: File) => (file as any).path,
+    onConversionUpdate: (callback: (event: unknown, value: unknown) => void) => {
+        ipcRenderer.on('conversion-update', callback);
+    },
+    getPathForFile: (file: File) => (file as File & { path?: string }).path ?? '',
     selectFile: () => ipcRenderer.invoke('select-file'),
-    saveAllNotes: (filePath: string, slides: any[]) => ipcRenderer.invoke('save-all-notes', filePath, slides),
+    saveAllNotes: (filePath: string, slides: unknown[]) => ipcRenderer.invoke('save-all-notes', filePath, slides),
     getVoices: () => ipcRenderer.invoke('get-voices'),
     getGcpKeyPath: () => ipcRenderer.invoke('get-gcp-key-path'),
     setGcpKey: () => ipcRenderer.invoke('set-gcp-key'),
     getSpeakerMappings: () => ipcRenderer.invoke('get-speaker-mappings'),
-    setSpeakerMappings: (mappings: Record<string, any>) => ipcRenderer.invoke('set-speaker-mappings', mappings),
+    setSpeakerMappings: (mappings: Record<string, unknown>) => ipcRenderer.invoke('set-speaker-mappings', mappings),
     getTtsProvider: () => ipcRenderer.invoke('get-tts-provider'),
     getXmlCliEnabled: () => ipcRenderer.invoke('get-xml-cli-enabled'),
     setXmlCliEnabled: (enabled: boolean) => ipcRenderer.invoke('set-xml-cli-enabled', enabled),
+    insertAudio: (filePath: string, slidesAudio: unknown[]) => ipcRenderer.invoke('insert-audio', filePath, slidesAudio),
+    generateVideo: (payload: { filePath: string; slidesAudio: unknown[]; videoOutputPath: string }) => ipcRenderer.invoke('generate-video', payload),
+    removeAudio: (payload: { filePath: string; scope: 'slide' | 'all'; slideIndex: number }) => ipcRenderer.invoke('remove-audio', payload),
+    playSlide: (slideIndex: number) => ipcRenderer.invoke('play-slide', slideIndex),
+    syncSlide: (payload: { filePath: string; slideIndex: number }) => ipcRenderer.invoke('sync-slide', payload),
+    getVideoSavePath: () => ipcRenderer.invoke('get-video-save-path'),
 };
+
+try {
+    contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+} catch {
+    (window as Window & { electronAPI?: typeof electronAPI }).electronAPI = electronAPI;
+}
