@@ -1,13 +1,15 @@
 import { ActionIcon, Box, Button, Center, Group, Loader, Slider, Stack, Text } from "@mantine/core";
 import { IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { NoteSection } from "../../types/notes";
 import { getErrorMessage } from "../../utils/errors";
 import { getSpeakerOptions } from "../../utils/viewer";
 import { generateAudio } from "../../utils/tts";
 import type { Voice } from "../../types/voice";
+import { useAudio } from "../../context/AudioContext";
 
 interface SectionPreviewButtonsProps {
+  id: string;
   section: NoteSection;
   mappings: Record<string, Voice>;
   onFocus: () => void;
@@ -15,31 +17,48 @@ interface SectionPreviewButtonsProps {
 }
 
 export function SectionPreviewButtons({
+  id,
   section,
   mappings,
   onFocus,
   getTextarea,
 }: SectionPreviewButtonsProps) {
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const {
+    activeId,
+    isPlaying: globalIsPlaying,
+    currentTime: globalCurrentTime,
+    duration: globalDuration,
+    play: audioPlay,
+    stop: audioStop,
+    seek: audioSeek,
+    setSeeking: audioSetSeeking,
+  } = useAudio();
+
   const [activePreviewTarget, setActivePreviewTarget] = useState<string | null>(null);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const isSeekingRef = useRef(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isAudioGenerating, setIsAudioGenerating] = useState(false);
   const previewRequestIdRef = useRef(0);
-  const autoplayRequestIdRef = useRef<number | null>(null);
+  const autoplayRequestIdRef = useRef<string | null>(null);
 
+  const isCurrentActive = activeId === id;
+  const isPlaying = globalIsPlaying && isCurrentActive;
+  const currentTime = isCurrentActive ? globalCurrentTime : 0;
+  const duration = isCurrentActive ? globalDuration : 0;
   const speakers = getSpeakerOptions(mappings);
+
+  useEffect(() => {
+    // Only clear if the global audio element stopped or switched to a different section entirely
+    if (!globalIsPlaying && activeId === null && !isAudioGenerating) {
+      setActivePreviewTarget(null);
+    }
+    if (activeId !== null && !isCurrentActive) {
+      setActivePreviewTarget(null);
+    }
+  }, [globalIsPlaying, activeId, isCurrentActive, isAudioGenerating]);
 
   const stopPlayback = () => {
     previewRequestIdRef.current += 1;
     autoplayRequestIdRef.current = null;
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
-    setCurrentTime(0);
+    audioStop();
     setActivePreviewTarget(null);
     setIsAudioGenerating(false);
   };
@@ -66,7 +85,8 @@ export function SectionPreviewButtons({
     onFocus();
     const requestId = previewRequestIdRef.current + 1;
     previewRequestIdRef.current = requestId;
-    autoplayRequestIdRef.current = requestId;
+    const autoplayId = `${id}-${requestId}`;
+    autoplayRequestIdRef.current = autoplayId;
 
     try {
       setIsAudioGenerating(true);
@@ -78,9 +98,7 @@ export function SectionPreviewButtons({
         return;
       }
 
-      setCurrentTime(0);
-      setDuration(0);
-      setAudioUrl(url);
+      audioPlay(id, url);
     } catch (error: unknown) {
       if (previewRequestIdRef.current !== requestId) {
         return;
@@ -102,40 +120,10 @@ export function SectionPreviewButtons({
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
-  const isAnyPreviewActive = activePreviewTarget !== null;
+  const isAnyPreviewActive = isPlaying && activePreviewTarget !== null;
 
   return (
     <Stack p="xs" gap="xs">
-      <audio
-        ref={audioRef}
-        src={audioUrl || ""}
-        onCanPlay={() => {
-          if (autoplayRequestIdRef.current !== previewRequestIdRef.current || !audioRef.current) {
-            return;
-          }
-
-          autoplayRequestIdRef.current = null;
-          audioRef.current.currentTime = 0;
-          audioRef.current.play().catch((error) => {
-            console.error(error);
-            setActivePreviewTarget(null);
-          });
-        }}
-        onTimeUpdate={() => {
-          if (audioRef.current && !isSeekingRef.current) {
-            setCurrentTime(audioRef.current.currentTime);
-          }
-        }}
-        onLoadedMetadata={() => {
-          if (audioRef.current) {
-            setDuration(audioRef.current.duration);
-          }
-        }}
-        onEnded={() => {
-          autoplayRequestIdRef.current = null;
-          setActivePreviewTarget(null);
-        }}
-      />
 
       <Group gap="xs">
         {speakers.map((speaker) => {
@@ -191,17 +179,14 @@ export function SectionPreviewButtons({
                 min={0}
                 max={duration || 100}
                 onChange={(value) => {
-                  isSeekingRef.current = true;
-                  setCurrentTime(value);
+                  audioSetSeeking(true);
+                  audioSeek(value);
                 }}
-                onChangeEnd={(value) => {
-                  isSeekingRef.current = false;
-                  if (audioRef.current) {
-                    audioRef.current.currentTime = value;
-                  }
+                onChangeEnd={() => {
+                  audioSetSeeking(false);
                 }}
                 label={formatTime}
-                disabled={!audioUrl}
+                disabled={!isCurrentActive}
               />
               <Text size="xs" c="dimmed">
                 {formatTime(currentTime)} / {formatTime(duration)}

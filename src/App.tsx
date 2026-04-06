@@ -105,7 +105,11 @@ function App() {
 
   return (
     <>
-      <Stack h="100dvh" justify="center" align={viewState === "viewing" ? "stretch" : "center"}>
+      <Stack
+        h="100dvh"
+        justify={viewState === "viewing" ? "flex-start" : "center"}
+        align={viewState === "viewing" ? "stretch" : "center"}
+      >
         {content}
       </Stack>
       <SettingsModal opened={settingsOpen} onClose={() => setSettingsOpen(false)} />

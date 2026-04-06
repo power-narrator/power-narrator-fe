@@ -82,7 +82,7 @@ export function ViewerPage({
   };
 
   const slideActionStates: Record<SlideActionBarKey, ActionButtonState> = {
-    syncSlide: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
+    reloadSlide: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
     insertSlideAudio: {
       loading: isInsertingAudio,
       busy: busy && !isInsertingAudio,
@@ -601,13 +601,13 @@ export function ViewerPage({
     await syncSlides(electronAPI.convertPptx(filePath), "Sync error", "Syncing all slides...");
   };
 
-  const handleSyncSlide = async () => {
+  const handleReloadSlide = async () => {
     if (busy) {
       return;
     }
 
     await syncSlides(
-      electronAPI.syncSlide({
+      electronAPI.reloadSlide({
         filePath,
         slideIndex: getSlideNumber(activeSlide, activeSlideIndex),
       }),
@@ -669,7 +669,7 @@ export function ViewerPage({
   };
 
   return (
-    <Stack gap="0" mih={0}>
+    <Stack gap="0" h="100%" mih={0}>
       <ViewerHeader
         onBack={onBack}
         onOpenSettings={onOpenSettings}
@@ -683,7 +683,7 @@ export function ViewerPage({
         }}
       />
 
-      <Split mih={0}>
+      <Split mih={0} flex={1}>
         <Split.Pane initialWidth="10%">
           <SlideThumbnailList
             slides={slides}
@@ -707,7 +707,7 @@ export function ViewerPage({
                 <SlideActionsBar
                   actionStates={slideActionStates}
                   handlers={{
-                    syncSlide: handleSyncSlide,
+                    reloadSlide: handleReloadSlide,
                     insertSlideAudio: handleInsertSlideAudio,
                     playSlide: handlePlaySlide,
                     saveSlideNotes: handleSaveCurrentSlideNotes,
@@ -724,10 +724,11 @@ export function ViewerPage({
                   onInsertWrappedTag={insertWrappedTag}
                 />
 
-                <NotesSectionList
-                  sections={activeSections}
-                  mappings={mappings}
-                  onFocusSection={setActiveSectionIndex}
+                  <NotesSectionList
+                    sections={activeSections}
+                    mappings={mappings}
+                    slideIndex={activeSlide.index}
+                    onFocusSection={setActiveSectionIndex}
                   onSpeakerChange={handleSpeakerChange}
                   onSectionTextChange={handleSectionTextChange}
                   onDeleteSection={handleDeleteSection}

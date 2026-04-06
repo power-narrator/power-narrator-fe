@@ -32,7 +32,7 @@ export class MacPptProvider implements PptProvider {
             console.error("Cleanup failed:", e);
         }
     }
-    
+
     /**
      * Closes the currently active PowerPoint presentation.
      * 
@@ -74,7 +74,7 @@ export class MacPptProvider implements PptProvider {
         } catch (e) {
             console.error("Failed to reopen presentation", e);
         }
-        
+
         // Focus App Back
         const windows = BrowserWindow.getAllWindows();
         if (windows.length > 0) {
@@ -116,7 +116,7 @@ export class MacPptProvider implements PptProvider {
                             const slidesWithPaths = slides.map((s: any) => ({
                                 ...s,
                                 src: s.image ? `file://${path.join(outputDir, s.image)}?t=${Date.now()}` : null,
-                                notes: s.notes ? s.notes.replace(/\\n/g, '\n') : ''
+                                notes: s.notes ? s.notes.replace(/\\n/g, '\n').replace(/\\r/g, '\n').replace(/\r/g, '\n') : ''
                             })).filter((s: any) => s.src !== null);
                             resolve({ success: true, slides: slidesWithPaths });
                         } catch (err) {
@@ -381,7 +381,7 @@ export class MacPptProvider implements PptProvider {
                         const slidesWithPaths = slides.map((s: any) => ({
                             ...s,
                             src: s.image ? `file://${path.join(outputDir, s.image)}?t=${Date.now()}` : null,
-                            notes: s.notes ? s.notes.replace(/\\n/g, '\n') : ''
+                            notes: s.notes ? s.notes.replace(/\\n/g, '\n').replace(/\\r/g, '\n').replace(/\r/g, '\n') : ''
                         })).filter((s: any) => s.src !== null);
 
                         const windows = BrowserWindow.getAllWindows();

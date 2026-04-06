@@ -4,7 +4,7 @@ import type { ActionButtonState } from "../../types/viewer";
 import { ActionButtonList } from "./ActionButtonList";
 
 export type SlideActionBarKey =
-  | "syncSlide"
+  | "reloadSlide"
   | "insertSlideAudio"
   | "playSlide"
   | "saveSlideNotes"
@@ -16,7 +16,7 @@ interface SlideActionsBarProps {
 }
 
 const SLIDE_ACTION_ITEMS = [
-  { key: "syncSlide", label: "Sync Slide", icon: <IconRefresh size={14} /> },
+  { key: "reloadSlide", label: "Reload Slide", icon: <IconRefresh size={14} /> },
   { key: "insertSlideAudio", label: "Insert Audio" },
   { key: "playSlide", label: "Play", icon: <IconDeviceTv size={14} /> },
   { key: "saveSlideNotes", label: "Save Slide Notes" },
