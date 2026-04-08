@@ -26,8 +26,8 @@ on run argv
     set sandboxImageName to "temp_slide_" & slideIndex & ".png"
     set sandboxImagePosix to containerPosix & sandboxImageName
 	
-    -- Pass the Sandbox path to VBA
-	set paramString to (slideIndex as text) & "|" & sandboxImagePosix
+    -- Pass the Sandbox path and PPT path to VBA
+	set paramString to (slideIndex as text) & "|" & sandboxImagePosix & "|" & pptPath
 	
 	do shell script "echo " & quoted form of paramString & " > " & quoted form of (POSIX path of paramsPath)
 	
@@ -76,10 +76,9 @@ on run argv
              error "VBA Macro Failed: " & errMsg
 		end try
         
-        -- Get Notes (Do this now while we are here, or later?)
-        -- Doing it here is fine as it is pure PPT command
+        -- Get Notes from the specific presentation
         try
-            tell slide slideIndex of active presentation
+            tell slide slideIndex of presentation presName
                 tell notes page
                     if (count of shapes) > 1 then
                         set notesText to content of text range of text frame of shape 2

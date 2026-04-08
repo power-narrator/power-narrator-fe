@@ -39,7 +39,7 @@ declare global {
         scope: "slide" | "all";
         slideIndex: number;
       }) => Promise<BasicElectronResult>;
-      playSlide: (slideIndex: number) => Promise<BasicElectronResult>;
+      playSlide: (slideIndex: number, filePath: string) => Promise<BasicElectronResult>;
       reloadSlide: (payload: {
         filePath: string;
         slideIndex: number;

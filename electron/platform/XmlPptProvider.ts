@@ -284,8 +284,8 @@ export class XmlPptProvider implements PptProvider {
      * 
      * @param slideIndex - The 1-based index of the slide to play.
      */
-    async playSlide(slideIndex: number): Promise<any> {
-        return this.baseProvider.playSlide(slideIndex);
+    async playSlide(filePath: string, slideIndex: number): Promise<any> {
+        return this.baseProvider.playSlide(filePath, slideIndex);
     }
 
     /**

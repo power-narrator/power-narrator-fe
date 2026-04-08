@@ -1,4 +1,4 @@
-# PPT Viewer & Video Generator
+# Power Narrator & Video Generator
 
 An Electron-based desktop application for macOS that converts PowerPoint presentations into narrated MP4 videos. It extracts slide images and speaker notes, generates AI text-to-speech audio per slide, inserts that audio back into the `.pptx` file, and exports the result as a video — all from one UI.
 
@@ -194,8 +194,8 @@ xml/
 ### Install & Run
 
 ```bash
-git clone https://github.com/NorbertLoh/ppt-viewer.git
-cd ppt-viewer
+git clone https://github.com/NorbertLoh/power-narrator.git
+cd power-narrator
 npm install
 npm run dev
 ```
@@ -233,7 +233,7 @@ For reliable VBA macro execution:
 
 ### macOS Gatekeeper Warning
 ```bash
-xattr -cr "/path/to/PPT Viewer.app"
+xattr -cr "/path/to/Power Narrator.app"
 ```
 Or right-click the app → **Open** → **Open**.
 

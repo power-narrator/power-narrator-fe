@@ -21,7 +21,7 @@ export class WindowsPptProvider implements PptProvider {
         return { success: false, error: 'generateVideo not supported on Windows yet' };
     }
 
-    async playSlide(slideIndex: number): Promise<any> {
+    async playSlide(filePath: string, slideIndex: number): Promise<any> {
         return { success: false, error: 'playSlide not supported on Windows yet' };
     }
 
