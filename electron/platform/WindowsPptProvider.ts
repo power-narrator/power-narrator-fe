@@ -1,4 +1,4 @@
-import { PptProvider } from './PptProvider';
+import { PptProvider } from './PptProvider.js';
 
 export class WindowsPptProvider implements PptProvider {
     async convertPptx(filePath: string, outputDir: string): Promise<any> {

@@ -2,8 +2,8 @@ import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
-import { PptProvider } from './PptProvider';
-import { resolveScriptPath } from './helpers';
+import { PptProvider } from './PptProvider.js';
+import { resolveScriptPath } from './helpers.js';
 
 /**
  * MacPptProvider
@@ -15,6 +15,17 @@ export class MacPptProvider implements PptProvider {
 
     constructor() {
         this.cleanup();
+    }
+
+    /**
+     * Programmatically returns focus to the Electron window.
+     */
+    private focusApp(): void {
+        const windows = BrowserWindow.getAllWindows();
+        if (windows.length > 0) {
+            windows[0].show();
+            windows[0].focus();
+        }
     }
 
     /**
@@ -76,11 +87,7 @@ export class MacPptProvider implements PptProvider {
         }
 
         // Focus App Back
-        const windows = BrowserWindow.getAllWindows();
-        if (windows.length > 0) {
-            windows[0].show();
-            windows[0].focus();
-        }
+        this.focusApp();
     }
 
     /**
@@ -92,8 +99,8 @@ export class MacPptProvider implements PptProvider {
      */
     async convertPptx(filePath: string, outputDir: string): Promise<any> {
         const tempDir = app.getPath('temp');
-        if (!fs.existsSync(path.join(tempDir, 'ppt-viewer'))) {
-            fs.mkdirSync(path.join(tempDir, 'ppt-viewer'), { recursive: true });
+        if (!fs.existsSync(path.join(tempDir, 'power-narrator'))) {
+            fs.mkdirSync(path.join(tempDir, 'power-narrator'), { recursive: true });
         }
 
         try {
@@ -192,6 +199,9 @@ export class MacPptProvider implements PptProvider {
                     }
                 });
             });
+
+            this.focusApp();
+
             return { success: true };
         } catch (e: any) {
             return { success: false, error: e.message };
@@ -315,10 +325,10 @@ export class MacPptProvider implements PptProvider {
      * @param slideIndex - The index of the slide to start playing from.
      * @returns A promise resolving to the success status.
      */
-    async playSlide(slideIndex: number): Promise<any> {
+    async playSlide(filePath: string, slideIndex: number): Promise<any> {
         const scriptPath = resolveScriptPath('play-slide.applescript');
         return new Promise((resolve) => {
-            const child = spawn('osascript', [scriptPath, slideIndex.toString()]);
+            const child = spawn('osascript', [scriptPath, slideIndex.toString(), filePath]);
             let output = '';
             let errorOutput = '';
 
@@ -384,11 +394,7 @@ export class MacPptProvider implements PptProvider {
                             notes: s.notes ? s.notes.replace(/\\n/g, '\n').replace(/\\r/g, '\n').replace(/\r/g, '\n') : ''
                         })).filter((s: any) => s.src !== null);
 
-                        const windows = BrowserWindow.getAllWindows();
-                        if (windows.length > 0) {
-                            windows[0].show();
-                            windows[0].focus();
-                        }
+                        this.focusApp();
 
                         resolve({ success: true, slides: slidesWithPaths });
                     } catch (e: any) {

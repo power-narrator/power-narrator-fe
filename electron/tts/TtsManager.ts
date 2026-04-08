@@ -2,9 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { app } from 'electron';
-import { TtsProvider, VoiceOption } from './TtsProvider';
-import { GcpTtsProvider } from './GcpTtsProvider';
-import { LocalTtsProvider } from './LocalTtsProvider';
+import { TtsProvider, VoiceOption } from './TtsProvider.js';
+import { GcpTtsProvider } from './GcpTtsProvider.js';
+import { LocalTtsProvider } from './LocalTtsProvider.js';
 
 export class TtsManager {
     private providers: Record<string, TtsProvider> = {};

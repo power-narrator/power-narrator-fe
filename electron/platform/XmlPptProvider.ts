@@ -2,8 +2,13 @@ import { app } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
-import { PptProvider } from './PptProvider';
-import { resolveScriptPath } from './helpers';
+import { fileURLToPath } from 'url';
+import * as url from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+import { PptProvider } from './PptProvider.js';
+import { resolveScriptPath } from './helpers.js';
 
 export class XmlPptProvider implements PptProvider {
     /**
