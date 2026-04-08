@@ -1,6 +1,6 @@
 {
-  "name": "ppt-viewer",
-  "version": "0.4.2",
+  "name": "power-narrator",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "main": "dist-electron/main.js",

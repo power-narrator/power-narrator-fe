@@ -149,7 +149,7 @@ ipcMain.handle('convert-pptx', async (event, filePath) => {
     }
 
     const tempDir = app.getPath('temp');
-    const outputDir = path.join(tempDir, 'ppt-viewer', path.basename(absolutePath, path.extname(absolutePath)));
+    const outputDir = path.join(tempDir, 'power-narrator', path.basename(absolutePath, path.extname(absolutePath)));
     
     return await getActivePptProvider().convertPptx(absolutePath, outputDir);
 });
@@ -175,14 +175,15 @@ ipcMain.handle('remove-audio', async (event, { filePath, scope, slideIndex }) =>
     return await getActivePptProvider().removeAudio(absolutePath, scope, slideIndex);
 });
 
-ipcMain.handle('play-slide', async (event, slideIndex) => {
-    return await getActivePptProvider().playSlide(slideIndex);
+ipcMain.handle('play-slide', async (event, { filePath, slideIndex }) => {
+    const absolutePath = path.resolve(filePath);
+    return await getActivePptProvider().playSlide(absolutePath, slideIndex);
 });
 
 ipcMain.handle('reload-slide', async (event, { filePath, slideIndex }) => {
     const absolutePath = path.resolve(filePath);
     const tempDir = app.getPath('temp');
-    const outputDir = path.join(tempDir, 'ppt-viewer', path.basename(absolutePath, path.extname(absolutePath)));
+    const outputDir = path.join(tempDir, 'power-narrator', path.basename(absolutePath, path.extname(absolutePath)));
     
     if (!fs.existsSync(outputDir)) {
         return { success: false, error: 'Conversion directory not found. Please sync all first.' };

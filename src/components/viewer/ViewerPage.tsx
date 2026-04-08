@@ -537,7 +537,7 @@ export function ViewerPage({
     try {
       setIsPlaying(true);
       setPlayStatus(`Playing slide ${activeSlide.index}...`);
-      const result = await electronAPI.playSlide(getSlideNumber(activeSlide, activeSlideIndex));
+      const result = await electronAPI.playSlide(getSlideNumber(activeSlide, activeSlideIndex), filePath);
       if (!result.success) {
         alert(`Failed to play slide: ${result.error}`);
         setPlayStatus("");

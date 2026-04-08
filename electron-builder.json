@@ -1,6 +1,6 @@
 {
-  "appId": "com.norbertloh.pptviewer",
-  "productName": "PPT Viewer",
+  "appId": "com.norbertloh.power-narrator",
+  "productName": "Power Narrator",
   "files": ["dist-vite", "dist-electron"],
   "extraResources": ["electron/scripts/**/*"],
   "mac": {

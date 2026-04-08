@@ -327,7 +327,7 @@ Sub PlaySlide()
     Dim fileNum As Integer
     Dim fileContent As String
     
-    ' 1. Read Slide Index from File
+    ' 1. Read parameters (SlideIndex | TargetPath)
     paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/play_slide.txt"
     
     If Dir(paramsPath) = "" Then
@@ -340,15 +340,20 @@ Sub PlaySlide()
     Line Input #fileNum, fileContent
     Close fileNum
     
-    slideIndex = CInt(Trim(fileContent))
+    Dim params() As String
+    params = Split(fileContent, "|")
+    If UBound(params) < 1 Then Exit Sub
     
-    ' 2. Get Active Presentation
-    If Application.Presentations.Count = 0 Then
-        MsgBox "No presentation open."
+    slideIndex = CInt(Trim(params(0)))
+    targetPath = params(1)
+    
+    ' 2. Find Presentation
+    Set pres = GetPresentation(targetPath)
+    
+    If pres Is Nothing Then
+        MsgBox "Error: Presentation not found: " & targetPath
         Exit Sub
     End If
-    
-    Set pres = Application.ActivePresentation
     
     ' 3. Validate Index
     If slideIndex < 1 Or slideIndex > pres.Slides.Count Then
@@ -398,7 +403,7 @@ Sub ReloadSlide()
     Dim params() As String
     Dim exportPath As String
     
-    ' 1. Read Parameters
+    ' 1. Read Parameters (SlideIndex | ExportPath | TargetPath)
     paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/reload_slide.txt"
     
     If Dir(paramsPath) = "" Then
@@ -411,23 +416,20 @@ Sub ReloadSlide()
     Line Input #fileNum, fileContent
     Close fileNum
     
-    ' Format: SlideIndex|Values... (We might just need index if we assume active pres, but let's be safe)
-    ' Actually, the AppleScript will likely just pass the Index and OutputPath.
-    ' Let's expect: SlideIndex|OutputPath
-    
     params = Split(fileContent, "|")
-    If UBound(params) < 1 Then Exit Sub
+    If UBound(params) < 2 Then Exit Sub
     
     slideIndex = CInt(params(0))
     exportPath = params(1)
+    targetPath = params(2)
     
-    ' 2. Get Active Presentation
-    If Application.Presentations.Count = 0 Then
-        MsgBox "No presentation open."
+    ' 2. Find Presentation
+    Set pres = GetPresentation(targetPath)
+    
+    If pres Is Nothing Then
+        MsgBox "Error: Presentation not found: " & targetPath
         Exit Sub
     End If
-    
-    Set pres = Application.ActivePresentation
     
     ' 3. Validate
     If slideIndex < 1 Or slideIndex > pres.Slides.Count Then
