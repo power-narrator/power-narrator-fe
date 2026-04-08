@@ -6,7 +6,7 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"npm run dev:electron\"",
-    "dev:electron": "npm run build:electron && node -e \"require('fs').writeFileSync('dist-electron/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\" && concurrently -k \"tsc -p electron -w\" \"electron .\"",
+    "dev:electron": "npm run build:electron && concurrently -k \"tsc -p electron -w\" \"electron .\"",
     "build": "tsc && vite build && npm run build:electron",
     "build:electron": "tsc -p electron",
     "dist": "npm run build && electron-builder",
@@ -22,7 +22,7 @@
     "@tabler/icons-react": "^3.41.1",
     "dotenv": "^17.4.0",
     "electron-squirrel-startup": "^1.0.1",
-    "electron-store": "^8.2.0",
+    "electron-store": "^10.0.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },

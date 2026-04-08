@@ -4,6 +4,12 @@ import fs from 'fs';
 import { spawn } from 'child_process';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const require = createRequire(import.meta.url);
 
 // Load .env
 dotenv.config();
@@ -35,11 +41,11 @@ function getTtsProvider(): string {
     return 'gcp'; // Default to GCP instead of local, so we hit the "missing key" check
 }
 
-import { PptProvider } from './platform/PptProvider';
-import { MacPptProvider } from './platform/MacPptProvider';
-import { WindowsPptProvider } from './platform/WindowsPptProvider';
-import { XmlPptProvider } from './platform/XmlPptProvider';
-import { TtsManager } from './tts/TtsManager';
+import { PptProvider } from './platform/PptProvider.js';
+import { MacPptProvider } from './platform/MacPptProvider.js';
+import { WindowsPptProvider } from './platform/WindowsPptProvider.js';
+import { XmlPptProvider } from './platform/XmlPptProvider.js';
+import { TtsManager } from './tts/TtsManager.js';
 const ttsManager = new TtsManager(getTtsProvider(), getGcpKeyPath);
 
 let basePptProvider: PptProvider;
@@ -55,7 +61,8 @@ function getActivePptProvider(): PptProvider {
 }
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) {
+const squirrelStartup = require('electron-squirrel-startup');
+if (squirrelStartup) {
     app.quit();
 }
 

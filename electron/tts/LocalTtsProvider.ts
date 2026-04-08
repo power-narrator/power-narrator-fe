@@ -1,5 +1,5 @@
-import { TtsProvider, VoiceOption } from './TtsProvider';
-import { SsmlUtil } from './SsmlUtil';
+import { TtsProvider, VoiceOption } from './TtsProvider.js';
+import { SsmlUtil } from './SsmlUtil.js';
 
 export class LocalTtsProvider implements TtsProvider {
     async getVoices(): Promise<VoiceOption[]> {

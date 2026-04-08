@@ -2,8 +2,8 @@ import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
-import { PptProvider } from './PptProvider';
-import { resolveScriptPath } from './helpers';
+import { PptProvider } from './PptProvider.js';
+import { resolveScriptPath } from './helpers.js';
 
 /**
  * MacPptProvider
