@@ -125,6 +125,8 @@ export class MacPptProvider implements PptProvider {
                                 src: s.image ? `file://${path.join(outputDir, s.image)}?t=${Date.now()}` : null,
                                 notes: s.notes ? s.notes.replace(/\\n/g, '\n').replace(/\\r/g, '\n').replace(/\r/g, '\n') : ''
                             })).filter((s: any) => s.src !== null);
+
+                            this.focusApp();
                             resolve({ success: true, slides: slidesWithPaths });
                         } catch (err) {
                             reject(err);
@@ -234,6 +236,7 @@ export class MacPptProvider implements PptProvider {
             child.stderr.on('data', (d: any) => stderr += d.toString());
             child.on('close', (code: number) => {
                 if (code === 0 && !stdout.includes("Error")) {
+                    this.focusApp();
                     resolve({ success: true });
                 } else {
                     resolve({ success: false, error: stdout || stderr });
@@ -280,6 +283,7 @@ export class MacPptProvider implements PptProvider {
                 try { fs.unlinkSync(dataPath); } catch (e) { }
 
                 if (code === 0 && !stdout.includes("Error")) {
+                    this.focusApp();
                     resolve({ success: true });
                 } else {
                     reject(new Error(stdout || stderr));
@@ -307,6 +311,7 @@ export class MacPptProvider implements PptProvider {
                 child.stderr.on('data', (d: any) => stderr += d);
                 child.on('close', (code: number) => {
                     if (code === 0 && !stdout.includes("Error")) {
+                        this.focusApp();
                         resolve();
                     } else {
                         reject(new Error(stdout || stderr));
