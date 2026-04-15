@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
 import { PptProvider } from './PptProvider.js';
-import { resolveScriptPath } from './helpers.js';
+import { resolveScriptPath, resolveSlideAssetUrl } from './helpers.js';
 
 /**
  * MacPptProvider
@@ -122,7 +122,7 @@ export class MacPptProvider implements PptProvider {
                             const slides = JSON.parse(data);
                             const slidesWithPaths = slides.map((s: any) => ({
                                 ...s,
-                                src: s.image ? `file://${path.join(outputDir, s.image)}?t=${Date.now()}` : null,
+                                src: s.image ? `${resolveSlideAssetUrl(path.join(outputDir, s.image))}?t=${Date.now()}` : null,
                                 notes: s.notes ? s.notes.replace(/\\n/g, '\n').replace(/\\r/g, '\n').replace(/\r/g, '\n') : ''
                             })).filter((s: any) => s.src !== null);
 
@@ -395,7 +395,7 @@ export class MacPptProvider implements PptProvider {
 
                         const slidesWithPaths = slides.map((s: any) => ({
                             ...s,
-                            src: s.image ? `file://${path.join(outputDir, s.image)}?t=${Date.now()}` : null,
+                            src: s.image ? `${resolveSlideAssetUrl(path.join(outputDir, s.image))}?t=${Date.now()}` : null,
                             notes: s.notes ? s.notes.replace(/\\n/g, '\n').replace(/\\r/g, '\n').replace(/\r/g, '\n') : ''
                         })).filter((s: any) => s.src !== null);
 

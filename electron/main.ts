@@ -1,14 +1,28 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, protocol, net } from "electron";
 import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import Store from "electron-store";
 import { PptProvider } from "./platform/PptProvider.js";
 import { MacPptProvider } from "./platform/MacPptProvider.js";
 import { WindowsPptProvider } from "./platform/WindowsPptProvider.js";
 import { XmlPptProvider } from "./platform/XmlPptProvider.js";
 import { TtsManager } from "./tts/TtsManager.js";
+
+const slideAssetScheme = "power-narrator";
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: slideAssetScheme,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+]);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,6 +51,34 @@ function getTtsProvider(): string {
   return "gcp"; // Default to GCP instead of local, so we hit the "missing key" check
 }
 
+function isWithinDirectory(filePath: string, allowedRoot: string): boolean {
+  const relativePath = path.relative(allowedRoot, filePath);
+  return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+}
+
+function registerSlideAssetProtocol(): void {
+  protocol.handle(slideAssetScheme, (request) => {
+    const url = new URL(request.url);
+    if (url.hostname !== "slide") {
+      return new Response("Not Found", { status: 404 });
+    }
+
+    const encodedPath = url.pathname.startsWith("/") ? url.pathname.slice(1) : url.pathname;
+    const assetPath = path.normalize(decodeURIComponent(encodedPath));
+    const allowedRoot = path.join(app.getPath("temp"), "power-narrator");
+
+    if (!isWithinDirectory(assetPath, allowedRoot)) {
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    if (!fs.existsSync(assetPath) || !fs.statSync(assetPath).isFile()) {
+      return new Response("Not Found", { status: 404 });
+    }
+
+    return net.fetch(pathToFileURL(assetPath).toString());
+  });
+}
+
 const ttsManager = new TtsManager(getTtsProvider(), getGcpKeyPath);
 
 let basePptProvider: PptProvider;
@@ -59,7 +101,6 @@ const createWindow = () => {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: true,
       contextIsolation: false,
-      webSecurity: false, // Optional, but helps avoid some local file loading issues
     },
   });
 
@@ -77,6 +118,7 @@ const createWindow = () => {
 };
 
 app.whenReady().then(() => {
+  registerSlideAssetProtocol();
   createWindow();
 
   app.on("activate", () => {
