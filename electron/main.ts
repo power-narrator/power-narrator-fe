@@ -3,7 +3,6 @@ import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
-import { createRequire } from "module";
 import Store from "electron-store";
 import { PptProvider } from "./platform/PptProvider.js";
 import { MacPptProvider } from "./platform/MacPptProvider.js";
@@ -13,7 +12,6 @@ import { TtsManager } from "./tts/TtsManager.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const require = createRequire(import.meta.url);
 
 dotenv.config();
 
@@ -51,12 +49,6 @@ if (process.platform === "darwin") {
 function getActivePptProvider(): PptProvider {
   const useXmlCli = store.get("xmlCliEnabled") || false;
   return useXmlCli ? new XmlPptProvider(basePptProvider) : basePptProvider;
-}
-
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-const squirrelStartup = require("electron-squirrel-startup");
-if (squirrelStartup) {
-  app.quit();
 }
 
 const createWindow = () => {
