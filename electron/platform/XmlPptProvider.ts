@@ -221,7 +221,7 @@ export class XmlPptProvider implements PptProvider {
       slideData.forEach((slide: any, idx: number) => {
         const slideAudio = slide.audio || [];
         slideAudio
-          .filter((audio: any) => audio.name.toLowerCase().includes("ppt_audio"))
+          .filter((audio: any) => audio.name.toLowerCase().startsWith("ppt_audio"))
           .forEach((audio: any) => {
             deleteOps.push({
               op: "delete_audio_for_slide",
@@ -237,15 +237,14 @@ export class XmlPptProvider implements PptProvider {
       }
 
       const slideAudio = slideData[targetIndex].audio || [];
-      let targetAudio = slideAudio.find((a: any) => a.name.toLowerCase().includes("audio"));
-      if (!targetAudio && slideAudio.length > 0) targetAudio = slideAudio[0];
-
-      if (targetAudio) {
-        deleteOps.push({
-          op: "delete_audio_for_slide",
-          args: { slide_index: targetIndex, name: targetAudio.name },
+      slideAudio
+        .filter((audio: any) => audio.name.toLowerCase().includes("ppt_audio"))
+        .forEach((targetAudio: any) => {
+          deleteOps.push({
+            op: "delete_audio_for_slide",
+            args: { slide_index: targetIndex, name: targetAudio.name },
+          });
         });
-      }
     }
 
     if (deleteOps.length === 0) {
