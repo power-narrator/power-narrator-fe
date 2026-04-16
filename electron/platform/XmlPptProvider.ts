@@ -201,7 +201,7 @@ export class XmlPptProvider implements PptProvider {
       for (const slide of slidesAudio) {
         const buffer = Buffer.from(slide.audioData);
         const slideDir = path.join(sessionDir, `slide_${slide.index}`);
-        if (!fs.existsSync(slideDir)) fs.mkdirSync(slideDir, { recursive: true });
+        fs.mkdirSync(slideDir, { recursive: true });
         const audioFileName =
           slide.sectionIndex !== undefined
             ? `ppt_audio_${slide.sectionIndex + 1}.mp3`

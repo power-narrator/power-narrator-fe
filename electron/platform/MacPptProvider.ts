@@ -36,9 +36,7 @@ export class MacPptProvider implements PptProvider {
             const homeDir = app.getPath('home');
             const officeContainer = path.join(homeDir, 'Library/Group Containers/UBF8T346G9.Office');
             const tempAudioDir = path.join(officeContainer, 'TemporaryAudio');
-            if (fs.existsSync(tempAudioDir)) {
-                fs.rmSync(tempAudioDir, { recursive: true, force: true });
-            }
+            fs.rmSync(tempAudioDir, { recursive: true, force: true });
         } catch (e) {
             console.error("Cleanup failed:", e);
         }
@@ -99,9 +97,7 @@ export class MacPptProvider implements PptProvider {
      */
     async convertPptx(filePath: string, outputDir: string): Promise<any> {
         const tempDir = app.getPath('temp');
-        if (!fs.existsSync(path.join(tempDir, 'power-narrator'))) {
-            fs.mkdirSync(path.join(tempDir, 'power-narrator'), { recursive: true });
-        }
+        fs.mkdirSync(path.join(tempDir, 'power-narrator'), { recursive: true });
 
         try {
             const scriptPath = resolveScriptPath('convert-pptx.applescript');
@@ -166,9 +162,7 @@ export class MacPptProvider implements PptProvider {
             for (const slide of slidesAudio) {
                 const buffer = Buffer.from(slide.audioData);
                 const slideDir = path.join(audioSessionDir, `slide_${slide.index}`);
-                if (!fs.existsSync(slideDir)) {
-                    fs.mkdirSync(slideDir, { recursive: true });
-                }
+                fs.mkdirSync(slideDir, { recursive: true });
                 const audioFileName = slide.sectionIndex !== undefined ? `ppt_audio_${slide.sectionIndex + 1}.mp3` : `ppt_audio_1.mp3`;
                 const audioFilePath = path.join(slideDir, audioFileName);
 
