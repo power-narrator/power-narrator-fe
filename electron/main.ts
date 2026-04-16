@@ -179,10 +179,10 @@ ipcMain.handle("convert-pptx", async (_, filePath) => {
 // ==========================================
 // PowerPoint Action Handlers
 // ==========================================
-ipcMain.handle("save-all-notes", async (_, filePath, slides, slidesAudio) => {
+ipcMain.handle("save-all-notes", async (_, filePath, slides) => {
   const absolutePath = path.resolve(filePath);
   if (!fs.existsSync(absolutePath)) return { success: false, error: "File not found" };
-  return await getActivePptProvider().saveAllNotes(absolutePath, slides, slidesAudio);
+  return await getActivePptProvider().saveAllNotes(absolutePath, slides);
 });
 
 ipcMain.handle("insert-audio", async (_, filePath, slidesAudio) => {

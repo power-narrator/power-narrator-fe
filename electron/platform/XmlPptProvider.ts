@@ -293,10 +293,9 @@ export class XmlPptProvider implements PptProvider {
    *
    * @param filePath - Path to the .pptx file.
    * @param slides - An array of slide objects containing notes to be saved.
-   * @param slidesAudio - Optional audio data (currently unused in this method).
    * @returns A promise resolving to the result of the save operation.
    */
-  async saveAllNotes(filePath: string, slides: any[], _slidesAudio: any[]): Promise<any> {
+  async saveAllNotes(filePath: string, slides: any[]): Promise<any> {
     const ops = slides
       .filter((s: any) => s.notes)
       .map((s: any) => ({

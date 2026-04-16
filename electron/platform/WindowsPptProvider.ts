@@ -13,7 +13,7 @@ export class WindowsPptProvider implements PptProvider {
         return { success: false, error: 'removeAudio not supported on Windows yet' };
     }
 
-    async saveAllNotes(filePath: string, slides: any[], slidesAudio: any[]): Promise<any> {
+    async saveAllNotes(filePath: string, slides: any[]): Promise<any> {
         return { success: false, error: 'saveAllNotes not supported on Windows yet' };
     }
 

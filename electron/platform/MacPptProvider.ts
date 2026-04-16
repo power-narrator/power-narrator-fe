@@ -251,10 +251,9 @@ export class MacPptProvider implements PptProvider {
      * 
      * @param filePath - The path to the PowerPoint file.
      * @param slides - An array of slide objects containing updated notes.
-     * @param slidesAudio - Optional audio data associated with the slides.
      * @returns A promise resolving to the success status of the operation.
      */
-    async saveAllNotes(filePath: string, slides: any[], slidesAudio: any[]): Promise<any> {
+    async saveAllNotes(filePath: string, slides: any[]): Promise<any> {
         const officeContainer = this.getOfficeContainerPath();
 
         let dataContent = "";
