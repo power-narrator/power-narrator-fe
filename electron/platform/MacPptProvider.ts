@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron';
-import * as path from 'path';
-import * as fs from 'fs';
+import path from 'path';
+import fs from 'fs';
 import { spawn } from 'child_process';
 import { PptProvider } from './PptProvider.js';
 import { resolveScriptPath, resolveSlideAssetUrl } from './helpers.js';

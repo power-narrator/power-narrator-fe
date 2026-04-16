@@ -1,6 +1,6 @@
 import { app } from "electron";
-import * as path from "path";
-import * as fs from "fs";
+import path from "path";
+import fs from "fs";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 
