@@ -106,12 +106,6 @@ const createWindow = () => {
     mainWindow.loadURL("http://localhost:5173");
   } else {
     mainWindow.loadFile(path.join(__dirname, "../dist-vite/index.html"));
-    mainWindow.webContents.on("before-input-event", (event, input) => {
-      if (input.control && input.shift && input.key.toLowerCase() === "i") {
-        mainWindow.webContents.toggleDevTools();
-        event.preventDefault();
-      }
-    });
   }
 };
 
