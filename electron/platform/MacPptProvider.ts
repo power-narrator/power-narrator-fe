@@ -17,6 +17,20 @@ export class MacPptProvider implements PptProvider {
         this.cleanup();
     }
 
+    private getOfficeContainerPath(): string {
+        return path.join(app.getPath('home'), 'Library/Group Containers/UBF8T346G9.Office');
+    }
+
+    private buildSlidesWithPaths(slides: any[], outputDir: string): any[] {
+        const timestamp = Date.now();
+
+        return slides.map((s: any) => ({
+            ...s,
+            src: s.image ? `${resolveSlideAssetUrl(path.join(outputDir, s.image))}?t=${timestamp}` : null,
+            notes: s.notes ? s.notes.replace(/\\n/g, '\n').replace(/\\r/g, '\n').replace(/\r/g, '\n') : ''
+        })).filter((s: any) => s.src !== null);
+    }
+
     /**
      * Programmatically returns focus to the Electron window.
      */
@@ -33,8 +47,7 @@ export class MacPptProvider implements PptProvider {
      */
     private cleanup(): void {
         try {
-            const homeDir = app.getPath('home');
-            const officeContainer = path.join(homeDir, 'Library/Group Containers/UBF8T346G9.Office');
+            const officeContainer = this.getOfficeContainerPath();
             const tempAudioDir = path.join(officeContainer, 'TemporaryAudio');
             fs.rmSync(tempAudioDir, { recursive: true, force: true });
         } catch (e) {
@@ -116,11 +129,7 @@ export class MacPptProvider implements PptProvider {
                             const manifestPath = path.join(outputDir, 'manifest.json');
                             const data = fs.readFileSync(manifestPath, 'utf8').replace(/^\uFEFF/, '');
                             const slides = JSON.parse(data);
-                            const slidesWithPaths = slides.map((s: any) => ({
-                                ...s,
-                                src: s.image ? `${resolveSlideAssetUrl(path.join(outputDir, s.image))}?t=${Date.now()}` : null,
-                                notes: s.notes ? s.notes.replace(/\\n/g, '\n').replace(/\\r/g, '\n').replace(/\r/g, '\n') : ''
-                            })).filter((s: any) => s.src !== null);
+                            const slidesWithPaths = this.buildSlidesWithPaths(slides, outputDir);
 
                             this.focusApp();
                             resolve({ success: true, slides: slidesWithPaths });
@@ -147,8 +156,7 @@ export class MacPptProvider implements PptProvider {
     async insertAudio(filePath: string, slidesAudio: any[]): Promise<any> {
         if (!slidesAudio || slidesAudio.length === 0) return { success: true };
 
-        const homeDir = app.getPath('home');
-        const officeContainer = path.join(homeDir, 'Library/Group Containers/UBF8T346G9.Office');
+        const officeContainer = this.getOfficeContainerPath();
         const audioSessionDir = path.join(officeContainer, 'TemporaryAudio', `session-${Date.now()}`);
 
         try {
@@ -214,8 +222,7 @@ export class MacPptProvider implements PptProvider {
      */
     async removeAudio(filePath: string, scope: string, slideIndex: number): Promise<any> {
         return new Promise((resolve) => {
-            const homeDir = app.getPath('home');
-            const officeContainer = path.join(homeDir, 'Library/Group Containers/UBF8T346G9.Office');
+            const officeContainer = this.getOfficeContainerPath();
 
             const paramsPath = path.join(officeContainer, 'remove_audio_params.txt');
             const paramsContent = `${filePath}|${scope}|${slideIndex || 0}`;
@@ -248,8 +255,7 @@ export class MacPptProvider implements PptProvider {
      * @returns A promise resolving to the success status of the operation.
      */
     async saveAllNotes(filePath: string, slides: any[], slidesAudio: any[]): Promise<any> {
-        const homeDir = app.getPath('home');
-        const officeContainer = path.join(homeDir, 'Library/Group Containers/UBF8T346G9.Office');
+        const officeContainer = this.getOfficeContainerPath();
 
         let dataContent = "";
         for (const s of slides) {
@@ -387,11 +393,7 @@ export class MacPptProvider implements PptProvider {
 
                         fs.writeFileSync(manifestPath, JSON.stringify(slides, null, 2), 'utf8');
 
-                        const slidesWithPaths = slides.map((s: any) => ({
-                            ...s,
-                            src: s.image ? `${resolveSlideAssetUrl(path.join(outputDir, s.image))}?t=${Date.now()}` : null,
-                            notes: s.notes ? s.notes.replace(/\\n/g, '\n').replace(/\\r/g, '\n').replace(/\r/g, '\n') : ''
-                        })).filter((s: any) => s.src !== null);
+                        const slidesWithPaths = this.buildSlidesWithPaths(slides, outputDir);
 
                         this.focusApp();
 
