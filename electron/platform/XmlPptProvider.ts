@@ -3,7 +3,6 @@ import * as path from "path";
 import * as fs from "fs";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
-import * as url from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,6 +38,27 @@ export class XmlPptProvider implements PptProvider {
         console.error(`Cleanup failed for ${p}:`, e);
       }
     }
+  }
+
+  private buildDeleteAudioOpsForSlides(slideData: any[], targetSlideIndexes: number[]): any[] {
+    const deleteOps: any[] = [];
+
+    for (const targetIndex of targetSlideIndexes) {
+      const slide = slideData[targetIndex];
+      if (!slide) continue;
+
+      const slideAudio = slide.audio || [];
+      slideAudio
+        .filter((audio: any) => audio.name.toLowerCase().includes("ppt_audio"))
+        .forEach((audio: any) => {
+          deleteOps.push({
+            op: "delete_audio_for_slide",
+            args: { slide_index: targetIndex, name: audio.name },
+          });
+        });
+    }
+
+    return deleteOps;
   }
 
   /**
@@ -151,43 +171,68 @@ export class XmlPptProvider implements PptProvider {
     const sessionDir = path.join(tempDir, `ppt_audio_${Date.now()}`);
     fs.mkdirSync(sessionDir, { recursive: true });
 
-    const slidesToClear = new Set<number>();
-    for (const slide of slidesAudio) slidesToClear.add(slide.index);
-
-    const ops = [];
-    for (const slideIndex of slidesToClear) {
-      ops.push({ op: "clear_audio_for_slide", args: { slide_index: slideIndex - 1 } });
+    let slideIndexBefore = 1;
+    if (this.baseProvider.closePresentation) {
+      slideIndexBefore = await this.baseProvider.closePresentation(filePath);
     }
 
-    for (const slide of slidesAudio) {
-      const buffer = Buffer.from(slide.audioData);
-      const slideDir = path.join(sessionDir, `slide_${slide.index}`);
-      if (!fs.existsSync(slideDir)) fs.mkdirSync(slideDir, { recursive: true });
-      const audioFileName =
-        slide.sectionIndex !== undefined
-          ? `ppt_audio_${slide.sectionIndex + 1}.mp3`
-          : `ppt_audio_1.mp3`;
-      const audioFilePath = path.join(slideDir, audioFileName);
-      fs.writeFileSync(audioFilePath, buffer);
+    try {
+      const slidesToClear = new Set<number>();
+      for (const slide of slidesAudio) slidesToClear.add(slide.index);
 
-      ops.push({
-        op: "save_audio_for_slide",
-        args: { slide_index: slide.index - 1, mp3_path: audioFilePath },
+      const queryResult = await this.runXmlCli(filePath, null, [{ op: "get_slides", args: {} }], {
+        skipClose: true,
+        skipReopen: true,
       });
+      if (!queryResult.success) {
+        return { success: false, error: "Failed to query slide content: " + queryResult.error };
+      }
+
+      const slideData = queryResult.data?.results?.[0]?.result;
+      if (!slideData) {
+        return { success: false, error: "Could not find slide data" };
+      }
+
+      const ops = this.buildDeleteAudioOpsForSlides(
+        slideData,
+        Array.from(slidesToClear, (slideIndex) => slideIndex - 1),
+      );
+
+      for (const slide of slidesAudio) {
+        const buffer = Buffer.from(slide.audioData);
+        const slideDir = path.join(sessionDir, `slide_${slide.index}`);
+        if (!fs.existsSync(slideDir)) fs.mkdirSync(slideDir, { recursive: true });
+        const audioFileName =
+          slide.sectionIndex !== undefined
+            ? `ppt_audio_${slide.sectionIndex + 1}.mp3`
+            : `ppt_audio_1.mp3`;
+        const audioFilePath = path.join(slideDir, audioFileName);
+        fs.writeFileSync(audioFilePath, buffer);
+
+        ops.push({
+          op: "save_audio_for_slide",
+          args: { slide_index: slide.index - 1, mp3_path: audioFilePath },
+        });
+      }
+
+      return await this.runXmlCli(filePath, filePath, ops, {
+        skipClose: true,
+        skipReopen: true,
+      });
+    } finally {
+      this.cleanupFiles(sessionDir);
+      if (this.baseProvider.reopenPresentation) {
+        await this.baseProvider.reopenPresentation(filePath, slideIndexBefore);
+      }
     }
-
-    const result = await this.runXmlCli(filePath, filePath, ops);
-    this.cleanupFiles(sessionDir);
-
-    return result;
   }
 
   /**
    * Removes audio from PowerPoint slides based on the specified scope.
    *
    * @param filePath - Path to the .pptx file.
-   * @param scope - The scope of removal ('all' or 'single').
-   * @param slideIndex - The 1-based index of the slide (relevant if scope is 'single').
+   * @param scope - The scope of removal ("all" or "slide").
+   * @param slideIndex - The 1-based index of the slide (relevant if scope is "slide").
    * @returns A promise resolving to the result of the removal operation.
    */
   async removeAudio(filePath: string, scope: string, slideIndex: number): Promise<any> {
@@ -214,38 +259,18 @@ export class XmlPptProvider implements PptProvider {
       return { success: false, error: "Could not find slide data" };
     }
 
-    const deleteOps: any[] = [];
     const targetIndex = slideIndex - 1;
 
-    if (scope === "all") {
-      slideData.forEach((slide: any, idx: number) => {
-        const slideAudio = slide.audio || [];
-        slideAudio
-          .filter((audio: any) => audio.name.toLowerCase().startsWith("ppt_audio"))
-          .forEach((audio: any) => {
-            deleteOps.push({
-              op: "delete_audio_for_slide",
-              args: { slide_index: idx, name: audio.name },
-            });
-          });
-      });
-    } else {
-      if (!slideData[targetIndex]) {
-        if (this.baseProvider.reopenPresentation)
-          await this.baseProvider.reopenPresentation(filePath, slideIndexBefore);
-        return { success: false, error: "Could not find slide data for index " + targetIndex };
-      }
-
-      const slideAudio = slideData[targetIndex].audio || [];
-      slideAudio
-        .filter((audio: any) => audio.name.toLowerCase().includes("ppt_audio"))
-        .forEach((targetAudio: any) => {
-          deleteOps.push({
-            op: "delete_audio_for_slide",
-            args: { slide_index: targetIndex, name: targetAudio.name },
-          });
-        });
+    if (scope !== "all" && !slideData[targetIndex]) {
+      if (this.baseProvider.reopenPresentation)
+        await this.baseProvider.reopenPresentation(filePath, slideIndexBefore);
+      return { success: false, error: "Could not find slide data for index " + targetIndex };
     }
+
+    const deleteOps = this.buildDeleteAudioOpsForSlides(
+      slideData,
+      scope === "all" ? slideData.map((_: any, idx: number) => idx) : [targetIndex],
+    );
 
     if (deleteOps.length === 0) {
       if (this.baseProvider.reopenPresentation)
