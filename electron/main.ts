@@ -225,7 +225,7 @@ ipcMain.handle("reload-slide", async (_, { filePath, slideIndex }) => {
   return await getActivePptProvider().reloadSlide(absolutePath, slideIndex, outputDir);
 });
 
-ipcMain.handle("generate-video", async (_, { filePath, slidesAudio, videoOutputPath }) => {
+ipcMain.handle("generate-video", async (_, { filePath, videoOutputPath }) => {
   if (!videoOutputPath) return { success: false, error: "No output path provided." };
   const absolutePath = path.resolve(filePath);
   return await getActivePptProvider().generateVideo(absolutePath, videoOutputPath);

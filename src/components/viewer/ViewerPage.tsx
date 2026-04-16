@@ -383,22 +383,9 @@ export function ViewerPage({
 
       setGenStatus("Preparing audio...");
 
-      const audioSlides = slides.filter((slide) => slide.notes?.trim());
-      const slidesAudio = await Promise.all(
-        audioSlides.map(async (slide) => {
-          setGenStatus(`Generating audio for slide ${slide.index}...`);
-          const buffer = await getAudioBuffer(slide.notes, undefined);
-          return {
-            index: slide.index,
-            audioData: new Uint8Array(buffer),
-          };
-        }),
-      );
-
       setGenStatus("Rendering video...");
       const result = await electronAPI.generateVideo({
         filePath,
-        slidesAudio,
         videoOutputPath: savePath,
       });
 
@@ -537,7 +524,10 @@ export function ViewerPage({
     try {
       setIsPlaying(true);
       setPlayStatus(`Playing slide ${activeSlide.index}...`);
-      const result = await electronAPI.playSlide(getSlideNumber(activeSlide, activeSlideIndex), filePath);
+      const result = await electronAPI.playSlide(
+        getSlideNumber(activeSlide, activeSlideIndex),
+        filePath,
+      );
       if (!result.success) {
         alert(`Failed to play slide: ${result.error}`);
         setPlayStatus("");
@@ -724,11 +714,11 @@ export function ViewerPage({
                   onInsertWrappedTag={insertWrappedTag}
                 />
 
-                  <NotesSectionList
-                    sections={activeSections}
-                    mappings={mappings}
-                    slideIndex={activeSlide.index}
-                    onFocusSection={setActiveSectionIndex}
+                <NotesSectionList
+                  sections={activeSections}
+                  mappings={mappings}
+                  slideIndex={activeSlide.index}
+                  onFocusSection={setActiveSectionIndex}
                   onSpeakerChange={handleSpeakerChange}
                   onSectionTextChange={handleSectionTextChange}
                   onDeleteSection={handleDeleteSection}

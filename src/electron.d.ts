@@ -31,7 +31,6 @@ declare global {
       ) => Promise<BasicElectronResult>;
       generateVideo: (payload: {
         filePath: string;
-        slidesAudio: SlideAudioEntry[];
         videoOutputPath: string;
       }) => Promise<VideoElectronResult>;
       removeAudio: (payload: {
