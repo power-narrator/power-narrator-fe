@@ -220,12 +220,14 @@ export class XmlPptProvider implements PptProvider {
     if (scope === "all") {
       slideData.forEach((slide: any, idx: number) => {
         const slideAudio = slide.audio || [];
-        slideAudio.forEach((audio: any) => {
-          deleteOps.push({
-            op: "delete_audio_for_slide",
-            args: { slide_index: idx, name: audio.name },
+        slideAudio
+          .filter((audio: any) => audio.name.toLowerCase().includes("ppt_audio"))
+          .forEach((audio: any) => {
+            deleteOps.push({
+              op: "delete_audio_for_slide",
+              args: { slide_index: idx, name: audio.name },
+            });
           });
-        });
       });
     } else {
       if (!slideData[targetIndex]) {
