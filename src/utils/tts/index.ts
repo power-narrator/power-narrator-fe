@@ -1,4 +1,3 @@
-const { ipcRenderer } = (window as any).require('electron');
 import { concatUint8Arrays } from './audioUtils';
 import { parseTtsSegments } from './ttsParse';
 
@@ -84,7 +83,7 @@ export const getAudioBuffer = async (text: string, voiceOption?: VoiceOption): P
         }
 
         if (!chunkData) {
-            const result: Uint8Array = await ipcRenderer.invoke('generate-speech', {
+            const result: Uint8Array = await window.electronAPI.generateSpeech({
                 text: seg.text,
                 voiceOption: seg.voice
             });

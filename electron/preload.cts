@@ -10,6 +10,15 @@ const electronAPI = {
   saveAllNotes: (filePath: string, slides: unknown[]) =>
     ipcRenderer.invoke("save-all-notes", filePath, slides),
   getVoices: () => ipcRenderer.invoke("get-voices"),
+  generateSpeech: (payload: {
+    text: string;
+    voiceOption?: {
+      name: string;
+      languageCodes: string[];
+      ssmlGender: string;
+      provider?: string;
+    };
+  }) => ipcRenderer.invoke("generate-speech", payload),
   getGcpKeyPath: () => ipcRenderer.invoke("get-gcp-key-path"),
   setGcpKey: () => ipcRenderer.invoke("set-gcp-key"),
   getSpeakerMappings: () => ipcRenderer.invoke("get-speaker-mappings"),
@@ -31,8 +40,4 @@ const electronAPI = {
   getVideoSavePath: () => ipcRenderer.invoke("get-video-save-path"),
 };
 
-try {
-  contextBridge.exposeInMainWorld("electronAPI", electronAPI);
-} catch {
-  (window as Window & { electronAPI?: typeof electronAPI }).electronAPI = electronAPI;
-}
+contextBridge.exposeInMainWorld("electronAPI", electronAPI);

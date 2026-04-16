@@ -17,6 +17,15 @@ declare global {
       selectFile: () => Promise<string | null>;
       saveAllNotes: (filePath: string, slides: Slide[]) => Promise<BasicElectronResult>;
       getVoices: () => Promise<Voice[]>;
+      generateSpeech: (payload: {
+        text: string;
+        voiceOption?: {
+          name: string;
+          languageCodes: string[];
+          ssmlGender: string;
+          provider?: string;
+        };
+      }) => Promise<Uint8Array>;
       getGcpKeyPath: () => Promise<string | null>;
       setGcpKey: () => Promise<BasicElectronResult & { path?: string }>;
       setInsertMethod: (method: string) => Promise<void>;
