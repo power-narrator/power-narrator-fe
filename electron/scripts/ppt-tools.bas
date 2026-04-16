@@ -12,6 +12,7 @@ Attribute VB_Name = "AudioTools"
 
 Function GetPresentation(targetPath As String) As Presentation
     Dim p As Presentation
+    Dim targetName As String
     Set GetPresentation = Nothing
     
     For Each p In Application.Presentations
@@ -21,7 +22,6 @@ Function GetPresentation(targetPath As String) As Presentation
         End If
     Next p
     
-    Dim targetName As String
     targetName = Mid(targetPath, InStrRev(targetPath, "/") + 1)
     For Each p In Application.Presentations
         If p.Name = targetName Then
@@ -41,9 +41,28 @@ Sub InsertAudio()
     Dim params() As String
     Dim slideIndex As Integer
     Dim audioPath As String
-    
     Dim currentSlideIndex As Integer
     Dim newAudioInsertIndex As Integer
+    Dim targetPath As String
+    Dim hasPres As Boolean
+    Dim audioTag As String
+    Dim fileName As String
+    Dim hadExistingAudio As Boolean
+    Dim existingAnimIndex As Integer
+    Dim existingTriggerType As Integer
+    Dim existingDelay As Single
+    Dim existingRepeatCount As Long
+    Dim existingRepeatDuration As Single
+    Dim existingRewindAtEnd As MsoTriState
+    Dim s As Shape
+    Dim iShape As Integer
+    Dim effIdx As Integer
+    Dim margin As Single
+    Dim audioCount As Integer
+    Dim tempShape As Shape
+    Dim eff As Effect
+    Dim i As Integer
+    
     currentSlideIndex = 0
     newAudioInsertIndex = 1
     
@@ -56,8 +75,6 @@ Sub InsertAudio()
     End If
     
     ' Batch Process Mode
-    Dim targetPath As String
-    Dim hasPres As Boolean
     
     hasPres = False
     
@@ -100,20 +117,11 @@ Sub InsertAudio()
                     End If
                     
                     ' Tag for unique identification
-                    Dim audioTag As String
-                    Dim fileName As String
                     fileName = Mid(audioPath, InStrRev(audioPath, "/") + 1)
                     fileName = Left(fileName, InStrRev(fileName, ".") - 1)
                     audioTag = fileName
                     
                     ' Variables to preserve animation state
-                    Dim hadExistingAudio As Boolean
-                    Dim existingAnimIndex As Integer
-                    Dim existingTriggerType As Integer
-                    Dim existingDelay As Single
-                    Dim existingRepeatCount As Long
-                    Dim existingRepeatDuration As Single
-                    Dim existingRewindAtEnd As msoTriState
                     
                     hadExistingAudio = False
                     existingAnimIndex = 1
@@ -124,13 +132,10 @@ Sub InsertAudio()
                     existingRewindAtEnd = msoFalse
                     
                     ' Find and delete existing audio from our tool, but save its animation properties first
-                    Dim s As Shape
-                    Dim iShape As Integer
                     For iShape = sld.Shapes.Count To 1 Step -1
                         Set s = sld.Shapes(iShape)
                         If s.Name = audioTag Then
                             ' Find its effect in MainSequence to copy properties
-                            Dim effIdx As Integer
                             For effIdx = 1 To sld.TimeLine.MainSequence.Count
                                 If Not sld.TimeLine.MainSequence(effIdx).Shape Is Nothing Then
                                     If sld.TimeLine.MainSequence(effIdx).Shape.Name = audioTag Then
@@ -155,9 +160,8 @@ Sub InsertAudio()
                     If Not shp Is Nothing Then
                         shp.Name = audioTag
                         
-                        Dim margin As Single: margin = 10
-                        Dim audioCount As Integer: audioCount = 0
-                        Dim tempShape As Shape
+                        margin = 10
+                        audioCount = 0
                         
                         ' Count existing audio shapes to determine vertical stack position
                         For Each tempShape In sld.Shapes
@@ -174,10 +178,8 @@ Sub InsertAudio()
                         shp.Top = margin + (audioCount - 1) * (shp.Height + margin)
                         
                         ' --- Animation Configuration ---
-                        Dim eff As Effect
                         
                         ' 1. Ensure clean slate (remove any auto-added effects for this shape)
-                        Dim i As Integer
                         For i = sld.TimeLine.MainSequence.Count To 1 Step -1
                             If Not sld.TimeLine.MainSequence(i).Shape Is Nothing Then
                                 If sld.TimeLine.MainSequence(i).Shape.Name = shp.Name Then
@@ -239,6 +241,11 @@ Sub UpdateNotes()
     Dim fileNum As Integer
     Dim fileContent As String
     Dim params() As String
+    Dim dataNum As Integer
+    Dim lineData As String
+    Dim currentSlideIndex As Integer
+    Dim currentNotes As String
+    Dim isReadingNotes As Boolean
     
     ' 1. Read Parameters (Presentation Path | Data File Path)
     paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/notes_params.txt"
@@ -273,11 +280,6 @@ Sub UpdateNotes()
         Exit Sub
     End If
     
-    Dim dataNum As Integer
-    Dim lineData As String
-    Dim currentSlideIndex As Integer
-    Dim currentNotes As String
-    Dim isReadingNotes As Boolean
     
     currentSlideIndex = -1
     isReadingNotes = False
@@ -321,11 +323,15 @@ Sub UpdateNotes()
 End Sub
 
 Sub PlaySlide()
+    Dim targetPath As String
     Dim pres As Presentation
     Dim slideIndex As Integer
     Dim paramsPath As String
     Dim fileNum As Integer
     Dim fileContent As String
+    Dim params() As String
+    Dim i As Integer
+    Dim sw As SlideShowWindow
     
     ' 1. Read parameters (SlideIndex | TargetPath)
     paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/play_slide.txt"
@@ -340,7 +346,6 @@ Sub PlaySlide()
     Line Input #fileNum, fileContent
     Close fileNum
     
-    Dim params() As String
     params = Split(fileContent, "|")
     If UBound(params) < 1 Then Exit Sub
     
@@ -370,8 +375,6 @@ Sub PlaySlide()
     
     ' 5. Navigate to Slide
     ' Wait for window to exist (simple loop)
-    Dim i As Integer
-    Dim sw As SlideShowWindow
     Set sw = Nothing
     
     For i = 1 To 10
@@ -395,6 +398,7 @@ Sub PlaySlide()
 End Sub
 
 Sub ReloadSlide()
+    Dim targetPath As String
     Dim pres As Presentation
     Dim slideIndex As Integer
     Dim paramsPath As String
