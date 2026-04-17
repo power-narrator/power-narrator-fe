@@ -168,7 +168,7 @@ export function ViewerPage({
             }
 
             const buffer = await getAudioBuffer(
-              section.text,
+              section.text.trim(),
               mappings[section.speaker] || undefined,
             );
             return {
@@ -385,7 +385,7 @@ export function ViewerPage({
       const slidesAudio = await Promise.all(
         audioSlides.map(async (slide) => {
           setGenStatus(`Generating audio for slide ${slide.index}...`);
-          const buffer = await getAudioBuffer(slide.notes, undefined);
+          const buffer = await getAudioBuffer((slide.notes || "").trim(), undefined);
           return {
             index: slide.index,
             audioData: new Uint8Array(buffer),
