@@ -5,9 +5,8 @@ import { ActionButtonList } from "./ActionButtonList";
 
 export type SlideActionBarKey =
   | "reloadSlide"
-  | "insertSlideAudio"
+  | "saveSlide"
   | "playSlide"
-  | "saveSlideNotes"
   | "removeSlideAudio";
 
 interface SlideActionsBarProps {
@@ -17,9 +16,8 @@ interface SlideActionsBarProps {
 
 const SLIDE_ACTION_ITEMS = [
   { key: "reloadSlide", label: "Reload Slide", icon: <IconRefresh size={14} /> },
-  { key: "insertSlideAudio", label: "Insert Audio" },
+  { key: "saveSlide", label: "Save Slide" },
   { key: "playSlide", label: "Play", icon: <IconDeviceTv size={14} /> },
-  { key: "saveSlideNotes", label: "Save Slide Notes" },
   { key: "removeSlideAudio", label: "Remove Audio" },
 ] satisfies Array<{ key: SlideActionBarKey; label: string; icon?: ReactNode }>;
 
