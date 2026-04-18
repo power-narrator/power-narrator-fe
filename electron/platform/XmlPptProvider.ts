@@ -2,10 +2,6 @@ import { app } from "electron";
 import path from "path";
 import fs from "fs";
 import { spawn } from "child_process";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 import { PptProvider } from "./PptProvider.js";
 import { resolveScriptPath } from "./helpers.js";
 
@@ -98,17 +94,8 @@ export class XmlPptProvider implements PptProvider {
         env.PATH = `${localBinDir}:${env.PATH}`;
       }
 
-      let child;
-      if (app.isPackaged) {
-        const cliPath = resolveScriptPath(path.join("xml-cli", "slide-voice-pptx"));
-        child = spawn(cliPath, [reqPath, resPath], { env: env });
-      } else {
-        const cliDir = path.join(__dirname, "../../xml/slide-voice-app");
-        child = spawn("uv", ["run", "-m", "slide_voice_pptx", reqPath, resPath], {
-          cwd: cliDir,
-          env: env,
-        });
-      }
+      const cliPath = resolveScriptPath("power-narrator-cli");
+      const child = spawn(cliPath, [reqPath, resPath], { env: env });
 
       let stdout = "";
       let stderr = "";
