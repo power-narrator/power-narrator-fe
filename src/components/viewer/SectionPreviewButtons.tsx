@@ -127,14 +127,15 @@ export function SectionPreviewButtons({
 
       <Group gap="xs">
         {speakers.map((speaker) => {
+          const isSelected = section.speaker === speaker.value;
           const isActive = activePreviewTarget === speaker.value;
           const isGenerating = isAudioGenerating && isActive;
           return (
             <Button
               key={speaker.value}
               size="compact-sm"
-              variant="outline"
-              color="blue"
+              variant={isActive || isSelected ? "filled" : "outline"}
+              color={isActive ? "blue" : (isSelected ? "blue" : "blue")}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => handlePlay(speaker.value)}
               loading={isGenerating}
