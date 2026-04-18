@@ -12,7 +12,7 @@ on run {macroName, pptPath}
                 end if
             end repeat
         end try
-        
+
         if pres is missing value then
              -- Open if not found
              open (POSIX file pptPath)
@@ -20,13 +20,11 @@ on run {macroName, pptPath}
         else
              -- Use existing
         end if
-        
+
         try
-            -- Run the specified macro
             run VB macro macro name macroName
         on error errMsg
             return "Error calling macro '" & macroName & "': " & errMsg
         end try
-        
     end tell
 end run

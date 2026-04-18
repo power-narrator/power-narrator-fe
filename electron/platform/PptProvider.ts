@@ -1,6 +1,10 @@
 export interface PptProvider {
     closePresentation?(filePath: string): Promise<number>;
     reopenPresentation?(filePath: string, slideIndex: number): Promise<void>;
+    exportSlideImages?(filePath: string, outputDir: string): Promise<any>;
+    reloadSlideImage?(filePath: string, slideIndex: number, outputDir: string): Promise<any>;
+    readAllSlideNotes?(filePath: string): Promise<any>;
+    readSlideNotes?(filePath: string, slideIndex: number): Promise<any>;
     
     convertPptx(filePath: string, outputDir: string): Promise<any>;
     insertAudio(filePath: string, slidesAudio: any[]): Promise<any>;

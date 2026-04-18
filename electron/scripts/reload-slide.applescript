@@ -2,183 +2,75 @@ use scripting additions
 
 on run argv
 	if (count of argv) < 3 then
-		error "Usage: sync-slide.applescript <pptPath> <slideIndex> <outputDir>"
+		error "Usage: reload-slide.applescript <pptPath> <slideIndex> <outputDir>"
 	end if
 	
 	set pptPath to item 1 of argv
 	set slideIndex to (item 2 of argv) as integer
 	set outputDir to item 3 of argv
 	set slidesDir to outputDir & "/slides"
-	
-	-- Construct output filenames
 	set slideName to "Slide" & slideIndex & ".png"
 	set slidePathPosix to slidesDir & "/" & slideName
 	
-	-- 1. Prepare Parameters for VBA (Shared File)
-	-- Do this OUTSIDE of PowerPoint tell block to avoid terminology conflicts
-	set homePath to (path to home folder as text)
-	set containerPath to homePath & "Library:Group Containers:UBF8T346G9.Office:"
-    set containerPosix to POSIX path of containerPath
-    
-	set paramsPath to containerPath & "reload_slide.txt"
-    
-    -- Use Sandbox for intermediate image to avoid "Grant Access" prompts
-    set sandboxImageName to "temp_slide_" & slideIndex & ".png"
-    set sandboxImagePosix to containerPosix & sandboxImageName
+	do shell script "mkdir -p " & quoted form of slidesDir
 	
-    -- Pass the Sandbox path and PPT path to VBA
-	set paramString to (slideIndex as text) & "|" & sandboxImagePosix & "|" & pptPath
-	
-	do shell script "echo " & quoted form of paramString & " > " & quoted form of (POSIX path of paramsPath)
-	
-	-- 2. Open PPT and Run Macro
-    set notesText to ""
 	tell application "Microsoft PowerPoint"
-		activate
+		launch
 		
-		-- Check/Open Presentation
-        -- We try to find it first
-        set presFound to false
-        set presName to ""
-        
-        try
-            -- Simple check if active presentation matches
-            if (count of presentations) > 0 then
-                if full name of active presentation contains pptPath then
-                   set presFound to true
-                   set presName to name of active presentation
-                end if
-            end if
-        end try
-        
-        if not presFound then
-             -- Loop check
-             repeat with p in presentations
-                if full name of p contains pptPath then
-                    set presFound to true
-                    set presName to name of p
-                    exit repeat
-                end if
-             end repeat
-        end if
-        
-        if not presFound then
-            open (POSIX file pptPath)
-            set presFound to true
-            set presName to name of active presentation
-        end if
-        
-        -- Run Export Macro
+		set pres to missing value
+		
 		try
-            -- Run the macro which reads the text file we just wrote
-			run VB macro macro name "ReloadSlide"
-		on error errMsg
-             error "VBA Macro Failed: " & errMsg
+			repeat with p in presentations
+				if full name of p contains pptPath then
+					set pres to p
+					exit repeat
+				end if
+			end repeat
 		end try
-        
-        -- Get Notes from the specific presentation
-        try
-            tell slide slideIndex of presentation presName
-                tell notes page
-                    if (count of shapes) > 1 then
-                        set notesText to content of text range of text frame of shape 2
-                    end if
-                end tell
-            end tell
-        on error
-            set notesText to ""
-        end try
-        
+		
+		if pres is missing value then
+			open (POSIX file pptPath)
+			try
+				set window state of active window to minimized
+			end try
+			set pres to active presentation
+		end if
+		
+		try
+			set slidesHFS to (POSIX file slidesDir) as text
+		on error
+			set slidesHFS to slidesDir
+		end try
+		
+		if slidesHFS does not end with ":" then
+			set slidesHFS to slidesHFS & ":"
+		end if
+		
+		try
+			set slidePathHFS to slidesHFS & slideName as text
+			tell slide slideIndex of pres
+				save in slidePathHFS as save as PNG
+			end tell
+		on error
+			try
+				tell slide slideIndex of pres
+					copy object
+				end tell
+				delay 0.2
+				
+				set pngData to the clipboard as «class PNGf»
+				set fRef to open for access (POSIX file slidePathPosix) with write permission
+				set eof fRef to 0
+				write pngData to fRef
+				close access fRef
+			on error errMsg
+				try
+					close access (POSIX file slidePathPosix)
+				end try
+				error "Failed to export slide image: " & errMsg
+			end try
+		end try
 	end tell
 	
-	-- 3. Move File from Sandbox to Final Destination
-    -- OUTSIDE of PPT tell block
-	delay 0.5
-	
-    -- Wait for sandbox file
-    set sandboxFileExists to false
-	repeat with loopVar from 1 to 20
-		tell application "System Events"
-			if exists file sandboxImagePosix then 
-                set sandboxFileExists to true
-                exit repeat
-            end if
-		end tell
-		delay 0.1
-	end repeat
-    
-    if sandboxFileExists then
-        -- Move it to final destination (overwrite if exists)
-        do shell script "mv -f " & quoted form of sandboxImagePosix & " " & quoted form of slidePathPosix
-    else
-        return "Error: VBA did not create file at " & sandboxImagePosix
-    end if
-	
-	-- Return Format: ImageRelPath|||Notes
-	set safeNotes to my cleanNotes(notesText)
-	return "slides/" & slideName & "|||" & safeNotes
-	
+	return "slides/" & slideName
 end run
-
--- Helper to ensure POSIX path rules
-on coveredPOSIXPath(thePath)
-    -- Just return the path, usually fine.
-    return thePath
-end coveredPOSIXPath
-
-on cleanNotes(str)
-    if str is missing value then return ""
-    set str to str as text
-    set text item delimiters to "|||"
-    set itemsList to text items of str
-    set text item delimiters to "   " 
-    set str to itemsList as text
-    
-    set text item delimiters to (return & linefeed)
-    set itemsList to text items of str
-    set text item delimiters to "\\n"
-    set str to itemsList as text
-    
-    set text item delimiters to return
-    set itemsList to text items of str
-    set text item delimiters to "\\n"
-    set str to itemsList as text
-    
-    set text item delimiters to linefeed
-    set itemsList to text items of str
-    set text item delimiters to "\\n"
-    set str to itemsList as text
-    
-    -- Replace smart quotes and dashes to prevent encoding issues
-    set text item delimiters to "’"
-    set itemsList to text items of str
-    set text item delimiters to "'"
-    set str to itemsList as text
-    
-    set text item delimiters to "‘"
-    set itemsList to text items of str
-    set text item delimiters to "'"
-    set str to itemsList as text
-    
-    set text item delimiters to "“"
-    set itemsList to text items of str
-    set text item delimiters to "\""
-    set str to itemsList as text
-    
-    set text item delimiters to "”"
-    set itemsList to text items of str
-    set text item delimiters to "\""
-    set str to itemsList as text
-    
-    set text item delimiters to "–" -- En dash
-    set itemsList to text items of str
-    set text item delimiters to "-"
-    set str to itemsList as text
-    
-    set text item delimiters to "—" -- Em dash
-    set itemsList to text items of str
-    set text item delimiters to "--"
-    set str to itemsList as text
-
-    return str
-end cleanNotes
