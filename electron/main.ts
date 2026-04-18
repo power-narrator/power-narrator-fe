@@ -18,11 +18,11 @@ import type {
   SlideManifestEntry,
 } from "./platform/types.js";
 
-const slideAssetScheme = "power-narrator";
+const appName = "power-narrator";
 
 protocol.registerSchemesAsPrivileged([
   {
-    scheme: slideAssetScheme,
+    scheme: appName,
     privileges: {
       standard: true,
       secure: true,
@@ -37,6 +37,7 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
+app.setName(appName);
 const store = new Store();
 
 function getGcpKeyPath(): string | undefined {
@@ -65,7 +66,7 @@ function isWithinDirectory(filePath: string, allowedRoot: string): boolean {
 }
 
 function registerSlideAssetProtocol(): void {
-  protocol.handle(slideAssetScheme, (request) => {
+  protocol.handle(appName, (request) => {
     const url = new URL(request.url);
     if (url.hostname !== "slide") {
       return new Response("Not Found", { status: 404 });
@@ -73,7 +74,7 @@ function registerSlideAssetProtocol(): void {
 
     const encodedPath = url.pathname.startsWith("/") ? url.pathname.slice(1) : url.pathname;
     const assetPath = path.normalize(decodeURIComponent(encodedPath));
-    const allowedRoot = path.join(app.getPath("temp"), "power-narrator");
+    const allowedRoot = path.join(app.getPath("temp"), appName);
 
     if (!isWithinDirectory(assetPath, allowedRoot)) {
       return new Response("Forbidden", { status: 403 });
@@ -186,7 +187,7 @@ ipcMain.handle("convert-pptx", async (_, filePath) => {
   const tempDir = app.getPath("temp");
   const outputDir = path.join(
     tempDir,
-    "power-narrator",
+    appName,
     path.basename(absolutePath, path.extname(absolutePath)),
   );
 
@@ -228,7 +229,7 @@ ipcMain.handle("reload-slide", async (_, { filePath, slideIndex }: ReloadSlideRe
   const tempDir = app.getPath("temp");
   const outputDir = path.join(
     tempDir,
-    "power-narrator",
+    appName,
     path.basename(absolutePath, path.extname(absolutePath)),
   );
 

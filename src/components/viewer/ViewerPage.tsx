@@ -71,25 +71,23 @@ export function ViewerPage({
 
   const headerActionStates: Record<ViewerHeaderActionKey, ActionButtonState> = {
     syncAll: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
-    insertAllAudio: {
-      loading: isInsertingAudio,
-      busy: busy && !isInsertingAudio,
-      status: insertStatus,
+    saveAllNotesAndInsertAudio: {
+      loading: isSaving || isInsertingAudio,
+      busy: (busy && !isSaving && !isInsertingAudio) || isSaving || isInsertingAudio,
+      status: saveStatus || insertStatus,
     },
-    saveAllNotes: { loading: isSaving, busy: busy && !isSaving, status: saveStatus },
     removeAllAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
     generateVideo: { loading: isGenerating, busy: busyOrXml && !isGenerating, status: genStatus },
   };
 
   const slideActionStates: Record<SlideActionBarKey, ActionButtonState> = {
     reloadSlide: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
-    insertSlideAudio: {
-      loading: isInsertingAudio,
-      busy: busy && !isInsertingAudio,
-      status: insertStatus,
+    saveNotesAndInsertAudio: {
+      loading: isSaving || isInsertingAudio,
+      busy: (busy && !isSaving && !isInsertingAudio) || isSaving || isInsertingAudio,
+      status: saveStatus || insertStatus,
     },
     playSlide: { loading: isPlaying, busy: busyOrXml && !isPlaying, status: playStatus },
-    saveSlideNotes: { loading: isSaving, busy: busy && !isSaving, status: saveStatus },
     removeSlideAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
   };
 
@@ -405,28 +403,7 @@ export function ViewerPage({
     }
   };
 
-  const handleSaveAllNotes = async () => {
-    if (busy) {
-      return;
-    }
-
-    setIsSaving(true);
-    setSaveStatus("Saving all notes...");
-
-    try {
-      await saveNotesToFile(slides);
-      alert("Notes saved successfully!");
-      setSaveStatus("Saved!");
-      scheduleStatusClear(setSaveStatus);
-    } catch (error: unknown) {
-      alertError("Save error", error);
-      setSaveStatus("");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleSaveCurrentSlideNotes = async () => {
+  const handleSaveNotesAndInsertAudio = async () => {
     if (busy) {
       return;
     }
@@ -437,18 +414,13 @@ export function ViewerPage({
     try {
       await saveNotesToFile([activeSlide]);
       setSaveStatus("Saved!");
-      scheduleStatusClear(setSaveStatus);
     } catch (error: unknown) {
       alertError("Save error", error);
       setSaveStatus("");
+      return;
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleInsertSlideAudio = async () => {
-    if (busy) {
-      return;
+    setSaveStatus("");
     }
 
     setIsInsertingAudio(true);
@@ -481,9 +453,25 @@ export function ViewerPage({
     }
   };
 
-  const handleInsertAllAudio = async () => {
+  const handleSaveAllNotesAndInsertAudio = async () => {
     if (busy) {
       return;
+    }
+
+    setIsSaving(true);
+    setSaveStatus("Saving all notes...");
+
+    try {
+      await saveNotesToFile(slides);
+      alert("Notes saved successfully!");
+      setSaveStatus("Saved!");
+    } catch (error: unknown) {
+      alertError("Save error", error);
+      setSaveStatus("");
+      return;
+    } finally {
+      setIsSaving(false);
+    setSaveStatus("");
     }
 
     setIsInsertingAudio(true);
@@ -666,8 +654,7 @@ export function ViewerPage({
         actionStates={headerActionStates}
         handlers={{
           syncAll: handleSyncAll,
-          insertAllAudio: handleInsertAllAudio,
-          saveAllNotes: handleSaveAllNotes,
+          saveAllNotesAndInsertAudio: handleSaveAllNotesAndInsertAudio,
           removeAllAudio: handleRemoveAllAudio,
           generateVideo: handleGenerateVideo,
         }}
@@ -698,9 +685,8 @@ export function ViewerPage({
                   actionStates={slideActionStates}
                   handlers={{
                     reloadSlide: handleReloadSlide,
-                    insertSlideAudio: handleInsertSlideAudio,
+                    saveNotesAndInsertAudio: handleSaveNotesAndInsertAudio,
                     playSlide: handlePlaySlide,
-                    saveSlideNotes: handleSaveCurrentSlideNotes,
                     removeSlideAudio: handleRemoveSlideAudio,
                   }}
                 />
