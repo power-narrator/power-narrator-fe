@@ -299,6 +299,9 @@ Sub UpdateNotes()
     dataNum = FreeFile
     Open dataPath For Input As dataNum
     
+    isReadingNotes = False
+    Dim isFirstLine As Boolean
+    
     Do While Not EOF(dataNum)
         Line Input #dataNum, lineData
         
@@ -307,6 +310,7 @@ Sub UpdateNotes()
             currentSlideIndex = CInt(Mid(lineData, 19))
             currentNotes = ""
             isReadingNotes = True
+            isFirstLine = True
         ElseIf Left(lineData, 15) = "###SLIDE_END###" Then
             If currentSlideIndex > 0 And currentSlideIndex <= pres.Slides.Count Then
                 ' Apply notes to slide
@@ -317,10 +321,11 @@ Sub UpdateNotes()
             isReadingNotes = False
         Else
             If isReadingNotes Then
-                If currentNotes = "" Then
+                If isFirstLine Then
                     currentNotes = lineData
+                    isFirstLine = False
                 Else
-                    currentNotes = currentNotes & vbCrLf & lineData
+                    currentNotes = currentNotes & vbCr & lineData
                 End If
             End If
         End If

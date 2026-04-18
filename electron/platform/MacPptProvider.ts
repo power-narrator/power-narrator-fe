@@ -45,6 +45,18 @@ export class MacPptProvider implements PptProvider {
     }
 
     /**
+     * Normalizes slide notes by converting PowerPoint's various line break 
+     * formats and escape sequences into standard newlines.
+     */
+    private normalizeNotes(notes: string | null | undefined): string {
+        if (!notes) return '';
+        return notes
+            .replace(/\\n/g, '\n')
+            .replace(/\\r/g, '\n')
+            .replace(/\u2028|\u2029|\v/g, '\n');
+    }
+
+    /**
      * Closes the currently active PowerPoint presentation.
      * 
      * @param filePath - The path to the PowerPoint file to close.
@@ -123,7 +135,7 @@ export class MacPptProvider implements PptProvider {
                             const slidesWithPaths = slides.map((s: any) => ({
                                 ...s,
                                 src: s.image ? `file://${path.join(outputDir, s.image)}?t=${Date.now()}` : null,
-                                notes: s.notes ? s.notes.replace(/\\n/g, '\n').replace(/\\r/g, '\n').replace(/\r/g, '\n') : ''
+                                notes: this.normalizeNotes(s.notes)
                             })).filter((s: any) => s.src !== null);
 
                             this.focusApp();
@@ -265,7 +277,9 @@ export class MacPptProvider implements PptProvider {
         }
 
         const dataPath = path.join(officeContainer, `notes_data_${Date.now()}.txt`);
-        fs.writeFileSync(dataPath, dataContent, 'utf8');
+        // Normalize newlines to LF for VBA Compatibility (VBA Line Input on Mac handles LF perfectly)
+        const normalizedContent = dataContent.replace(/\r?\n/g, '\n');
+        fs.writeFileSync(dataPath, normalizedContent, 'utf8');
 
         const paramsPath = path.join(officeContainer, 'notes_params.txt');
         const paramsContent = `${filePath}|${dataPath}`;
@@ -396,7 +410,7 @@ export class MacPptProvider implements PptProvider {
                         const slidesWithPaths = slides.map((s: any) => ({
                             ...s,
                             src: s.image ? `file://${path.join(outputDir, s.image)}?t=${Date.now()}` : null,
-                            notes: s.notes ? s.notes.replace(/\\n/g, '\n').replace(/\\r/g, '\n').replace(/\r/g, '\n') : ''
+                            notes: this.normalizeNotes(s.notes)
                         })).filter((s: any) => s.src !== null);
 
                         this.focusApp();

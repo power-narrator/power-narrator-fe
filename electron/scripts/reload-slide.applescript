@@ -149,6 +149,24 @@ on cleanNotes(str)
     set text item delimiters to "\\n"
     set str to itemsList as text
     
+    -- Handle Vertical Tab (ASCII 11) used by PowerPoint for soft returns (Shift+Enter)
+    set text item delimiters to (character id 11)
+    set itemsList to text items of str
+    set text item delimiters to "\\n"
+    set str to itemsList as text
+    
+    -- Handle Unicode Line Separator (U+2028) used by PowerPoint on Mac
+    set text item delimiters to (character id 8232)
+    set itemsList to text items of str
+    set text item delimiters to "\\n"
+    set str to itemsList as text
+    
+    -- Handle Unicode Paragraph Separator (U+2029)
+    set text item delimiters to (character id 8233)
+    set itemsList to text items of str
+    set text item delimiters to "\\n"
+    set str to itemsList as text
+    
     -- Replace smart quotes and dashes to prevent encoding issues
     set text item delimiters to "’"
     set itemsList to text items of str

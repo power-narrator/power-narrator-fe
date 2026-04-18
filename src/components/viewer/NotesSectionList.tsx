@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Button,
   Divider,
@@ -28,6 +29,40 @@ interface NotesSectionListProps {
   assignTextareaRef: (index: number, element: HTMLTextAreaElement | null) => void;
   getTextarea: (index: number) => HTMLTextAreaElement | null;
   slideIndex: number;
+}
+
+interface SectionTextEditorProps {
+  initialValue: string;
+  onChange: (value: string) => void;
+  onFocus: () => void;
+  assignRef: (element: HTMLTextAreaElement | null) => void;
+}
+
+function SectionTextEditor({ initialValue, onChange, onFocus, assignRef }: SectionTextEditorProps) {
+  const [localValue, setLocalValue] = useState(initialValue);
+
+  // Sync from outside if needed (e.g. Undo/Redo)
+  useEffect(() => {
+    setLocalValue(initialValue);
+  }, [initialValue]);
+
+  return (
+    <Textarea
+      ref={assignRef}
+      onFocus={onFocus}
+      value={localValue}
+      onChange={(event) => setLocalValue(event.currentTarget.value)}
+      onBlur={() => {
+        if (localValue !== initialValue) {
+          onChange(localValue);
+        }
+      }}
+      ff="monospace"
+      resize="vertical"
+      autosize
+      minRows={1}
+    />
+  );
 }
 
 export function NotesSectionList({
@@ -93,15 +128,11 @@ export function NotesSectionList({
                   getTextarea={() => getTextarea(index)}
                 />
                 <Divider />
-                <Textarea
-                  ref={(element) => assignTextareaRef(index, element)}
+                <SectionTextEditor
+                  initialValue={section.text}
+                  onChange={(value) => onSectionTextChange(index, value)}
                   onFocus={() => onFocusSection(index)}
-                  value={section.text}
-                  onChange={(event) => onSectionTextChange(index, event.target.value)}
-                  ff="monospace"
-                  resize="vertical"
-                  autosize
-                  minRows={1}
+                  assignRef={(element) => assignTextareaRef(index, element)}
                 />
               </Paper>
             );
