@@ -100,6 +100,8 @@ export function NotesSectionList({
                   onChange={(event) => onSectionTextChange(index, event.target.value)}
                   ff="monospace"
                   resize="vertical"
+                  autosize
+                  minRows={1}
                 />
               </Paper>
             );
