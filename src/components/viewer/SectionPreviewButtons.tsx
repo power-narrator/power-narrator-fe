@@ -130,12 +130,14 @@ export function SectionPreviewButtons({
           const isSelected = section.speaker === speaker.value;
           const isActive = activePreviewTarget === speaker.value;
           const isGenerating = isAudioGenerating && isActive;
+          const isAnyPlaying = activePreviewTarget !== null;
+
           return (
             <Button
               key={speaker.value}
               size="compact-sm"
-              variant={isActive || isSelected ? "filled" : "outline"}
-              color={isActive ? "blue" : (isSelected ? "blue" : "blue")}
+              variant={isActive || (isSelected && !isAnyPlaying) ? "filled" : "outline"}
+              color="blue"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => handlePlay(speaker.value)}
               loading={isGenerating}
