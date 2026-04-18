@@ -19,9 +19,9 @@ export function SlideThumbnailList({
           <Box
             key={slide.index}
             onClick={() => onSelectSlide(index)}
-            bdrs="xs"
+            bdrs="sm"
             pos="relative"
-            bd={activeSlideIndex === index ? "2 solid blue" : "2 solid transparent"}
+            bd={activeSlideIndex === index ? "6 solid blue" : "6 solid transparent"}
             style={{
               cursor: "pointer",
             }}
@@ -40,7 +40,7 @@ export function SlideThumbnailList({
             >
               {index + 1}
             </Box>
-            <Image src={slide.src} radius="sm" />
+            <Image src={slide.src} radius={activeSlideIndex === index ? "none" : "sm"} />
           </Box>
         ))}
       </Stack>
