@@ -1,5 +1,5 @@
 import { ActionIcon, Box, Button, Center, Group, Loader, Slider, Stack, Text } from "@mantine/core";
-import { IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react";
+import { IconHistory, IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import type { NoteSection } from "../../types/notes";
 import { getErrorMessage } from "../../utils/errors";
@@ -37,6 +37,7 @@ export function SectionPreviewButtons({
   } = useAudio();
 
   const [activePreviewTarget, setActivePreviewTarget] = useState<string | null>(null);
+  const [lastPlayedSpeaker, setLastPlayedSpeaker] = useState<string | null>(null);
   const [isAudioGenerating, setIsAudioGenerating] = useState(false);
   const previewRequestIdRef = useRef(0);
   const autoplayRequestIdRef = useRef<string | null>(null);
@@ -93,6 +94,7 @@ export function SectionPreviewButtons({
     try {
       setIsAudioGenerating(true);
       setActivePreviewTarget(speakerValue);
+      setLastPlayedSpeaker(speakerValue);
       const resolvedSpeaker = speakerValue || effectiveSpeaker;
       const voiceOverride = resolvedSpeaker ? mappings[resolvedSpeaker] : undefined;
       const url = await generateAudio(textToPlay, voiceOverride);
@@ -130,7 +132,7 @@ export function SectionPreviewButtons({
 
       <Group gap="xs">
         {speakers.map((speaker) => {
-          const isSelected = section.speaker === speaker.value;
+          const isSelected = speaker.value === effectiveSpeaker;
           const isActive = activePreviewTarget === speaker.value;
           const isGenerating = isAudioGenerating && isActive;
           const isAnyPlaying = activePreviewTarget !== null;
@@ -146,6 +148,7 @@ export function SectionPreviewButtons({
               loading={isGenerating}
               disabled={!section.text || isGenerating}
               leftSection={isActive ? <IconPlayerStop size={12} /> : <IconPlayerPlay size={12} />}
+              rightSection={speaker.value === lastPlayedSpeaker ? <IconHistory size={12} /> : null}
             >
               {speaker.label}
             </Button>
