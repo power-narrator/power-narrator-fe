@@ -28,9 +28,9 @@ on run {slideIndex, pptPath}
 		end try
 		
 		if pres is not missing value then
-			activate
-			-- PowerPoint doesn't have a direct "bring presentation to front" command easily, 
-			-- but activating and having the macro target it works.
+			-- Using 'open -a' cleanly hands off focus to PowerPoint through LaunchServices
+			-- preventing osascript exit from bouncing focus back to Electron.
+			do shell script "open -a 'Microsoft PowerPoint'"
 		end if
 		try
 			-- Try running with the specific add-in syntax

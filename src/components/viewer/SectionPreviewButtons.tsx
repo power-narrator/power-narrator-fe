@@ -1,5 +1,5 @@
 import { ActionIcon, Box, Button, Center, Group, Loader, Slider, Stack, Text } from "@mantine/core";
-import { IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react";
+import { IconHistory, IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import type { NoteSection } from "../../types/notes";
 import { getErrorMessage } from "../../utils/errors";
@@ -11,6 +11,7 @@ import { useAudio } from "../../context/AudioContext";
 interface SectionPreviewButtonsProps {
   id: string;
   section: NoteSection;
+  effectiveSpeaker: string;
   mappings: Record<string, Voice>;
   onFocus: () => void;
   getTextarea?: () => HTMLTextAreaElement | null;
@@ -19,6 +20,7 @@ interface SectionPreviewButtonsProps {
 export function SectionPreviewButtons({
   id,
   section,
+  effectiveSpeaker,
   mappings,
   onFocus,
   getTextarea,
@@ -35,6 +37,7 @@ export function SectionPreviewButtons({
   } = useAudio();
 
   const [activePreviewTarget, setActivePreviewTarget] = useState<string | null>(null);
+  const [lastPlayedSpeaker, setLastPlayedSpeaker] = useState<string | null>(null);
   const [isAudioGenerating, setIsAudioGenerating] = useState(false);
   const previewRequestIdRef = useRef(0);
   const autoplayRequestIdRef = useRef<string | null>(null);
@@ -91,7 +94,9 @@ export function SectionPreviewButtons({
     try {
       setIsAudioGenerating(true);
       setActivePreviewTarget(speakerValue);
-      const voiceOverride = speakerValue ? mappings[speakerValue] : undefined;
+      setLastPlayedSpeaker(speakerValue);
+      const resolvedSpeaker = speakerValue || effectiveSpeaker;
+      const voiceOverride = resolvedSpeaker ? mappings[resolvedSpeaker] : undefined;
       const url = await generateAudio(textToPlay, voiceOverride);
 
       if (previewRequestIdRef.current !== requestId) {
@@ -127,19 +132,30 @@ export function SectionPreviewButtons({
 
       <Group gap="xs">
         {speakers.map((speaker) => {
+          const isSelected = speaker.value === effectiveSpeaker;
           const isActive = activePreviewTarget === speaker.value;
           const isGenerating = isAudioGenerating && isActive;
+          const isAnyPlaying = activePreviewTarget !== null;
+
           return (
             <Button
               key={speaker.value}
               size="compact-sm"
-              variant="outline"
+              variant={isActive || (isSelected && !isAnyPlaying) ? "filled" : "outline"}
               color="blue"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => handlePlay(speaker.value)}
               loading={isGenerating}
               disabled={!section.text || isGenerating}
-              leftSection={isActive ? <IconPlayerStop size={12} /> : <IconPlayerPlay size={12} />}
+              leftSection={
+                isActive ? (
+                  <IconPlayerStop size={12} />
+                ) : speaker.value === lastPlayedSpeaker ? (
+                  <IconHistory size={12} />
+                ) : (
+                  <IconPlayerPlay size={12} />
+                )
+              }
             >
               {speaker.label}
             </Button>
