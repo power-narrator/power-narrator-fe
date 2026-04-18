@@ -124,11 +124,23 @@ export class XmlPptProvider implements PptProvider {
         if (fs.existsSync(resPath)) {
           try {
             const resultData = JSON.parse(fs.readFileSync(resPath, "utf8"));
+            data = resultData;
+
             if (code === 0) {
               success = true;
-              data = resultData;
             } else {
-              error = `CLI failed with code ${code}. Stderr: ${stderr}. Result: ${JSON.stringify(resultData)}`;
+              const resultMessages = Array.isArray(resultData?.results)
+                ? resultData.results
+                    .filter((result: any) => !result?.success && result?.message)
+                    .map((result: any) => result.message)
+                : [];
+              const details =
+                resultMessages.length > 0 ? `Details: ${resultMessages.join("; ")}` : "";
+              const stderrDetails = stderr ? `Stderr: ${stderr}` : "";
+              const stdoutDetails = stdout ? `Stdout: ${stdout}` : "";
+              error = [`CLI failed with code ${code}.`, details, stderrDetails, stdoutDetails]
+                .filter(Boolean)
+                .join("\n");
             }
           } catch (e: any) {
             error = `Failed to parse response JSON: ${e.message}. Stderr: ${stderr}`;
@@ -137,14 +149,11 @@ export class XmlPptProvider implements PptProvider {
           error = `CLI did not produce response.json. Code: ${code}. Stderr: ${stderr}. Stdout: ${stdout}`;
         }
 
-        // Cleanup temp files
         this.cleanupFiles(reqPath, resPath);
-
         resolve({ success, data, error: error || undefined });
       });
 
       child.on("error", (err: any) => {
-        // Cleanup temp files on error too
         this.cleanupFiles(reqPath, resPath);
         resolve({ success: false, error: `Failed to start process: ${err.message}` });
       });
