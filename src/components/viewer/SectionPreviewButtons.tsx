@@ -147,8 +147,15 @@ export function SectionPreviewButtons({
               onClick={() => handlePlay(speaker.value)}
               loading={isGenerating}
               disabled={!section.text || isGenerating}
-              leftSection={isActive ? <IconPlayerStop size={12} /> : <IconPlayerPlay size={12} />}
-              rightSection={speaker.value === lastPlayedSpeaker ? <IconHistory size={12} /> : null}
+              leftSection={
+                isActive ? (
+                  <IconPlayerStop size={12} />
+                ) : speaker.value === lastPlayedSpeaker ? (
+                  <IconHistory size={12} />
+                ) : (
+                  <IconPlayerPlay size={12} />
+                )
+              }
             >
               {speaker.label}
             </Button>
