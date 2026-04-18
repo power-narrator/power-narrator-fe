@@ -14,6 +14,8 @@ import { SlideThumbnailList } from "./SlideThumbnailList";
 import { SsmlToolbar } from "./SsmlToolbar";
 import { ViewerHeader, type ViewerHeaderActionKey } from "./ViewerHeader";
 import { Split } from "@gfazioli/mantine-split-pane";
+import { getEffectiveSpeaker } from "../../utils/notes";
+import { DEFAULT_SPEAKER_VALUE } from "../../constants/speaker";
 
 interface ViewerPageProps {
   slides: Slide[];
@@ -167,9 +169,12 @@ export function ViewerPage({
               return null;
             }
 
+            const effectiveSpeaker = getEffectiveSpeaker(sections, sectionIndex);
+            const voice = effectiveSpeaker !== DEFAULT_SPEAKER_VALUE ? mappings[effectiveSpeaker] : undefined;
+
             const buffer = await getAudioBuffer(
               section.text.trim(),
-              mappings[section.speaker] || undefined,
+              voice,
             );
             return {
               index: slide.index,
@@ -336,9 +341,11 @@ export function ViewerPage({
   };
 
   const handleAddSection = () => {
+    const lastSection = activeSections[activeSections.length - 1];
+    const initialSpeaker = lastSection ? lastSection.speaker : "";
     const newSectionIndex = activeSections.length;
     const nextSlides = updateActiveSlideSections((sections) => {
-      sections.push({ speaker: "", text: "" });
+      sections.push({ speaker: initialSpeaker, text: "" });
     });
     pushToHistory(nextSlides);
     setActiveSectionIndex(newSectionIndex);

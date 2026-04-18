@@ -17,6 +17,23 @@ export const parseNotes = (text: string): NoteSection[] => {
   });
 };
 
+export const getEffectiveSpeaker = (sections: NoteSection[], index: number): string => {
+  const current = sections[index]?.speaker;
+  if (current && current !== DEFAULT_SPEAKER_VALUE) {
+    return current;
+  }
+
+  // Look backwards for the most recent specified speaker
+  for (let i = index - 1; i >= 0; i--) {
+    const prev = sections[i]?.speaker;
+    if (prev && prev !== DEFAULT_SPEAKER_VALUE) {
+      return prev;
+    }
+  }
+
+  return DEFAULT_SPEAKER_VALUE;
+};
+
 export const formatNotes = (sections: NoteSection[]): string => {
   return sections
     .map((section) => {

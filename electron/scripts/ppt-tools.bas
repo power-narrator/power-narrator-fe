@@ -31,6 +31,23 @@ Function GetPresentation(targetPath As String) As Presentation
     Next p
 End Function
 
+Function GetSectionIndex(audioTag As String) As Integer
+    ' Expects format "ppt_audio_1"
+    Dim parts() As String
+    On Error Resume Next
+    parts = Split(audioTag, "_")
+    If UBound(parts) >= 2 Then
+        GetSectionIndex = CInt(parts(2))
+    Else
+        GetSectionIndex = 1
+    End If
+    If Err.Number <> 0 Then
+        GetSectionIndex = 1
+        Err.Clear
+    End If
+    On Error GoTo 0
+End Function
+
 Sub InsertAudio()
     Dim sld As Slide
     Dim shp As Shape
@@ -160,22 +177,17 @@ Sub InsertAudio()
                     If Not shp Is Nothing Then
                         shp.Name = audioTag
                         
-                        margin = 10
-                        audioCount = 0
+                        margin = 20
                         
-                        ' Count existing audio shapes to determine vertical stack position
-                        For Each tempShape In sld.Shapes
-                            If InStr(1, tempShape.Name, "ppt_audio") = 1 Then
-                                audioCount = audioCount + 1
-                            End If
-                        Next tempShape
+                        ' Calculate vertical position based on section index to avoid stacking
+                        Dim sectionIdx As Integer
+                        sectionIdx = GetSectionIndex(audioTag)
                         
-                        ' Position on the right using SlideWidth and native shape Width
+                        ' Position on the right using SlideWidth
                         shp.Left = pres.PageSetup.SlideWidth + margin
                         
-                        ' Prevent stacking by spacing them vertically using their native Height
-                        ' (audioCount includes the newly added shape, so subtract 1)
-                        shp.Top = margin + (audioCount - 1) * (shp.Height + margin)
+                        ' Space them vertically using the section index
+                        shp.Top = margin + (sectionIdx - 1) * (shp.Height + margin)
                         
                         ' --- Animation Configuration ---
                         
@@ -191,7 +203,7 @@ Sub InsertAudio()
                         ' 2. Add "Play" effect to Main Sequence with preserved TriggerType
                         Set eff = sld.TimeLine.MainSequence.AddEffect(shp, 83, , existingTriggerType) 
                         
-                        ' 3. Apply preserved delay
+                        ' 3. Apply preserved delay and other settings
                         If hadExistingAudio Then
                             eff.Timing.TriggerDelayTime = existingDelay
                             eff.Timing.RepeatCount = existingRepeatCount

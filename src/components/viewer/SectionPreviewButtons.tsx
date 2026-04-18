@@ -11,6 +11,7 @@ import { useAudio } from "../../context/AudioContext";
 interface SectionPreviewButtonsProps {
   id: string;
   section: NoteSection;
+  effectiveSpeaker: string;
   mappings: Record<string, Voice>;
   onFocus: () => void;
   getTextarea?: () => HTMLTextAreaElement | null;
@@ -19,6 +20,7 @@ interface SectionPreviewButtonsProps {
 export function SectionPreviewButtons({
   id,
   section,
+  effectiveSpeaker,
   mappings,
   onFocus,
   getTextarea,
@@ -91,7 +93,8 @@ export function SectionPreviewButtons({
     try {
       setIsAudioGenerating(true);
       setActivePreviewTarget(speakerValue);
-      const voiceOverride = speakerValue ? mappings[speakerValue] : undefined;
+      const resolvedSpeaker = speakerValue || effectiveSpeaker;
+      const voiceOverride = resolvedSpeaker ? mappings[resolvedSpeaker] : undefined;
       const url = await generateAudio(textToPlay, voiceOverride);
 
       if (previewRequestIdRef.current !== requestId) {
