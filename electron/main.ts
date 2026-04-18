@@ -4,11 +4,19 @@ import fs from "fs";
 import dotenv from "dotenv";
 import { fileURLToPath, pathToFileURL } from "url";
 import Store from "electron-store";
-import { PptProvider } from "./platform/PptProvider.js";
+import { MacPptProviderContract, PptProvider } from "./platform/PptProvider.js";
 import { MacPptProvider } from "./platform/MacPptProvider.js";
 import { WindowsPptProvider } from "./platform/WindowsPptProvider.js";
 import { XmlPptProvider } from "./platform/XmlPptProvider.js";
 import { TtsManager } from "./tts/TtsManager.js";
+import type {
+  GenerateVideoRequest,
+  PlaySlideRequest,
+  ReloadSlideRequest,
+  RemoveAudioRequest,
+  SlideAudioEntry,
+  SlideManifestEntry,
+} from "./platform/types.js";
 
 const slideAssetScheme = "power-narrator";
 
@@ -81,16 +89,25 @@ function registerSlideAssetProtocol(): void {
 
 const ttsManager = new TtsManager(getTtsProvider(), getGcpKeyPath);
 
-let basePptProvider: PptProvider;
-if (process.platform === "darwin") {
-  basePptProvider = new MacPptProvider();
-} else {
-  basePptProvider = new WindowsPptProvider();
-}
+const nativeProvider: MacPptProviderContract | null =
+  process.platform === "darwin"
+    ? new MacPptProvider()
+    : process.platform === "win32"
+      ? new WindowsPptProvider()
+      : null;
 
-function getActivePptProvider(): PptProvider {
-  const useXmlCli = store.get("xmlCliEnabled") || false;
-  return useXmlCli ? new XmlPptProvider(basePptProvider) : basePptProvider;
+function getActiveCoreProvider(): PptProvider {
+  const useXmlCli = Boolean(store.get("xmlCliEnabled"));
+
+  if (useXmlCli) {
+    return new XmlPptProvider(nativeProvider ?? undefined);
+  }
+
+  if (!nativeProvider) {
+    throw new Error("No core PowerPoint provider is available on this platform");
+  }
+
+  return nativeProvider;
 }
 
 const createWindow = () => {
@@ -163,7 +180,7 @@ ipcMain.handle("convert-pptx", async (_, filePath) => {
   console.log("Convert request for (absolute):", absolutePath);
 
   if (!fs.existsSync(absolutePath)) {
-    return { success: false, error: `File not found: ${absolutePath}` };
+    return { success: false, message: `File not found: ${absolutePath}` };
   }
 
   const tempDir = app.getPath("temp");
@@ -173,36 +190,40 @@ ipcMain.handle("convert-pptx", async (_, filePath) => {
     path.basename(absolutePath, path.extname(absolutePath)),
   );
 
-  return await getActivePptProvider().convertPptx(absolutePath, outputDir);
+  return await getActiveCoreProvider().convertPptx(absolutePath, outputDir);
 });
 
 // ==========================================
 // PowerPoint Action Handlers
 // ==========================================
-ipcMain.handle("save-all-notes", async (_, filePath, slides) => {
+ipcMain.handle("save-all-notes", async (_, filePath: string, slides: SlideManifestEntry[]) => {
   const absolutePath = path.resolve(filePath);
-  if (!fs.existsSync(absolutePath)) return { success: false, error: "File not found" };
-  return await getActivePptProvider().saveAllNotes(absolutePath, slides);
+  if (!fs.existsSync(absolutePath)) return { success: false, message: "File not found" };
+  return await getActiveCoreProvider().saveAllNotes(absolutePath, slides);
 });
 
-ipcMain.handle("insert-audio", async (_, filePath, slidesAudio) => {
+ipcMain.handle("insert-audio", async (_, filePath: string, slidesAudio: SlideAudioEntry[]) => {
   const absolutePath = path.resolve(filePath);
-  if (!fs.existsSync(absolutePath)) return { success: false, error: "File not found" };
-  return await getActivePptProvider().insertAudio(absolutePath, slidesAudio);
+  if (!fs.existsSync(absolutePath)) return { success: false, message: "File not found" };
+  return await getActiveCoreProvider().insertAudio(absolutePath, slidesAudio);
 });
 
-ipcMain.handle("remove-audio", async (_, { filePath, scope, slideIndex }) => {
+ipcMain.handle("remove-audio", async (_, { filePath, scope, slideIndex }: RemoveAudioRequest) => {
   const absolutePath = path.resolve(filePath);
-  if (!fs.existsSync(absolutePath)) return { success: false, error: "File not found" };
-  return await getActivePptProvider().removeAudio(absolutePath, scope, slideIndex);
+  if (!fs.existsSync(absolutePath)) return { success: false, message: "File not found" };
+  return await getActiveCoreProvider().removeAudio(absolutePath, scope, slideIndex);
 });
 
-ipcMain.handle("play-slide", async (_, { filePath, slideIndex }) => {
+ipcMain.handle("play-slide", async (_, { filePath, slideIndex }: PlaySlideRequest) => {
+  if (!nativeProvider) {
+    return { success: false, message: "playSlide not supported on this platform" };
+  }
+
   const absolutePath = path.resolve(filePath);
-  return await getActivePptProvider().playSlide(absolutePath, slideIndex);
+  return await nativeProvider.playSlide(absolutePath, slideIndex);
 });
 
-ipcMain.handle("reload-slide", async (_, { filePath, slideIndex }) => {
+ipcMain.handle("reload-slide", async (_, { filePath, slideIndex }: ReloadSlideRequest) => {
   const absolutePath = path.resolve(filePath);
   const tempDir = app.getPath("temp");
   const outputDir = path.join(
@@ -212,15 +233,19 @@ ipcMain.handle("reload-slide", async (_, { filePath, slideIndex }) => {
   );
 
   if (!fs.existsSync(outputDir)) {
-    return { success: false, error: "Conversion directory not found. Please sync all first." };
+    return { success: false, message: "Conversion directory not found. Please sync all first." };
   }
-  return await getActivePptProvider().reloadSlide(absolutePath, slideIndex, outputDir);
+  return await getActiveCoreProvider().reloadSlide(absolutePath, slideIndex, outputDir);
 });
 
-ipcMain.handle("generate-video", async (_, { filePath, videoOutputPath }) => {
-  if (!videoOutputPath) return { success: false, error: "No output path provided." };
+ipcMain.handle("generate-video", async (_, { filePath, videoOutputPath }: GenerateVideoRequest) => {
+  if (!nativeProvider) {
+    return { success: false, message: "generateVideo not supported on this platform" };
+  }
+
+  if (!videoOutputPath) return { success: false, message: "No output path provided." };
   const absolutePath = path.resolve(filePath);
-  return await getActivePptProvider().generateVideo(absolutePath, videoOutputPath);
+  return await nativeProvider.generateVideo(absolutePath, videoOutputPath);
 });
 
 // ==========================================
@@ -250,7 +275,7 @@ ipcMain.handle("set-gcp-key", async () => {
   });
 
   if (canceled || filePaths.length === 0) {
-    return { success: false };
+    return { success: false, message: "No file selected" };
   }
 
   const keyPath = filePaths[0];
@@ -259,14 +284,14 @@ ipcMain.handle("set-gcp-key", async () => {
   try {
     const content = JSON.parse(fs.readFileSync(keyPath, "utf8"));
     if (!content.type || content.type !== "service_account") {
-      return { success: false, error: "Invalid Service Account Key JSON" };
+      return { success: false, message: "Invalid Service Account Key JSON" };
     }
   } catch (err: unknown) {
     if (err instanceof SyntaxError) {
-      return { success: false, error: "Invalid JSON file" };
+      return { success: false, message: "Invalid JSON file" };
     }
 
-    return { success: false, error: "Error reading file" };
+    return { success: false, message: "Error reading file" };
   }
 
   store.set("gcpKeyPath", keyPath);

@@ -31,7 +31,7 @@ function App() {
     try {
       const response = await window.electronAPI.convertPptx(filePath);
       if (!response.success) {
-        throw new Error(response.error || "Conversion failed");
+        throw new Error(response.message);
       }
 
       setSlides(response.slides);

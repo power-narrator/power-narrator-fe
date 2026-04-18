@@ -145,7 +145,7 @@ export function ViewerPage({
   async function saveNotesToFile(slidesToSave: Slide[]) {
     const result = await electronAPI.saveAllNotes(filePath, slidesToSave);
     if (!result.success) {
-      throw new Error(result.error || "Save failed");
+      throw new Error(result.message);
     }
 
     return result;
@@ -394,7 +394,7 @@ export function ViewerPage({
         setGenStatus("Generated!");
         scheduleStatusClear(setGenStatus);
       } else {
-        alert(`Video generation failed: ${result.error}`);
+        alert(`Video generation failed: ${result.message}`);
         setGenStatus("");
       }
     } catch (error: unknown) {
@@ -466,7 +466,7 @@ export function ViewerPage({
       const result = await electronAPI.insertAudio(filePath, slidesAudio);
 
       if (!result.success) {
-        alert(`Failed to insert audio: ${result.error}`);
+        alert(`Failed to insert audio: ${result.message}`);
         setInsertStatus("");
         return;
       }
@@ -505,7 +505,7 @@ export function ViewerPage({
         setInsertStatus("Inserted!");
         scheduleStatusClear(setInsertStatus);
       } else {
-        alert(`Failed to insert audio: ${result.error}`);
+        alert(`Failed to insert audio: ${result.message}`);
         setInsertStatus("");
       }
     } catch (error: unknown) {
@@ -524,12 +524,12 @@ export function ViewerPage({
     try {
       setIsPlaying(true);
       setPlayStatus(`Playing slide ${activeSlide.index}...`);
-      const result = await electronAPI.playSlide(
-        getSlideNumber(activeSlide, activeSlideIndex),
+      const result = await electronAPI.playSlide({
         filePath,
-      );
+        slideIndex: getSlideNumber(activeSlide, activeSlideIndex),
+      });
       if (!result.success) {
-        alert(`Failed to play slide: ${result.error}`);
+        alert(`Failed to play slide: ${result.message}`);
         setPlayStatus("");
         return;
       }
@@ -563,8 +563,8 @@ export function ViewerPage({
 
     try {
       const result = await request;
-      if (!result.success || !result.slides) {
-        alert(`${failureMessage}: ${result.error || "Unknown error"}`);
+      if (!result.success) {
+        alert(`${failureMessage}: ${result.message}`);
         setSyncStatus("");
         return;
       }
@@ -617,7 +617,7 @@ export function ViewerPage({
     try {
       const result = await runRemoveAudio("slide");
       if (!result.success) {
-        alert(`Failed to remove audio: ${result.error || "Unknown error"}`);
+        alert(`Failed to remove audio: ${result.message}`);
         setRemoveStatus("");
         return;
       }
@@ -647,7 +647,7 @@ export function ViewerPage({
         setRemoveStatus("Removed!");
         scheduleStatusClear(setRemoveStatus);
       } else {
-        alert(`Failed to remove audio: ${result.error || "Unknown error"}`);
+        alert(`Failed to remove audio: ${result.message}`);
         setRemoveStatus("");
       }
     } catch (error: unknown) {

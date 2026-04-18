@@ -2,6 +2,12 @@ import type { Voice } from "./types/voice";
 import type {
   BasicElectronResult,
   ConvertResponse,
+  GenerateVideoPayload,
+  PlaySlidePayload,
+  ReloadSlidePayload,
+  RemoveAudioPayload,
+  SaveNotesSlide,
+  SetGcpKeyResult,
   Slide,
   SlideAudioEntry,
   SlidesElectronResult,
@@ -15,7 +21,7 @@ declare global {
       onConversionUpdate: (callback: (event: unknown, value: unknown) => void) => void;
       getPathForFile: (file: File) => string;
       selectFile: () => Promise<string | null>;
-      saveAllNotes: (filePath: string, slides: Slide[]) => Promise<BasicElectronResult>;
+      saveAllNotes: (filePath: string, slides: SaveNotesSlide[]) => Promise<BasicElectronResult>;
       getVoices: () => Promise<Voice[]>;
       generateSpeech: (payload: {
         text: string;
@@ -27,7 +33,7 @@ declare global {
         };
       }) => Promise<Uint8Array>;
       getGcpKeyPath: () => Promise<string | null>;
-      setGcpKey: () => Promise<BasicElectronResult & { path?: string }>;
+      setGcpKey: () => Promise<SetGcpKeyResult>;
       setInsertMethod: (method: string) => Promise<void>;
       getSpeakerMappings: () => Promise<Record<string, Voice>>;
       setSpeakerMappings: (mappings: Record<string, Voice>) => Promise<BasicElectronResult>;
@@ -38,20 +44,10 @@ declare global {
         filePath: string,
         slidesAudio: SlideAudioEntry[],
       ) => Promise<BasicElectronResult>;
-      generateVideo: (payload: {
-        filePath: string;
-        videoOutputPath: string;
-      }) => Promise<VideoElectronResult>;
-      removeAudio: (payload: {
-        filePath: string;
-        scope: "slide" | "all";
-        slideIndex: number;
-      }) => Promise<BasicElectronResult>;
-      playSlide: (slideIndex: number, filePath: string) => Promise<BasicElectronResult>;
-      reloadSlide: (payload: {
-        filePath: string;
-        slideIndex: number;
-      }) => Promise<SlidesElectronResult>;
+      generateVideo: (payload: GenerateVideoPayload) => Promise<VideoElectronResult>;
+      removeAudio: (payload: RemoveAudioPayload) => Promise<BasicElectronResult>;
+      playSlide: (payload: PlaySlidePayload) => Promise<BasicElectronResult>;
+      reloadSlide: (payload: ReloadSlidePayload) => Promise<SlidesElectronResult>;
       getVideoSavePath: () => Promise<string | null>;
     };
   }

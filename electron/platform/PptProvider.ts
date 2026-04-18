@@ -1,16 +1,42 @@
+import type {
+  BasicPptResult,
+  ExportSlideImagesResult,
+  ReadAllSlideNotesResult,
+  ReadSlideNotesResult,
+  ReloadSlideImageResult,
+  RemoveAudioScope,
+  SlideAudioEntry,
+  SlideManifestEntry,
+  SlidesPptResult,
+  VideoPptResult,
+} from "./types.js";
+
 export interface PptProvider {
-    closePresentation?(filePath: string): Promise<number>;
-    reopenPresentation?(filePath: string, slideIndex: number): Promise<void>;
-    exportSlideImages?(filePath: string, outputDir: string): Promise<any>;
-    reloadSlideImage?(filePath: string, slideIndex: number, outputDir: string): Promise<any>;
-    readAllSlideNotes?(filePath: string): Promise<any>;
-    readSlideNotes?(filePath: string, slideIndex: number): Promise<any>;
-    
-    convertPptx(filePath: string, outputDir: string): Promise<any>;
-    insertAudio(filePath: string, slidesAudio: any[]): Promise<any>;
-    removeAudio(filePath: string, scope: string, slideIndex: number): Promise<any>;
-    saveAllNotes(filePath: string, slides: any[]): Promise<any>;
-    generateVideo(filePath: string, videoOutputPath: string): Promise<any>;
-    playSlide(filePath: string, slideIndex: number): Promise<any>;
-    reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<any>;
+  convertPptx(filePath: string, outputDir: string): Promise<SlidesPptResult>;
+  insertAudio(filePath: string, slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult>;
+  removeAudio(
+    filePath: string,
+    scope: RemoveAudioScope,
+    slideIndex: number,
+  ): Promise<BasicPptResult>;
+  saveAllNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult>;
+  reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<SlidesPptResult>;
+}
+
+export interface NativePlatformProvider {
+  generateVideo(filePath: string, videoOutputPath: string): Promise<VideoPptResult>;
+  playSlide(filePath: string, slideIndex: number): Promise<BasicPptResult>;
+  exportSlideImages(filePath: string, outputDir: string): Promise<ExportSlideImagesResult>;
+  reloadSlideImage(
+    filePath: string,
+    slideIndex: number,
+    outputDir: string,
+  ): Promise<ReloadSlideImageResult>;
+  closePresentation(filePath: string): Promise<number>;
+  reopenPresentation(filePath: string, slideIndex: number): Promise<void>;
+}
+
+export interface MacPptProviderContract extends PptProvider, NativePlatformProvider {
+  readAllSlideNotes(filePath: string): Promise<ReadAllSlideNotesResult>;
+  readSlideNotes(filePath: string, slideIndex: number): Promise<ReadSlideNotesResult>;
 }

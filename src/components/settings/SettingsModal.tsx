@@ -78,14 +78,12 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
     setError(null);
     try {
       const result = await window.electronAPI.setGcpKey();
-      if (result.success && result.path) {
+      if (result.success) {
         setKeyPath(result.path);
         return;
       }
 
-      if (result.error) {
-        setError(result.error);
-      }
+      setError(result.message);
     } catch (setKeyError) {
       console.error(setKeyError);
       setError("Failed to set key");
