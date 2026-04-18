@@ -99,10 +99,10 @@ Sub InsertAudio()
     newAudioInsertIndex = 1
     
     ' Path construction for Mac Office sandbox
-    paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/audio_params.txt"
+    paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/insert_audio_params.txt"
     
     If Dir(paramsPath) = "" Then
-        MsgBox "Error: Could not find audio_params.txt at " & paramsPath
+        MsgBox "Error: Could not find insert_audio_params.txt at " & paramsPath
         Exit Sub
     End If
     
@@ -120,13 +120,12 @@ Sub InsertAudio()
             params = Split(fileContent, "|")
             
             If UBound(params) >= 2 Then
-                slideIndex = CInt(params(0))
-                audioPath = params(1)
+                targetPath = params(0)
+                slideIndex = CInt(params(1))
+                audioPath = params(2)
                 
                 ' Only find presentation once (on first valid line)
                 If Not hasPres Then
-                    targetPath = params(2)
-                    
                     ' Find the correct presentation
                     Set pres = GetPresentation(targetPath)
                     
@@ -374,10 +373,10 @@ Sub UpdateNotes()
     Dim isReadingNotes As Boolean
     
     ' 1. Read Parameters (Presentation Path | Data File Path)
-    paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/notes_params.txt"
+    paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/update_notes_params.txt"
     
     If Dir(paramsPath) = "" Then
-        MsgBox "Error: Could not find notes_params.txt"
+        MsgBox "Error: Could not find update_notes_params.txt"
         Exit Sub
     End If
     
@@ -459,11 +458,11 @@ Sub PlaySlide()
     Dim i As Integer
     Dim sw As SlideShowWindow
     
-    ' 1. Read parameters (SlideIndex | TargetPath)
-    paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/play_slide.txt"
+    ' 1. Read parameters (TargetPath | SlideIndex)
+    paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/play_slide_params.txt"
     
     If Dir(paramsPath) = "" Then
-        MsgBox "Error: Could not find play_slide.txt"
+        MsgBox "Error: Could not find play_slide_params.txt"
         Exit Sub
     End If
     
@@ -475,8 +474,8 @@ Sub PlaySlide()
     params = Split(fileContent, "|")
     If UBound(params) < 1 Then Exit Sub
     
-    slideIndex = CInt(Trim(params(0)))
-    targetPath = params(1)
+    targetPath = params(0)
+    slideIndex = CInt(Trim(params(1)))
     
     ' 2. Find Presentation
     Set pres = GetPresentation(targetPath)
@@ -521,57 +520,6 @@ Sub PlaySlide()
         End If
     End If
 
-End Sub
-
-Sub ReloadSlide()
-    Dim targetPath As String
-    Dim pres As Presentation
-    Dim slideIndex As Integer
-    Dim paramsPath As String
-    Dim fileNum As Integer
-    Dim fileContent As String
-    Dim params() As String
-    Dim exportPath As String
-    
-    ' 1. Read Parameters (SlideIndex | ExportPath | TargetPath)
-    paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/reload_slide.txt"
-    
-    If Dir(paramsPath) = "" Then
-        MsgBox "Error: Could not find reload_slide.txt"
-        Exit Sub
-    End If
-    
-    fileNum = FreeFile
-    Open paramsPath For Input As fileNum
-    Line Input #fileNum, fileContent
-    Close fileNum
-    
-    params = Split(fileContent, "|")
-    If UBound(params) < 2 Then Exit Sub
-    
-    slideIndex = CInt(params(0))
-    exportPath = params(1)
-    targetPath = params(2)
-    
-    ' 2. Find Presentation
-    Set pres = GetPresentation(targetPath)
-    
-    If pres Is Nothing Then
-        MsgBox "Error: Presentation not found: " & targetPath
-        Exit Sub
-    End If
-    
-    ' 3. Validate
-    If slideIndex < 1 Or slideIndex > pres.Slides.Count Then
-        MsgBox "Invalid slide index: " & slideIndex
-        Exit Sub
-    End If
-    
-    ' 4. Export
-    ' Export method calls: Expression.Export(FileName, FilterName, ScaleWidth, ScaleHeight)
-    ' FilterName: "PNG"
-    pres.Slides(slideIndex).Export exportPath, "PNG"
-    
 End Sub
 
 Sub RemoveAudio()
