@@ -10,8 +10,6 @@ export interface SlideWithSrc extends SlideManifestEntry {
 
 export type SlideImageMap = Record<number, { image: string }>;
 export type SlideNotesMap = Record<number, string>;
-export type RemoveAudioScope = "slide" | "all";
-
 export interface SlideAudioEntry {
   index: number;
   sectionIndex: number;
@@ -62,8 +60,7 @@ export interface ReloadSlideRequest {
 
 export interface RemoveAudioRequest {
   filePath: string;
-  scope: RemoveAudioScope;
-  slideIndex: number;
+  slideIndices: number[];
 }
 
 export interface XmlSlideAudio {

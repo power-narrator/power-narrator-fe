@@ -27,8 +27,8 @@ const electronAPI = {
   },
   getPathForFile: (file: File) => (file as File & { path?: string }).path ?? "",
   selectFile: (): Promise<string | null> => ipcRenderer.invoke("select-file"),
-  saveAllNotes: (filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult> =>
-    ipcRenderer.invoke("save-all-notes", filePath, slides),
+  saveNotes: (filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult> =>
+    ipcRenderer.invoke("save-notes", filePath, slides),
   getVoices: (): Promise<Voice[]> => ipcRenderer.invoke("get-voices"),
   generateSpeech: (payload: {
     text: string;

@@ -5,7 +5,6 @@ import type {
     ReadAllSlideNotesResult,
     ReadSlideNotesResult,
     ReloadSlideImageResult,
-    RemoveAudioScope,
     SlideAudioEntry,
     SlideManifestEntry,
     SlidesPptResult,
@@ -21,12 +20,12 @@ export class WindowsPptProvider implements MacPptProviderContract {
         return { success: false, message: 'insertAudio not supported on Windows yet' };
     }
 
-    async removeAudio(filePath: string, scope: RemoveAudioScope, slideIndex: number): Promise<BasicPptResult> {
+    async removeAudio(filePath: string, slideIndices: number[]): Promise<BasicPptResult> {
         return { success: false, message: 'removeAudio not supported on Windows yet' };
     }
 
-    async saveAllNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult> {
-        return { success: false, message: 'saveAllNotes not supported on Windows yet' };
+    async saveNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult> {
+        return { success: false, message: 'saveNotes not supported on Windows yet' };
     }
 
     async generateVideo(filePath: string, videoOutputPath: string): Promise<VideoPptResult> {

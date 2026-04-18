@@ -21,7 +21,7 @@ declare global {
       onConversionUpdate: (callback: (event: unknown, value: unknown) => void) => void;
       getPathForFile: (file: File) => string;
       selectFile: () => Promise<string | null>;
-      saveAllNotes: (filePath: string, slides: SaveNotesSlide[]) => Promise<BasicElectronResult>;
+      saveNotes: (filePath: string, slides: SaveNotesSlide[]) => Promise<BasicElectronResult>;
       getVoices: () => Promise<Voice[]>;
       generateSpeech: (payload: {
         text: string;

@@ -71,18 +71,18 @@ export function ViewerPage({
 
   const headerActionStates: Record<ViewerHeaderActionKey, ActionButtonState> = {
     syncAll: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
-    saveAllNotesAndInsertAudio: {
+    insertAudioAndNotes: {
       loading: isSaving || isInsertingAudio,
       busy: (busy && !isSaving && !isInsertingAudio) || isSaving || isInsertingAudio,
       status: saveStatus || insertStatus,
     },
-    removeAllAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
+    removeAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
     generateVideo: { loading: isGenerating, busy: busyOrXml && !isGenerating, status: genStatus },
   };
 
   const slideActionStates: Record<SlideActionBarKey, ActionButtonState> = {
     reloadSlide: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
-    saveNotesAndInsertAudio: {
+    insertAudioAndNotes: {
       loading: isSaving || isInsertingAudio,
       busy: (busy && !isSaving && !isInsertingAudio) || isSaving || isInsertingAudio,
       status: saveStatus || insertStatus,
@@ -141,7 +141,7 @@ export function ViewerPage({
   }
 
   async function saveNotesToFile(slidesToSave: Slide[]) {
-    const result = await electronAPI.saveAllNotes(filePath, slidesToSave);
+    const result = await electronAPI.saveNotes(filePath, slidesToSave);
     if (!result.success) {
       throw new Error(result.message);
     }
@@ -186,9 +186,8 @@ export function ViewerPage({
     return slideAudioGroups.flat();
   }
 
-  function runRemoveAudio(scope: "slide" | "all") {
-    const slideIndex = getSlideNumber(activeSlide, activeSlideIndex);
-    return electronAPI.removeAudio({ filePath, scope, slideIndex });
+  function runRemoveAudio(slideIndices: number[]) {
+    return electronAPI.removeAudio({ filePath, slideIndices });
   }
 
   useEffect(() => {
@@ -403,7 +402,7 @@ export function ViewerPage({
     }
   };
 
-  const handleSaveNotesAndInsertAudio = async () => {
+  const handleInsertAudioAndNotes = async () => {
     if (busy) {
       return;
     }
@@ -420,9 +419,9 @@ export function ViewerPage({
       return;
     } finally {
       setIsSaving(false);
-    setSaveStatus("");
     }
 
+    setSaveStatus("");
     setIsInsertingAudio(true);
     setInsertStatus(`Generating audio for slide ${activeSlide.index}...`);
 
@@ -453,7 +452,7 @@ export function ViewerPage({
     }
   };
 
-  const handleSaveAllNotesAndInsertAudio = async () => {
+  const handleInsertAudioAndNotesForAllSlides = async () => {
     if (busy) {
       return;
     }
@@ -471,9 +470,9 @@ export function ViewerPage({
       return;
     } finally {
       setIsSaving(false);
-    setSaveStatus("");
     }
 
+    setSaveStatus("");
     setIsInsertingAudio(true);
     setInsertStatus("Generating all audio...");
 
@@ -603,7 +602,7 @@ export function ViewerPage({
     setRemoveStatus("Removing audio...");
 
     try {
-      const result = await runRemoveAudio("slide");
+      const result = await runRemoveAudio([getSlideNumber(activeSlide, activeSlideIndex)]);
       if (!result.success) {
         alert(`Failed to remove audio: ${result.message}`);
         setRemoveStatus("");
@@ -620,7 +619,7 @@ export function ViewerPage({
     }
   };
 
-  const handleRemoveAllAudio = async () => {
+  const handleRemoveAudio = async () => {
     if (busy) {
       return;
     }
@@ -629,7 +628,7 @@ export function ViewerPage({
     setRemoveStatus("Removing all audio...");
 
     try {
-      const result = await runRemoveAudio("all");
+      const result = await runRemoveAudio(slides.map((slide) => slide.index));
       if (result.success) {
         alert("Successfully removed audio from all slides.");
         setRemoveStatus("Removed!");
@@ -654,8 +653,8 @@ export function ViewerPage({
         actionStates={headerActionStates}
         handlers={{
           syncAll: handleSyncAll,
-          saveAllNotesAndInsertAudio: handleSaveAllNotesAndInsertAudio,
-          removeAllAudio: handleRemoveAllAudio,
+          insertAudioAndNotes: handleInsertAudioAndNotesForAllSlides,
+          removeAudio: handleRemoveAudio,
           generateVideo: handleGenerateVideo,
         }}
       />
@@ -685,7 +684,7 @@ export function ViewerPage({
                   actionStates={slideActionStates}
                   handlers={{
                     reloadSlide: handleReloadSlide,
-                    saveNotesAndInsertAudio: handleSaveNotesAndInsertAudio,
+                    insertAudioAndNotes: handleInsertAudioAndNotes,
                     playSlide: handlePlaySlide,
                     removeSlideAudio: handleRemoveSlideAudio,
                   }}

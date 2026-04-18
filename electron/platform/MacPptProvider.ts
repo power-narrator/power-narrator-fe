@@ -11,7 +11,6 @@ import type {
     ReadAllSlideNotesResult,
     ReadSlideNotesResult,
     ReloadSlideImageResult,
-    RemoveAudioScope,
     SlideAudioEntry,
     SlideImageMap,
     SlideManifestEntry,
@@ -412,19 +411,18 @@ export class MacPptProvider implements MacPptProviderContract {
     }
 
     /**
-     * Removes audio from the specified scope (entire presentation or a specific slide).
+     * Removes audio from the specified slides.
      *
      * @param filePath - The path to the PowerPoint file.
-     * @param scope - The scope to remove audio from (e.g., "all", "slide").
-     * @param slideIndex - The target slide index (required if scope is "slide").
+     * @param slideIndices - The 1-based indices of the slides to update.
      * @returns A promise resolving to the success status of the operation.
      */
-    async removeAudio(filePath: string, scope: RemoveAudioScope, slideIndex: number): Promise<BasicPptResult> {
+    async removeAudio(filePath: string, slideIndices: number[]): Promise<BasicPptResult> {
         const officeContainer = this.getOfficeContainerPath();
         const paramsPath = path.join(officeContainer, 'remove_audio_params.txt');
 
         try {
-            const paramsContent = `${filePath}|${scope}|${slideIndex || 0}`;
+            const paramsContent = `${filePath}|${slideIndices.join(',')}`;
             fs.writeFileSync(paramsPath, paramsContent, 'utf8');
 
             const scriptResult = await this.runMacro('RemoveAudio', filePath);
@@ -446,7 +444,7 @@ export class MacPptProvider implements MacPptProviderContract {
      * @param slides - An array of slide objects containing updated notes.
      * @returns A promise resolving to the success status of the operation.
      */
-    async saveAllNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult> {
+    async saveNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult> {
         const officeContainer = this.getOfficeContainerPath();
 
         let dataContent = '';

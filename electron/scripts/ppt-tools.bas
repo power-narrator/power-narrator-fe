@@ -528,8 +528,8 @@ Sub RemoveAudio()
     Dim fileNum As Integer
     Dim fileContent As String
     Dim params() As String
+    Dim slideIndices() As String
     Dim targetPath As String
-    Dim scope As String
     Dim slideIndex As Integer
     Dim sld As Slide
     Dim s As Shape
@@ -549,15 +549,12 @@ Sub RemoveAudio()
     Line Input #fileNum, fileContent
     Close fileNum
     
-    ' Format: TargetPath|Scope|SlideIndex
+    ' Format: TargetPath|SlideIndex1,SlideIndex2,...
     params = Split(fileContent, "|")
     If UBound(params) < 1 Then Exit Sub
     
     targetPath = params(0)
-    scope = params(1)
-    If UBound(params) >= 2 Then
-        slideIndex = CInt(params(2))
-    End If
+    slideIndices = Split(params(1), ",")
     
     ' 2. Find Presentation
     Set pres = GetPresentation(targetPath)
@@ -568,27 +565,20 @@ Sub RemoveAudio()
     End If
     
     ' 3. Remove Audio
-    If scope = "all" Then
-        For i = 1 To pres.Slides.Count
-            Set sld = pres.Slides(i)
-            For iShape = sld.Shapes.Count To 1 Step -1
-                Set s = sld.Shapes(iShape)
-                If InStr(1, s.Name, "ppt_audio") = 1 Then
-                    s.Delete
-                End If
-            Next iShape
-        Next i
-    ElseIf scope = "slide" Then
-        If slideIndex > 0 And slideIndex <= pres.Slides.Count Then
-            Set sld = pres.Slides(slideIndex)
-            For iShape = sld.Shapes.Count To 1 Step -1
-                Set s = sld.Shapes(iShape)
-                If InStr(1, s.Name, "ppt_audio") = 1 Then
-                    s.Delete
-                End If
-            Next iShape
+    For i = LBound(slideIndices) To UBound(slideIndices)
+        If Len(Trim(slideIndices(i))) > 0 Then
+            slideIndex = CInt(Trim(slideIndices(i)))
+            If slideIndex > 0 And slideIndex <= pres.Slides.Count Then
+                Set sld = pres.Slides(slideIndex)
+                For iShape = sld.Shapes.Count To 1 Step -1
+                    Set s = sld.Shapes(iShape)
+                    If InStr(1, s.Name, "ppt_audio") = 1 Then
+                        s.Delete
+                    End If
+                Next iShape
+            End If
         End If
-    End If
+    Next i
     
     ' 4. Save
     pres.Save

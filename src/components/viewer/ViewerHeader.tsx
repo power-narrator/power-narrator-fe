@@ -6,8 +6,8 @@ import { ActionButtonList } from "./ActionButtonList";
 
 export type ViewerHeaderActionKey =
   | "syncAll"
-  | "saveAllNotesAndInsertAudio"
-  | "removeAllAudio"
+  | "insertAudioAndNotes"
+  | "removeAudio"
   | "generateVideo";
 
 interface ViewerHeaderProps {
@@ -19,8 +19,8 @@ interface ViewerHeaderProps {
 
 const HEADER_ACTION_ITEMS = [
   { key: "syncAll", label: "Sync All Slides", icon: <IconRefresh size={14} /> },
-  { key: "saveAllNotesAndInsertAudio", label: "Save Audio and Notes" },
-  { key: "removeAllAudio", label: "Remove Audio" },
+  { key: "insertAudioAndNotes", label: "Save Audio and Notes" },
+  { key: "removeAudio", label: "Remove Audio" },
   { key: "generateVideo", label: "Generate Video" },
 ] satisfies Array<{ key: ViewerHeaderActionKey; label: string; icon?: ReactNode }>;
 

@@ -4,7 +4,6 @@ import type {
   ReadAllSlideNotesResult,
   ReadSlideNotesResult,
   ReloadSlideImageResult,
-  RemoveAudioScope,
   SlideAudioEntry,
   SlideManifestEntry,
   SlidesPptResult,
@@ -14,12 +13,8 @@ import type {
 export interface PptProvider {
   convertPptx(filePath: string, outputDir: string): Promise<SlidesPptResult>;
   insertAudio(filePath: string, slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult>;
-  removeAudio(
-    filePath: string,
-    scope: RemoveAudioScope,
-    slideIndex: number,
-  ): Promise<BasicPptResult>;
-  saveAllNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult>;
+  removeAudio(filePath: string, slideIndices: number[]): Promise<BasicPptResult>;
+  saveNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult>;
   reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<SlidesPptResult>;
 }
 

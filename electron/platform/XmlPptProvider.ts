@@ -8,6 +8,7 @@ import { resolveScriptPath, resolveSlideAssetUrl } from "./helpers.js";
 import type {
   BasicPptResult,
   QuerySlidesResult,
+  ReloadSlideImageResult,
   RunXmlCliResult,
   SlideAudioEntry,
   SlideImageMap,
@@ -19,7 +20,6 @@ import type {
   XmlCliResponse,
   XmlSlideAudio,
   XmlSlideData,
-  RemoveAudioScope,
 } from "./types.js";
 
 export class XmlPptProvider implements PptProvider {
@@ -310,17 +310,15 @@ export class XmlPptProvider implements PptProvider {
   }
 
   /**
-   * Removes audio from PowerPoint slides based on the specified scope.
+   * Removes audio from the specified PowerPoint slides.
    *
    * @param filePath - Path to the .pptx file.
-   * @param scope - The scope of removal ("all" or "slide").
-   * @param slideIndex - The 1-based index of the slide (relevant if scope is "slide").
+   * @param slideIndices - The 1-based indices of the slides to update.
    * @returns A promise resolving to the result of the removal operation.
    */
   async removeAudio(
     filePath: string,
-    scope: RemoveAudioScope,
-    slideIndex: number,
+    slideIndices: number[],
   ): Promise<BasicPptResult> {
     let slideIndexBefore = 1;
     if (this.nativeProvider) {
@@ -345,18 +343,15 @@ export class XmlPptProvider implements PptProvider {
       return { success: false, message: "Could not find slide data" };
     }
 
-    const targetIndex = slideIndex - 1;
-
-    if (scope !== "all" && !slideData[targetIndex]) {
+    const targetIndices = slideIndices.map((slideIndex) => slideIndex - 1);
+    const invalidIndex = targetIndices.find((targetIndex) => !slideData[targetIndex]);
+    if (invalidIndex !== undefined) {
       if (this.nativeProvider)
         await this.nativeProvider.reopenPresentation(filePath, slideIndexBefore);
-      return { success: false, message: "Could not find slide data for index " + targetIndex };
+      return { success: false, message: "Could not find slide data for index " + (invalidIndex + 1) };
     }
 
-    const deleteOps = this.buildDeleteAudioOpsForSlides(
-      slideData,
-      scope === "all" ? slideData.map((_, idx) => idx) : [targetIndex],
-    );
+    const deleteOps = this.buildDeleteAudioOpsForSlides(slideData, targetIndices);
 
     if (deleteOps.length === 0) {
       if (this.nativeProvider)
@@ -381,7 +376,7 @@ export class XmlPptProvider implements PptProvider {
    * @param slides - An array of slide objects containing notes to be saved.
    * @returns A promise resolving to the result of the save operation.
    */
-  async saveAllNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult> {
+  async saveNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult> {
     const ops = slides
       .filter((s) => s.notes)
       .map((s): XmlCliOperation => ({

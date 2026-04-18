@@ -197,10 +197,10 @@ ipcMain.handle("convert-pptx", async (_, filePath) => {
 // ==========================================
 // PowerPoint Action Handlers
 // ==========================================
-ipcMain.handle("save-all-notes", async (_, filePath: string, slides: SlideManifestEntry[]) => {
+ipcMain.handle("save-notes", async (_, filePath: string, slides: SlideManifestEntry[]) => {
   const absolutePath = path.resolve(filePath);
   if (!fs.existsSync(absolutePath)) return { success: false, message: "File not found" };
-  return await getActiveCoreProvider().saveAllNotes(absolutePath, slides);
+  return await getActiveCoreProvider().saveNotes(absolutePath, slides);
 });
 
 ipcMain.handle("insert-audio", async (_, filePath: string, slidesAudio: SlideAudioEntry[]) => {
@@ -209,10 +209,10 @@ ipcMain.handle("insert-audio", async (_, filePath: string, slidesAudio: SlideAud
   return await getActiveCoreProvider().insertAudio(absolutePath, slidesAudio);
 });
 
-ipcMain.handle("remove-audio", async (_, { filePath, scope, slideIndex }: RemoveAudioRequest) => {
+ipcMain.handle("remove-audio", async (_, { filePath, slideIndices }: RemoveAudioRequest) => {
   const absolutePath = path.resolve(filePath);
   if (!fs.existsSync(absolutePath)) return { success: false, message: "File not found" };
-  return await getActiveCoreProvider().removeAudio(absolutePath, scope, slideIndex);
+  return await getActiveCoreProvider().removeAudio(absolutePath, slideIndices);
 });
 
 ipcMain.handle("play-slide", async (_, { filePath, slideIndex }: PlaySlideRequest) => {
