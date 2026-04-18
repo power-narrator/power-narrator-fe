@@ -387,8 +387,12 @@ Sub PlaySlide()
     With pres.SlideShowSettings
         .RangeType = ppShowAll
         .AdvanceMode = ppSlideShowUseSlideTimings
-        .Run
+        Set sw = .Run
     End With
+    
+    If Not sw Is Nothing Then
+        sw.Activate
+    End If
     
     ' 5. Navigate to Slide
     ' Wait for window to exist (simple loop)
