@@ -28,10 +28,10 @@ on run {slideIndex, pptPath}
 		end try
 		
 		if pres is not missing value then
-			-- Using 'open -a' cleanly hands off focus to PowerPoint through LaunchServices
-			-- preventing osascript exit from bouncing focus back to Electron.
-			do shell script "open -a 'Microsoft PowerPoint'"
+			-- Bring PowerPoint to the front before running macro
+			-- activate
 		end if
+		
 		try
 			-- Try running with the specific add-in syntax
 			run VB macro macro name "AudioTools.ppam!PlaySlide"
@@ -43,6 +43,13 @@ on run {slideIndex, pptPath}
 				return "Error running macro: " & errMsg1 & " // " & errMsg2
 			end try
 		end try
+
+		-- Force PowerPoint to the front again after starting the show
+		-- to ensure the Slide Show window is active and not behind the navbar.
+		-- activate
+		tell application "System Events"
+			set frontmost of process "Microsoft PowerPoint" to true
+		end tell
 	end tell
 	
 end run
