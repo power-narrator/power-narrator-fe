@@ -27,6 +27,15 @@ import type {
     VideoPptResult,
 } from './types.js';
 
+type AppleScriptJson<T = Record<string, unknown>> = {
+    success: true;
+    data: T;
+} | {
+    success: false;
+    message?: string;
+    error?: string;
+};
+
 type AppleScriptResult<T = Record<string, unknown>> = {
     success: true;
     data: T;
@@ -112,7 +121,12 @@ export class MacPptProvider implements MacPptProviderContract {
         }
 
         try {
-            return JSON.parse(trimmed) as AppleScriptResult<T>;
+            const parsed = JSON.parse(trimmed) as AppleScriptJson<T>;
+            if (parsed.success) {
+                return { success: true, data: parsed.data };
+            }
+
+            return { success: false, message: parsed.message || parsed.error || 'AppleScript reported failure.' };
         } catch (error: unknown) {
             return { success: false, message: `Failed to parse AppleScript JSON: ${getErrorMessage(error)}` };
         }
@@ -484,24 +498,12 @@ export class MacPptProvider implements MacPptProviderContract {
      * @returns A promise resolving to the success status.
      */
     async playSlide(filePath: string, slideIndex: number): Promise<BasicPptResult> {
-        const scriptPath = resolveScriptPath('play-slide.applescript');
-        return new Promise<BasicPptResult>((resolve) => {
-            const child = spawn('osascript', [scriptPath, slideIndex.toString(), filePath]);
-            let output = '';
-            let errorOutput = '';
+        const scriptResult = await this.runAppleScriptJson('play-slide.applescript', [slideIndex.toString(), filePath]);
+        if (!scriptResult.success) {
+            return { success: false, message: scriptResult.message || 'Failed to play slide.' };
+        }
 
-            child.stdout.on('data', (data: Buffer) => output += data.toString());
-            child.stderr.on('data', (data: Buffer) => errorOutput += data.toString());
-
-            child.on('close', (code) => {
-                if (code === 0) {
-                    if (output.includes('Error')) resolve({ success: false, message: output.trim() });
-                    else resolve({ success: true });
-                } else {
-                    resolve({ success: false, message: errorOutput || 'Unknown error playing slide' });
-                }
-            });
-        });
+        return { success: true };
     }
 
     /**

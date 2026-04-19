@@ -64,10 +64,9 @@ export function ViewerPage({
     null,
   );
   const statusTimeoutsRef = useRef<number[]>([]);
-  const { mappings, xmlCliEnabled } = useSettings();
+  const { mappings } = useSettings();
   const electronAPI = window.electronAPI;
   const busy = isGenerating || isSaving || isSyncing || isInsertingAudio || isRemoving || isPlaying;
-  const busyOrXml = busy || xmlCliEnabled;
 
   const headerActionStates: Record<ViewerHeaderActionKey, ActionButtonState> = {
     reloadAllSlides: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
@@ -87,7 +86,7 @@ export function ViewerPage({
       busy: (busy && !isSaving && !isInsertingAudio) || isSaving || isInsertingAudio,
       status: saveStatus || insertStatus,
     },
-    playSlide: { loading: isPlaying, busy: busyOrXml && !isPlaying, status: playStatus },
+    playSlide: { loading: isPlaying, busy: busy && !isPlaying, status: playStatus },
     removeAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
   };
 

@@ -448,68 +448,6 @@ Sub UpdateNotes()
     
 End Sub
 
-Sub PlaySlide()
-    Dim targetPath As String
-    Dim pres As Presentation
-    Dim slideIndex As Integer
-    Dim paramsPath As String
-    Dim fileContent As String
-    Dim params() As String
-    Dim i As Integer
-    Dim sw As SlideShowWindow
-    
-    ' 1. Read parameters (TargetPath | SlideIndex)
-    paramsPath = GetOfficeFilePath("play_slide_params.txt")
-    fileContent = ReadSingleLineFile(paramsPath, "Error: Could not find play_slide_params.txt")
-    If fileContent = "" Then Exit Sub
-    
-    params = Split(fileContent, "|")
-    If UBound(params) < 1 Then Exit Sub
-    
-    targetPath = params(0)
-    slideIndex = CInt(Trim(params(1)))
-    
-    ' 2. Find Presentation
-    Set pres = GetPresentationOrShowError(targetPath)
-    If pres Is Nothing Then Exit Sub
-    
-    ' 3. Validate Index
-    If slideIndex < 1 Or slideIndex > pres.Slides.Count Then
-        MsgBox "Invalid slide index: " & slideIndex
-        Exit Sub
-    End If
-    
-    ' 4. Start Slide Show
-    With pres.SlideShowSettings
-        .RangeType = ppShowAll
-        .AdvanceMode = ppSlideShowUseSlideTimings
-        .Run
-    End With
-    
-    ' 5. Navigate to Slide
-    ' Wait for window to exist (simple loop)
-    Set sw = Nothing
-    
-    For i = 1 To 10
-        If pres.SlideShowWindow Is Nothing Then
-            DoEvents
-        Else
-            Set sw = pres.SlideShowWindow
-            Exit For
-        End If
-    Next i
-    
-    If Not sw Is Nothing Then
-        sw.View.GotoSlide slideIndex
-    Else
-        ' Try getting it from Application.SlideShowWindows
-        If Application.SlideShowWindows.Count > 0 Then
-            Application.SlideShowWindows(1).View.GotoSlide slideIndex
-        End If
-    End If
-
-End Sub
-
 Sub RemoveAudio()
     Dim pres As Presentation
     Dim paramsPath As String

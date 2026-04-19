@@ -30,8 +30,9 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [newAlias, setNewAlias] = useState("");
   const [voices, setVoices] = useState<Voice[]>([]);
+  const [xmlCliEnabled, setXmlCliEnabled] = useState(false);
   const [providerMode, setProviderMode] = useState<"gcp" | "local">("local");
-  const { mappings, xmlCliEnabled, saveMappings, setXmlCliEnabled } = useSettings();
+  const { mappings, saveMappings } = useSettings();
   const mappedVoices = Object.entries(mappings).filter(([key]) => key !== DEFAULT_SPEAKER_KEY);
 
   useEffect(() => {
@@ -43,11 +44,13 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
       window.electronAPI.getGcpKeyPath(),
       window.electronAPI.getVoices(),
       window.electronAPI.getTtsProvider(),
+      window.electronAPI.getXmlCliEnabled(),
     ])
-      .then(([path, loadedVoices, provider]) => {
+      .then(([path, loadedVoices, provider, xmlEnabled]) => {
         setKeyPath(path || null);
         setVoices(loadedVoices || []);
         setProviderMode(provider || "local");
+        setXmlCliEnabled(Boolean(xmlEnabled));
       })
       .catch((loadError) => {
         console.error(loadError);
@@ -222,7 +225,9 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
           <Switch
             checked={xmlCliEnabled}
             onChange={(event) => {
-              void setXmlCliEnabled(event.currentTarget.checked);
+              const enabled = event.currentTarget.checked;
+              setXmlCliEnabled(enabled);
+              void window.electronAPI.setXmlCliEnabled(enabled);
             }}
             size="md"
           />
