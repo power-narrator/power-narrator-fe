@@ -47,6 +47,7 @@ The application is split into three layers:
 ## Data Flow
 
 ### Load & Convert
+
 ```
 User selects .pptx
   → IPC: convert-pptx
@@ -57,6 +58,7 @@ User selects .pptx
 ```
 
 ### Generate & Insert Audio (per slide or all)
+
 ```
 User clicks "Insert Audio"
   → Frontend: getAudioBuffer(notes text)
@@ -71,6 +73,7 @@ User clicks "Insert Audio"
 ```
 
 ### Generate Video
+
 ```
 User clicks "Generate Video"
   → Auto-save notes to .pptx (save-all-notes)
@@ -81,8 +84,9 @@ User clicks "Generate Video"
 ```
 
 ### Reload Slide / Sync All
+
 ```
-Reload Slide  → reload-slide.applescript → re-exports single slide image + notes
+Reload Slide  → active provider reloads the slide image and notes
 Sync All      → full convert-pptx re-run, resets all slide state
 ```
 
@@ -91,19 +95,22 @@ Sync All      → full convert-pptx re-run, resets all slide state
 ## Features
 
 ### Presentation Viewer
+
 - Load any `.pptx` file and display all slides as images
 - Resizable split-pane layout (slide image / notes editor)
 - Navigate slides via a scrollable sidebar
 
 ### Speaker Notes Editor
+
 - Edit speaker notes per slide directly in the UI
 - **Multi-section notes** — split a slide's notes into multiple sections separated by `---`
 - **Multi-speaker support** — tag each section with a `[SpeakerName]` label to assign different voices
-- Inline SSML tag toolbar: insert `<break>`, `<emphasis>`, custom `<break time="Xms"/>` at cursor
-- Undo / redo with `Cmd+Z` / `Cmd+Y`
+- Inline SSML tag toolbar for `<break>`, `<say-as>`, `<emphasis>`, `<p>`, and custom `<break time="..."/>` tags
+- Undo / redo via the notes editor toolbar or `Cmd/Ctrl+Z` and `Cmd/Ctrl+Y`
 - Save notes for a single slide or all slides back to the `.pptx`
 
 ### Text-to-Speech (TTS)
+
 - **Google Cloud TTS** (default) — uses Chirp 3 HD voices for high-quality narration
 - **Local TTS** (offline fallback) — uses a self-hosted [Mycroft Mimic 3](https://github.com/MycroftAI/mimic3) server
 - Per-section voice preview with inline audio player and seek bar
@@ -111,30 +118,37 @@ Sync All      → full convert-pptx re-run, resets all slide state
 - Persistent audio cache (SHA-256 keyed, stored in Electron `userData`)
 
 ### Multi-Speaker Mapping
+
 - Configure named speaker aliases (e.g. `[Alice]`, `[Bob]`) in Settings
 - Assign any available TTS voice to each alias
 - Speaker tags in notes automatically route each section to the correct voice
 
 ### Audio Management
+
 - Insert generated audio into the `.pptx` for a single slide or all slides
 - Remove audio from a single slide or the entire presentation
 - Audio insertion supports multiple sections per slide (segments stored as `ppt_audio_1.mp3`, `ppt_audio_2.mp3`, …)
 
 ### Video Export
+
 - Auto-saves notes, generates audio for all slides, inserts it, then triggers PowerPoint's built-in video export
 - Output: MP4 with fully synchronized narration
 - User selects the output save path before generation begins
 
 ### Slide Sync
+
 - **Reload Slide** — re-exports a single slide's image and notes from the live `.pptx` (picks up edits made in PowerPoint)
 - **Sync All** — full re-conversion of the entire presentation
 
 ### XML CLI Mode (Advanced)
-- Toggle in Settings to use the `slide-voice-pptx` Python CLI instead of VBA macros
+
+- Toggle in Settings to use the bundled XML CLI instead of VBA macros for supported PPTX operations
 - Supports: insert audio, remove audio, update notes, query slide data
-- The presentation is automatically closed before and reopened after each CLI operation
+- Slide image export and video generation still rely on the native PowerPoint provider
+- The presentation is automatically closed before and reopened after each CLI operation when a native provider is active
 
 ### Settings
+
 - Select GCP Service Account JSON key via file picker (stored securely in Electron Store)
 - Configure speaker alias → voice mappings
 - Toggle XML CLI mode on/off
@@ -146,39 +160,44 @@ Sync All      → full convert-pptx re-run, resets all slide state
 ```
 electron/
   main.ts               # IPC handler registration, provider & TTS manager setup
-  preload.ts            # Context bridge (electronAPI)
+  preload.cts           # Context bridge (electronAPI)
   platform/
     PptProvider.ts      # Interface definition
-    MacPptProvider.ts   # AppleScript + VBA macro implementation
+    MacPptProvider.ts   # AppleScript integration + VBA-backed edit operations
     XmlPptProvider.ts   # XML CLI decorator implementation
     WindowsPptProvider.ts
   tts/
     TtsProvider.ts      # Interface definition
     TtsManager.ts       # Provider registry + disk cache
     GcpTtsProvider.ts   # Google Cloud TTS
-    LocalTtsProvider.ts # Mimic3 / Larynx local server
+    LocalTtsProvider.ts # Mimic 3 local server integration
     SsmlUtil.ts         # SSML formatting helpers
   scripts/
     convert-pptx.applescript
-    reload-slide.applescript
+    close-presentation.applescript
     export-to-video.applescript
-    play-slide.applescript
+    play-slide.applescript # Pure AppleScript slideshow start/jump
+    reopen-presentation.applescript
     trigger-macro.applescript
     ppt-tools.bas       # VBA macros: InsertAudio, RemoveAudio, UpdateNotes
     ppt-tools.ppam      # Compiled PowerPoint add-in
-    xml-cli/            # Bundled slide-voice-pptx binary (packaged app)
+    power-narrator-cli  # Bundled XML CLI binary
 
 src/
   components/
-    ViewerPage.tsx      # Main UI: slide viewer, notes editor, toolbar
-    SettingsModal.tsx   # GCP key, speaker mappings, XML CLI toggle
     LandingPage.tsx     # File picker entry screen
-    VoiceSelector.tsx   # Voice dropdown component
+    settings/
+      SettingsModal.tsx # GCP key, speaker mappings, XML CLI toggle
+      VoiceSelector.tsx # Voice dropdown component
+    viewer/
+      ViewerPage.tsx    # Main UI: slide viewer, notes editor, toolbar
   utils/
-    tts.ts              # Frontend: speaker-tag parsing, audio segment assembly, IPC calls
+    notes.ts            # Split/join multi-section speaker notes
+    tts/
+      index.ts          # Frontend TTS orchestration and caching
+      ttsParse.ts       # Speaker-tag parsing
 
-xml/
-  slide-voice-app/      # Python source for the XML CLI (development)
+python-xml-main/        # XML CLI source and related docs
 ```
 
 ---
@@ -186,16 +205,17 @@ xml/
 ## Setup
 
 ### Prerequisites
+
 - **macOS** (required — AppleScript automation)
-- **Node.js** v16+
+- **Node.js** current LTS
 - **Microsoft PowerPoint** (desktop, licensed)
 - **Docker Desktop** — only for local TTS mode
 
 ### Install & Run
 
 ```bash
-git clone https://github.com/NorbertLoh/power-narrator.git
-cd power-narrator
+git clone git@github.com:power-narrator/power-narrator-fe.git
+cd power-narrator-fe
 npm install
 npm run dev
 ```
@@ -205,16 +225,21 @@ npm run dev
 ## Configuration
 
 ### Option 1 — Google Cloud TTS (Recommended)
+
 1. Create a GCP Service Account and download its JSON key.
-2. Open the app → click the **Settings (⚙)** icon → **Select JSON Key**.
-3. The app stores the path and switches to GCP automatically.
+2. Open the app → click the **Settings (⚙)** icon → **Select Key File...**.
+3. The app stores the path and uses it whenever GCP is selected for TTS.
 
 ### Option 2 — Local TTS (Offline)
+
 Start the Mimic 3 Docker container:
+
 ```bash
 docker run -it --user root -p 59125:59125 mycroftai/mimic3
 ```
-Set in `.env`:
+
+Create a `.env` file from `.env.example`, then set:
+
 ```
 TTS_PROVIDER=local
 LOCAL_TTS_URL=http://localhost:59125/api/tts
@@ -222,7 +247,9 @@ LOCAL_TTS_VOICE=en_UK/apope_low
 ```
 
 ### Option 3 — PowerPoint Add-in (PPAM)
+
 For reliable VBA macro execution:
+
 1. Open PowerPoint → **Tools** → **PowerPoint Add-ins…**
 2. Click **+** and navigate to `electron/scripts/ppt-tools.ppam`.
 3. Allow macro execution when prompted.
@@ -232,11 +259,14 @@ For reliable VBA macro execution:
 ## Troubleshooting
 
 ### macOS Gatekeeper Warning
+
 ```bash
 xattr -cr "/path/to/Power Narrator.app"
 ```
+
 Or right-click the app → **Open** → **Open**.
 
 ### Local TTS Returns 500
+
 - Ensure the Docker container is running on port `59125`.
 - Check that `LOCAL_TTS_VOICE` in `.env` is a valid installed Mimic3 voice (e.g. `en_UK/apope_low`). The value `default` is a UI placeholder and is automatically resolved to the env var fallback.
