@@ -1,4 +1,4 @@
-import { MacPptProviderContract } from './PptProvider.js';
+import { NativePlatformProvider, PptProvider } from './PptProvider.js';
 import type {
     BasicPptResult,
     ExportSlideImagesResult,
@@ -12,7 +12,7 @@ import type {
     VideoPptResult,
 } from './types.js';
 
-export class WindowsPptProvider implements MacPptProviderContract {
+export class WindowsPptProvider implements PptProvider, NativePlatformProvider {
     async convertPptx(filePath: string, outputDir: string): Promise<SlidesPptResult> {
         return { success: false, message: 'convertPptx not supported on Windows yet' };
     }

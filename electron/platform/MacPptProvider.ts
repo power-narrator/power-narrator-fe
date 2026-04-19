@@ -2,7 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { spawn } from 'child_process';
-import { MacPptProviderContract } from './PptProvider.js';
+import { NativePlatformProvider, PptProvider } from './PptProvider.js';
 import { getErrorMessage } from './errors.js';
 import {
     APP_NAME,
@@ -50,7 +50,7 @@ type AppleScriptResult<T = Record<string, unknown>> = {
  * Provides macOS-specific implementations for interacting with Microsoft PowerPoint
  * via AppleScript (osascript).
  */
-export class MacPptProvider implements MacPptProviderContract {
+export class MacPptProvider implements PptProvider, NativePlatformProvider {
     constructor() {
         this.cleanup();
     }

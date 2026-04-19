@@ -14,6 +14,8 @@ import {
 import type {
   BasicPptResult,
   QuerySlidesResult,
+  ReadAllSlideNotesResult,
+  ReadSlideNotesResult,
   ReloadSlideImageResult,
   RunXmlCliResult,
   SlideAudioEntry,
@@ -285,6 +287,34 @@ export class XmlPptProvider implements PptProvider {
         await this.nativeProvider.reopenPresentation(filePath, slideIndexBefore);
       }
     }
+  }
+
+  async readAllSlideNotes(filePath: string): Promise<ReadAllSlideNotesResult> {
+    const queryResult = await this.querySlides(filePath);
+    if (!queryResult.success) {
+      return queryResult;
+    }
+
+    return {
+      success: true,
+      notes: Object.fromEntries(
+        queryResult.slideData.map((slide, index) => [index + 1, slide.notes || ""]),
+      ),
+    };
+  }
+
+  async readSlideNotes(filePath: string, slideIndex: number): Promise<ReadSlideNotesResult> {
+    const queryResult = await this.querySlides(filePath);
+    if (!queryResult.success) {
+      return queryResult;
+    }
+
+    const slide = queryResult.slideData[slideIndex - 1];
+    if (!slide) {
+      return { success: false, message: `Could not find slide data for index ${slideIndex}` };
+    }
+
+    return { success: true, notes: slide.notes || "" };
   }
 
   /**

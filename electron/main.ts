@@ -4,7 +4,7 @@ import fs from "fs";
 import dotenv from "dotenv";
 import { fileURLToPath, pathToFileURL } from "url";
 import Store from "electron-store";
-import { MacPptProviderContract, PptProvider } from "./platform/PptProvider.js";
+import { NativePlatformProvider, PptProvider } from "./platform/PptProvider.js";
 import { MacPptProvider } from "./platform/MacPptProvider.js";
 import { WindowsPptProvider } from "./platform/WindowsPptProvider.js";
 import { XmlPptProvider } from "./platform/XmlPptProvider.js";
@@ -56,7 +56,7 @@ function getGcpKeyPath(): string | undefined {
 
 const ttsManager = new TtsManager(process.env.TTS_PROVIDER ?? "gcp", getGcpKeyPath);
 
-const nativeProvider: MacPptProviderContract | null =
+const nativeProvider: (PptProvider & NativePlatformProvider) | null =
   process.platform === "darwin"
     ? new MacPptProvider()
     : process.platform === "win32"

@@ -15,6 +15,8 @@ export interface PptProvider {
   convertPptx(filePath: string, outputDir: string): Promise<SlidesPptResult>;
   insertAudio(filePath: string, slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult>;
   removeAudio(filePath: string, slideIndices: number[]): Promise<BasicPptResult>;
+  readAllSlideNotes(filePath: string): Promise<ReadAllSlideNotesResult>;
+  readSlideNotes(filePath: string, slideIndex: number): Promise<ReadSlideNotesResult>;
   saveNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult>;
   reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<SlidePptResult>;
 }
@@ -30,9 +32,4 @@ export interface NativePlatformProvider {
   ): Promise<ReloadSlideImageResult>;
   closePresentation(filePath: string): Promise<number>;
   reopenPresentation(filePath: string, slideIndex: number): Promise<void>;
-}
-
-export interface MacPptProviderContract extends PptProvider, NativePlatformProvider {
-  readAllSlideNotes(filePath: string): Promise<ReadAllSlideNotesResult>;
-  readSlideNotes(filePath: string, slideIndex: number): Promise<ReadSlideNotesResult>;
 }
