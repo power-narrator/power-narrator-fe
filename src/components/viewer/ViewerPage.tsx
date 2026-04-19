@@ -410,8 +410,6 @@ export function ViewerPage({
 
     try {
       await saveNotesToFile(slides);
-      setSaveStatus("Saved notes!");
-      scheduleStatusClear(setSaveStatus);
     } finally {
       setIsSaving(false);
     }
@@ -423,8 +421,6 @@ export function ViewerPage({
 
     try {
       await saveNotesToFile([activeSlide]);
-      setSaveStatus("Saved notes!");
-      scheduleStatusClear(setSaveStatus);
     } finally {
       setIsSaving(false);
     }
@@ -447,8 +443,7 @@ export function ViewerPage({
 
       if (result.success) {
         alert("All slides saved and audio inserted successfully!");
-        setInsertStatus("Complete!");
-        scheduleStatusClear(setInsertStatus);
+        setInsertStatus("");
       } else {
         alert(`Failed to insert audio: ${result.message}`);
         setInsertStatus("");
@@ -479,8 +474,7 @@ export function ViewerPage({
         return;
       }
 
-      setInsertStatus("Complete!");
-      scheduleStatusClear(setInsertStatus);
+      setInsertStatus("");
     } finally {
       setIsInsertingAudio(false);
     }
@@ -501,6 +495,8 @@ export function ViewerPage({
 
     try {
       await generateAndInsertAllAudio();
+      setSaveStatus("Saved slides!");
+      scheduleStatusClear(setSaveStatus);
     } catch (error: unknown) {
       setInsertStatus("");
       alertError("Insert error", error);
@@ -522,6 +518,8 @@ export function ViewerPage({
 
     try {
       await generateAndInsertCurrentSlideAudio();
+      setSaveStatus("Saved slides!");
+      scheduleStatusClear(setSaveStatus);
     } catch (error: unknown) {
       setInsertStatus("");
       alertError("Insert error", error);
