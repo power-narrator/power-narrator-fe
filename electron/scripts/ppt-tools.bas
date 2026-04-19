@@ -1,5 +1,7 @@
 Attribute VB_Name = "AudioTools"
 
+Private Const MEDIA_PLAY_EFFECT As Long = 83
+
 ' ==============================================================================================
 ' INSTRUCTIONS FOR USER:
 ' 1. Open PowerPoint.
@@ -117,7 +119,7 @@ Sub ExportNotesToFile(pres As Presentation, outputPath As String, Optional slide
 End Sub
 
 Function GetSectionIndex(audioTag As String) As Integer
-    ' Expects format "ppt_audio_1"
+    ' Expects the managed audio tag format "ppt_audio_<section>"
     Dim parts() As String
     On Error Resume Next
     parts = Split(audioTag, "_")
@@ -195,11 +197,9 @@ Sub InsertAudio()
                 
                 ' Only find presentation once (on first valid line)
                 If Not hasPres Then
-                    ' Find the correct presentation
-                    Set pres = GetPresentation(targetPath)
+                    Set pres = GetPresentationOrShowError(targetPath)
                     
                     If pres Is Nothing Then
-                        MsgBox "Error: Could not find open presentation: " & targetPath
                         Close fileNum
                         Exit Sub
                     End If
@@ -216,7 +216,7 @@ Sub InsertAudio()
                         newAudioInsertIndex = 1
                     End If
                     
-                    ' Tag for unique identification
+                    ' Managed audio filenames and shape names follow "ppt_audio_<section>"
                     fileName = Mid(audioPath, InStrRev(audioPath, "/") + 1)
                     fileName = Left(fileName, InStrRev(fileName, ".") - 1)
                     audioTag = fileName
@@ -282,8 +282,8 @@ Sub InsertAudio()
                             End If
                         Next i
                         
-                        ' 2. Add "Play" effect to Main Sequence with preserved TriggerType
-                        Set eff = sld.TimeLine.MainSequence.AddEffect(shp, 83, , existingTriggerType) 
+                        ' 2. Add the media play effect to Main Sequence with preserved TriggerType
+                        Set eff = sld.TimeLine.MainSequence.AddEffect(shp, MEDIA_PLAY_EFFECT, , existingTriggerType)
                         
                         ' 3. Apply preserved delay and other settings
                         If hadExistingAudio Then
@@ -394,6 +394,7 @@ Sub UpdateNotes()
     Dim currentSlideIndex As Integer
     Dim currentNotes As String
     Dim isReadingNotes As Boolean
+    Dim isFirstLine As Boolean
     
     ' 1. Read Parameters (Presentation Path | Data File Path)
     paramsPath = GetOfficeFilePath("update_notes_params.txt")
@@ -424,7 +425,6 @@ Sub UpdateNotes()
     Open dataPath For Input As dataNum
     
     isReadingNotes = False
-    Dim isFirstLine As Boolean
     
     Do While Not EOF(dataNum)
         Line Input #dataNum, lineData
