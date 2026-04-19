@@ -7,6 +7,7 @@ import { getErrorMessage } from "../../utils/errors";
 import type { NoteSection } from "../../types/notes";
 import { formatNotes, parseNotes } from "../../utils/notes";
 import { getAudioBuffer } from "../../utils/tts";
+import { resolveSpeakerVoice } from "../../utils/viewer";
 import { NotesSectionList } from "./NotesSectionList";
 import { SlideActionsBar, type SlideActionBarKey } from "./SlideActionsBar";
 import { SlidePreviewPane } from "./SlidePreviewPane";
@@ -15,7 +16,6 @@ import { SsmlToolbar } from "./SsmlToolbar";
 import { ViewerHeader, type ViewerHeaderActionKey } from "./ViewerHeader";
 import { Split } from "@gfazioli/mantine-split-pane";
 import { getEffectiveSpeaker } from "../../utils/notes";
-import { DEFAULT_SPEAKER_VALUE } from "../../constants/speaker";
 
 interface ViewerPageProps {
   slides: Slide[];
@@ -102,8 +102,8 @@ export function ViewerPage({
     }
   }
 
-  function scheduleStatusClear(setter: (value: string) => void, delay = 2000) {
-    const timeoutId = window.setTimeout(() => setter(""), delay);
+  function scheduleStatusClear(setter: (value: string) => void) {
+    const timeoutId = window.setTimeout(() => setter(""), 2000);
     statusTimeoutsRef.current.push(timeoutId);
   }
 
@@ -169,8 +169,7 @@ export function ViewerPage({
             }
 
             const effectiveSpeaker = getEffectiveSpeaker(sections, sectionIndex);
-            const voice =
-              effectiveSpeaker !== DEFAULT_SPEAKER_VALUE ? mappings[effectiveSpeaker] : undefined;
+            const voice = resolveSpeakerVoice(mappings, effectiveSpeaker);
 
             const buffer = await getAudioBuffer(section.text.trim(), voice);
 
@@ -405,26 +404,33 @@ export function ViewerPage({
     }
   };
 
-  const handleSaveAllSlides = async () => {
-    if (busy) {
-      return;
-    }
-
+  const saveAllNotes = async () => {
     setIsSaving(true);
     setSaveStatus("Saving all notes...");
 
     try {
       await saveNotesToFile(slides);
       setSaveStatus("Saved notes!");
-      scheduleStatusClear(setSaveStatus, 1500);
-    } catch (error: unknown) {
-      alertError("Save error", error);
-      return;
+      scheduleStatusClear(setSaveStatus);
     } finally {
-      setSaveStatus("");
       setIsSaving(false);
     }
+  };
 
+  const saveCurrentSlideNotes = async () => {
+    setIsSaving(true);
+    setSaveStatus(`Saving slide ${activeSlide.index}...`);
+
+    try {
+      await saveNotesToFile([activeSlide]);
+      setSaveStatus("Saved notes!");
+      scheduleStatusClear(setSaveStatus);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const generateAndInsertAllAudio = async () => {
     setIsInsertingAudio(true);
     setInsertStatus("Generating all audio...");
 
@@ -445,35 +451,14 @@ export function ViewerPage({
         scheduleStatusClear(setInsertStatus);
       } else {
         alert(`Failed to insert audio: ${result.message}`);
+        setInsertStatus("");
       }
-    } catch (error: unknown) {
-      alertError("Insert error", error);
     } finally {
-      setInsertStatus("");
       setIsInsertingAudio(false);
     }
   };
 
-  const handleSaveSlide = async () => {
-    if (busy) {
-      return;
-    }
-
-    setIsSaving(true);
-    setSaveStatus(`Saving slide ${activeSlide.index}...`);
-
-    try {
-      await saveNotesToFile([activeSlide]);
-      setSaveStatus("Saved notes!");
-      scheduleStatusClear(setSaveStatus, 1500);
-    } catch (error: unknown) {
-      alertError("Save error", error);
-      return;
-    } finally {
-      setSaveStatus("");
-      setIsSaving(false);
-    }
-
+  const generateAndInsertCurrentSlideAudio = async () => {
     setIsInsertingAudio(true);
     setInsertStatus(`Generating audio for slide ${activeSlide.index}...`);
 
@@ -496,11 +481,50 @@ export function ViewerPage({
 
       setInsertStatus("Complete!");
       scheduleStatusClear(setInsertStatus);
-    } catch (error: unknown) {
-      alertError("Insert error", error);
-      setInsertStatus("");
     } finally {
       setIsInsertingAudio(false);
+    }
+  };
+
+  const handleSaveAllSlides = async () => {
+    if (busy) {
+      return;
+    }
+
+    try {
+      await saveAllNotes();
+    } catch (error: unknown) {
+      setSaveStatus("");
+      alertError("Save error", error);
+      return;
+    }
+
+    try {
+      await generateAndInsertAllAudio();
+    } catch (error: unknown) {
+      setInsertStatus("");
+      alertError("Insert error", error);
+    }
+  };
+
+  const handleSaveSlide = async () => {
+    if (busy) {
+      return;
+    }
+
+    try {
+      await saveCurrentSlideNotes();
+    } catch (error: unknown) {
+      setSaveStatus("");
+      alertError("Save error", error);
+      return;
+    }
+
+    try {
+      await generateAndInsertCurrentSlideAudio();
+    } catch (error: unknown) {
+      setInsertStatus("");
+      alertError("Insert error", error);
     }
   };
 
@@ -523,7 +547,7 @@ export function ViewerPage({
       }
 
       setPlayStatus("Played");
-      scheduleStatusClear(setPlayStatus, 1200);
+      scheduleStatusClear(setPlayStatus);
     } catch (error: unknown) {
       alertError("Play slide error", error);
       setPlayStatus("");

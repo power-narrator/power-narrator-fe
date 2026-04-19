@@ -12,3 +12,12 @@ export function getSpeakerOptions(mappings: Record<string, Voice>) {
       .map((key) => ({ value: key, label: key })),
   );
 }
+
+export function resolveSpeakerVoice(
+  mappings: Record<string, Voice>,
+  effectiveSpeaker: string,
+): Voice | undefined {
+  return effectiveSpeaker !== DEFAULT_SPEAKER_VALUE
+    ? mappings[effectiveSpeaker]
+    : mappings[DEFAULT_SPEAKER_KEY];
+}
