@@ -4,23 +4,20 @@ on run {slideIndex, pptPath}
 		if targetSlideIndex < 1 then error "Invalid slide index: " & targetSlideIndex
 		
 		tell application "Microsoft PowerPoint"
-			set pres to missing value
-			
-			try
-				repeat with p in presentations
-					if full name of p contains pptPath then
-						set pres to p
-						exit repeat
-					end if
-				end repeat
-			on error
-				set pres to missing value
-			end try
-			
-			if pres is missing value then
+			set targetName to do shell script "basename " & quoted form of pptPath
+			set targetWindowIndex to my findTargetWindowIndex(pptPath, targetName)
+			if targetWindowIndex is 0 then
 				open (POSIX file pptPath)
-				set pres to active presentation
+				set targetWindowIndex to my findTargetWindowIndex(pptPath, targetName)
 			end if
+			
+			if targetWindowIndex is 0 then error "Could not find a document window for the target presentation."
+			
+			select document window targetWindowIndex
+			activate document window targetWindowIndex
+			set pres to active presentation
+			
+			if full name of pres is not pptPath and name of pres is not targetName then error "PowerPoint activated the wrong presentation before starting the slideshow."
 			
 			set slideCount to count of slides of pres
 			if targetSlideIndex > slideCount then error "Invalid slide index: " & targetSlideIndex
@@ -32,11 +29,7 @@ on run {slideIndex, pptPath}
 			end try
 			
 			activate
-			
-			set activePres to active presentation
-			if full name of activePres does not contain pptPath then error "PowerPoint activated the wrong presentation before starting the slideshow."
-			
-			set slideShowSettingsRef to slide show settings of activePres
+			set slideShowSettingsRef to slide show settings of pres
 			set starting slide of slideShowSettingsRef to targetSlideIndex
 			set ending slide of slideShowSettingsRef to slideCount
 			set advance mode of slideShowSettingsRef to slide show advance use slide timings
@@ -50,6 +43,22 @@ on run {slideIndex, pptPath}
 		return "{\"success\":false,\"message\":\"" & my escapeJson(errMsg) & "\"}"
 	end try
 end run
+
+on findTargetWindowIndex(pptPath, targetName)
+	tell application "Microsoft PowerPoint"
+		repeat with i from 1 to count of document windows
+			try
+				set windowPres to presentation of document window i
+				if full name of windowPres is pptPath or name of windowPres is targetName then
+					return i
+				end if
+			on error
+			end try
+		end repeat
+	end tell
+	
+	return 0
+end findTargetWindowIndex
 
 on escapeJson(valueText)
 	set escapedText to valueText as text
