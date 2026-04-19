@@ -8,6 +8,7 @@ import { MacPptProviderContract, PptProvider } from "./platform/PptProvider.js";
 import { MacPptProvider } from "./platform/MacPptProvider.js";
 import { WindowsPptProvider } from "./platform/WindowsPptProvider.js";
 import { XmlPptProvider } from "./platform/XmlPptProvider.js";
+import { APP_NAME } from "./platform/helpers.js";
 import { TtsManager } from "./tts/TtsManager.js";
 import type {
   GenerateVideoRequest,
@@ -18,11 +19,9 @@ import type {
   SlideManifestEntry,
 } from "./platform/types.js";
 
-const appName = "power-narrator";
-
 protocol.registerSchemesAsPrivileged([
   {
-    scheme: appName,
+    scheme: APP_NAME,
     privileges: {
       standard: true,
       secure: true,
@@ -37,7 +36,7 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
-app.setName(appName);
+app.setName(APP_NAME);
 const store = new Store();
 
 function getGcpKeyPath(): string | undefined {
@@ -55,40 +54,7 @@ function getGcpKeyPath(): string | undefined {
   return store.get("gcpKeyPath") as string;
 }
 
-function getTtsProvider(): string {
-  if (process.env.TTS_PROVIDER) return process.env.TTS_PROVIDER;
-  return "gcp"; // Default to GCP instead of local, so we hit the "missing key" check
-}
-
-function isWithinDirectory(filePath: string, allowedRoot: string): boolean {
-  const relativePath = path.relative(allowedRoot, filePath);
-  return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
-}
-
-function registerSlideAssetProtocol(): void {
-  protocol.handle(appName, (request) => {
-    const url = new URL(request.url);
-    if (url.hostname !== "slide") {
-      return new Response("Not Found", { status: 404 });
-    }
-
-    const encodedPath = url.pathname.startsWith("/") ? url.pathname.slice(1) : url.pathname;
-    const assetPath = path.normalize(decodeURIComponent(encodedPath));
-    const allowedRoot = path.join(app.getPath("temp"), appName);
-
-    if (!isWithinDirectory(assetPath, allowedRoot)) {
-      return new Response("Forbidden", { status: 403 });
-    }
-
-    if (!fs.existsSync(assetPath) || !fs.statSync(assetPath).isFile()) {
-      return new Response("Not Found", { status: 404 });
-    }
-
-    return net.fetch(pathToFileURL(assetPath).toString());
-  });
-}
-
-const ttsManager = new TtsManager(getTtsProvider(), getGcpKeyPath);
+const ttsManager = new TtsManager(process.env.TTS_PROVIDER ?? "gcp", getGcpKeyPath);
 
 const nativeProvider: MacPptProviderContract | null =
   process.platform === "darwin"
@@ -111,6 +77,10 @@ function getActiveCoreProvider(): PptProvider {
   return nativeProvider;
 }
 
+function getOutputDir(absolutePath: string): string {
+  return path.join(app.getPath("temp"), APP_NAME, path.basename(absolutePath, path.extname(absolutePath)));
+}
+
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
     width: 1200,
@@ -128,7 +98,27 @@ const createWindow = () => {
 };
 
 app.whenReady().then(() => {
-  registerSlideAssetProtocol();
+  protocol.handle(APP_NAME, (request) => {
+    const url = new URL(request.url);
+    if (url.hostname !== "slide") {
+      return new Response("Not Found", { status: 404 });
+    }
+
+    const encodedPath = url.pathname.startsWith("/") ? url.pathname.slice(1) : url.pathname;
+    const assetPath = path.normalize(decodeURIComponent(encodedPath));
+    const allowedRoot = path.join(app.getPath("temp"), APP_NAME);
+    const relativePath = path.relative(allowedRoot, assetPath);
+
+    if (relativePath !== "" && (relativePath.startsWith("..") || path.isAbsolute(relativePath))) {
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    if (!fs.existsSync(assetPath) || !fs.statSync(assetPath).isFile()) {
+      return new Response("Not Found", { status: 404 });
+    }
+
+    return net.fetch(pathToFileURL(assetPath).toString());
+  });
   createWindow();
 
   app.on("activate", () => {
@@ -160,11 +150,14 @@ ipcMain.handle("select-file", async () => {
 
 ipcMain.handle("get-video-save-path", async () => {
   const win = BrowserWindow.getFocusedWindow();
-  const result = await dialog.showSaveDialog(win!, {
+  const options = {
     title: "Save Video As",
     defaultPath: path.join(app.getPath("documents"), "Output.mp4"),
     filters: [{ name: "MPEG-4 Video", extensions: ["mp4"] }],
-  });
+  };
+  const result = win
+    ? await dialog.showSaveDialog(win, options)
+    : await dialog.showSaveDialog(options);
 
   if (result.canceled || !result.filePath) {
     return null;
@@ -184,14 +177,7 @@ ipcMain.handle("convert-pptx", async (_, filePath) => {
     return { success: false, message: `File not found: ${absolutePath}` };
   }
 
-  const tempDir = app.getPath("temp");
-  const outputDir = path.join(
-    tempDir,
-    appName,
-    path.basename(absolutePath, path.extname(absolutePath)),
-  );
-
-  return await getActiveCoreProvider().convertPptx(absolutePath, outputDir);
+  return getActiveCoreProvider().convertPptx(absolutePath, getOutputDir(absolutePath));
 });
 
 // ==========================================
@@ -200,19 +186,19 @@ ipcMain.handle("convert-pptx", async (_, filePath) => {
 ipcMain.handle("save-notes", async (_, filePath: string, slides: SlideManifestEntry[]) => {
   const absolutePath = path.resolve(filePath);
   if (!fs.existsSync(absolutePath)) return { success: false, message: "File not found" };
-  return await getActiveCoreProvider().saveNotes(absolutePath, slides);
+  return getActiveCoreProvider().saveNotes(absolutePath, slides);
 });
 
 ipcMain.handle("insert-audio", async (_, filePath: string, slidesAudio: SlideAudioEntry[]) => {
   const absolutePath = path.resolve(filePath);
   if (!fs.existsSync(absolutePath)) return { success: false, message: "File not found" };
-  return await getActiveCoreProvider().insertAudio(absolutePath, slidesAudio);
+  return getActiveCoreProvider().insertAudio(absolutePath, slidesAudio);
 });
 
 ipcMain.handle("remove-audio", async (_, { filePath, slideIndices }: RemoveAudioRequest) => {
   const absolutePath = path.resolve(filePath);
   if (!fs.existsSync(absolutePath)) return { success: false, message: "File not found" };
-  return await getActiveCoreProvider().removeAudio(absolutePath, slideIndices);
+  return getActiveCoreProvider().removeAudio(absolutePath, slideIndices);
 });
 
 ipcMain.handle("play-slide", async (_, { filePath, slideIndex }: PlaySlideRequest) => {
@@ -221,22 +207,17 @@ ipcMain.handle("play-slide", async (_, { filePath, slideIndex }: PlaySlideReques
   }
 
   const absolutePath = path.resolve(filePath);
-  return await nativeProvider.playSlide(absolutePath, slideIndex);
+  return nativeProvider.playSlide(absolutePath, slideIndex);
 });
 
 ipcMain.handle("reload-slide", async (_, { filePath, slideIndex }: ReloadSlideRequest) => {
   const absolutePath = path.resolve(filePath);
-  const tempDir = app.getPath("temp");
-  const outputDir = path.join(
-    tempDir,
-    appName,
-    path.basename(absolutePath, path.extname(absolutePath)),
-  );
+  const outputDir = getOutputDir(absolutePath);
 
   if (!fs.existsSync(outputDir)) {
     return { success: false, message: "Conversion directory not found. Please sync all first." };
   }
-  return await getActiveCoreProvider().reloadSlide(absolutePath, slideIndex, outputDir);
+  return getActiveCoreProvider().reloadSlide(absolutePath, slideIndex, outputDir);
 });
 
 ipcMain.handle("generate-video", async (_, { filePath, videoOutputPath }: GenerateVideoRequest) => {
@@ -246,14 +227,14 @@ ipcMain.handle("generate-video", async (_, { filePath, videoOutputPath }: Genera
 
   if (!videoOutputPath) return { success: false, message: "No output path provided." };
   const absolutePath = path.resolve(filePath);
-  return await nativeProvider.generateVideo(absolutePath, videoOutputPath);
+  return nativeProvider.generateVideo(absolutePath, videoOutputPath);
 });
 
 // ==========================================
 // Settings Handlers
 // ==========================================
 ipcMain.handle("get-tts-provider", async () => {
-  return getTtsProvider();
+  return process.env.TTS_PROVIDER ?? "gcp";
 });
 
 ipcMain.handle("get-speaker-mappings", async () => {
@@ -312,9 +293,9 @@ ipcMain.handle("set-xml-cli-enabled", async (_, enabled) => {
 // TTS Handlers
 // ==========================================
 ipcMain.handle("get-voices", async () => {
-  return await ttsManager.getVoices();
+  return ttsManager.getVoices();
 });
 
 ipcMain.handle("generate-speech", async (_, { text, voiceOption }) => {
-  return await ttsManager.generateSpeech(text, voiceOption);
+  return ttsManager.generateSpeech(text, voiceOption);
 });

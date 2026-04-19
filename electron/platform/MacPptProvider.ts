@@ -4,7 +4,16 @@ import fs from 'fs';
 import { spawn } from 'child_process';
 import { MacPptProviderContract } from './PptProvider.js';
 import { getErrorMessage } from './errors.js';
-import { resolveScriptPath, resolveSlideAssetUrl } from './helpers.js';
+import {
+    APP_NAME,
+    buildSlidesWithPaths,
+    buildPptAudioFileName,
+    cleanupPaths,
+    loadManifest,
+    normalizeNotes,
+    resolveScriptPath,
+    writeManifest,
+} from './helpers.js';
 import type {
     BasicPptResult,
     ExportSlideImagesResult,
@@ -16,7 +25,6 @@ import type {
     SlideManifestEntry,
     SlideNotesMap,
     SlidesPptResult,
-    SlideWithSrc,
     VideoPptResult,
 } from './types.js';
 
@@ -43,20 +51,6 @@ export class MacPptProvider implements MacPptProviderContract {
         return path.join(app.getPath('home'), 'Library/Group Containers/UBF8T346G9.Office');
     }
 
-    private normalizeNotes(notes: string): string {
-        return notes.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    }
-
-    private buildSlidesWithPaths(slides: SlideManifestEntry[], outputDir: string): SlideWithSrc[] {
-        const timestamp = Date.now();
-
-        return slides.map((s) => ({
-            ...s,
-            src: s.image ? `${resolveSlideAssetUrl(path.join(outputDir, s.image))}?t=${timestamp}` : null,
-            notes: this.normalizeNotes(s.notes || ''),
-        })).filter((s): s is SlideWithSrc => s.src !== null);
-    }
-
     private mergeSlideData(images: SlideImageMap, notes: SlideNotesMap): SlideManifestEntry[] {
         return Object.keys(images)
             .map((index) => Number(index))
@@ -68,17 +62,8 @@ export class MacPptProvider implements MacPptProviderContract {
             }));
     }
 
-    private loadManifest(manifestPath: string): SlideManifestEntry[] {
-        const manifestData = fs.readFileSync(manifestPath, 'utf8').replace(/^\uFEFF/, '');
-        return JSON.parse(manifestData) as SlideManifestEntry[];
-    }
-
-    private writeManifest(manifestPath: string, slides: SlideManifestEntry[]): void {
-        fs.writeFileSync(manifestPath, JSON.stringify(slides, null, 2), 'utf8');
-    }
-
     private readImageManifest(manifestPath: string): SlideImageMap {
-        const slides = this.loadManifest(manifestPath);
+        const slides = loadManifest(manifestPath);
         const images: SlideImageMap = {};
 
         for (const slide of slides) {
@@ -106,7 +91,7 @@ export class MacPptProvider implements MacPptProviderContract {
 
             if (line === '###SLIDE_END###') {
                 if (currentSlideIndex !== null && !Number.isNaN(currentSlideIndex)) {
-                    notes[currentSlideIndex] = this.normalizeNotes(currentLines.join('\n'));
+                    notes[currentSlideIndex] = normalizeNotes(currentLines.join('\n'));
                 }
                 currentSlideIndex = null;
                 currentLines = [];
@@ -169,10 +154,6 @@ export class MacPptProvider implements MacPptProviderContract {
                 resolve({ success: false, message: `Failed to start AppleScript: ${getErrorMessage(error)}` });
             });
         });
-    }
-
-    private async runMacro(macroName: string, filePath: string): Promise<AppleScriptResult> {
-        return this.runAppleScriptJson('trigger-macro.applescript', [macroName, filePath]);
     }
 
     /**
@@ -246,7 +227,7 @@ export class MacPptProvider implements MacPptProviderContract {
 
     async exportSlideImages(filePath: string, outputDir: string): Promise<ExportSlideImagesResult> {
         const tempDir = app.getPath('temp');
-        fs.mkdirSync(path.join(tempDir, 'power-narrator'), { recursive: true });
+        fs.mkdirSync(path.join(tempDir, APP_NAME), { recursive: true });
 
         try {
             const scriptResult = await this.runAppleScriptJson<{ manifestPath: string }>('convert-pptx.applescript', [filePath, outputDir]);
@@ -284,7 +265,7 @@ export class MacPptProvider implements MacPptProviderContract {
 
         try {
             fs.writeFileSync(paramsPath, `${filePath}|${outputPath}`, 'utf8');
-            const scriptResult = await this.runMacro('ExportAllSlideNotes', filePath);
+            const scriptResult = await this.runAppleScriptJson('trigger-macro.applescript', ['ExportAllSlideNotes', filePath]);
             if (!scriptResult.success) {
                 return { success: false, message: scriptResult.message || 'Failed to export slide notes.' };
             }
@@ -292,12 +273,9 @@ export class MacPptProvider implements MacPptProviderContract {
             const notes = this.parseNotesExportFile(outputPath);
             return { success: true, notes };
         } catch (e: unknown) {
-            try { fs.unlinkSync(paramsPath); } catch (err) { }
-            try { fs.unlinkSync(outputPath); } catch (err) { }
             return { success: false, message: getErrorMessage(e) };
         } finally {
-            try { fs.unlinkSync(paramsPath); } catch (e) { }
-            try { fs.unlinkSync(outputPath); } catch (e) { }
+            cleanupPaths(paramsPath, outputPath);
         }
     }
 
@@ -308,7 +286,7 @@ export class MacPptProvider implements MacPptProviderContract {
 
         try {
             fs.writeFileSync(paramsPath, `${filePath}|${slideIndex}|${outputPath}`, 'utf8');
-            const scriptResult = await this.runMacro('ExportSlideNotes', filePath);
+            const scriptResult = await this.runAppleScriptJson('trigger-macro.applescript', ['ExportSlideNotes', filePath]);
             if (!scriptResult.success) {
                 return { success: false, message: scriptResult.message || 'Failed to export slide notes.' };
             }
@@ -316,12 +294,9 @@ export class MacPptProvider implements MacPptProviderContract {
             const notes = this.parseNotesExportFile(outputPath);
             return { success: true, notes: notes[slideIndex] || '' };
         } catch (e: unknown) {
-            try { fs.unlinkSync(paramsPath); } catch (err) { }
-            try { fs.unlinkSync(outputPath); } catch (err) { }
             return { success: false, message: getErrorMessage(e) };
         } finally {
-            try { fs.unlinkSync(paramsPath); } catch (e) { }
-            try { fs.unlinkSync(outputPath); } catch (e) { }
+            cleanupPaths(paramsPath, outputPath);
         }
     }
 
@@ -350,10 +325,10 @@ export class MacPptProvider implements MacPptProviderContract {
         try {
             const slides = this.mergeSlideData(imageResult.images, notesResult.notes);
             const manifestPath = path.join(outputDir, 'manifest.json');
-            this.writeManifest(manifestPath, slides);
+            writeManifest(manifestPath, slides);
 
             this.focusApp();
-            return { success: true, slides: this.buildSlidesWithPaths(slides, outputDir) };
+            return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
         } catch (err: unknown) {
             return { success: false, message: getErrorMessage(err) };
         }
@@ -384,7 +359,7 @@ export class MacPptProvider implements MacPptProviderContract {
                 const buffer = Buffer.from(slide.audioData);
                 const slideDir = path.join(audioSessionDir, `slide_${slide.index}`);
                 fs.mkdirSync(slideDir, { recursive: true });
-                const audioFileName = `ppt_audio_${slide.sectionIndex + 1}.mp3`;
+                const audioFileName = buildPptAudioFileName(slide.sectionIndex);
                 const audioFilePath = path.join(slideDir, audioFileName);
 
                 fs.writeFileSync(audioFilePath, buffer);
@@ -394,7 +369,7 @@ export class MacPptProvider implements MacPptProviderContract {
             const paramsPath = path.join(officeContainer, 'insert_audio_params.txt');
             fs.writeFileSync(paramsPath, batchParams, 'utf8');
 
-            const scriptResult = await this.runMacro('InsertAudio', filePath);
+            const scriptResult = await this.runAppleScriptJson('trigger-macro.applescript', ['InsertAudio', filePath]);
             if (!scriptResult.success) {
                 return { success: false, message: scriptResult.message || 'Failed to insert audio.' };
             }
@@ -405,8 +380,7 @@ export class MacPptProvider implements MacPptProviderContract {
         } catch (e: unknown) {
             return { success: false, message: getErrorMessage(e) };
         } finally {
-            try { fs.unlinkSync(path.join(officeContainer, 'insert_audio_params.txt')); } catch (e) { }
-            try { fs.rmSync(audioSessionDir, { recursive: true, force: true }); } catch (e) { }
+            cleanupPaths(path.join(officeContainer, 'insert_audio_params.txt'), audioSessionDir);
         }
     }
 
@@ -425,7 +399,7 @@ export class MacPptProvider implements MacPptProviderContract {
             const paramsContent = `${filePath}|${slideIndices.join(',')}`;
             fs.writeFileSync(paramsPath, paramsContent, 'utf8');
 
-            const scriptResult = await this.runMacro('RemoveAudio', filePath);
+            const scriptResult = await this.runAppleScriptJson('trigger-macro.applescript', ['RemoveAudio', filePath]);
             if (!scriptResult.success) {
                 return { success: false, message: scriptResult.message || 'Failed to remove audio.' };
             }
@@ -433,7 +407,7 @@ export class MacPptProvider implements MacPptProviderContract {
             this.focusApp();
             return { success: true };
         } finally {
-            try { fs.unlinkSync(paramsPath); } catch (e) { }
+            cleanupPaths(paramsPath);
         }
     }
 
@@ -462,7 +436,7 @@ export class MacPptProvider implements MacPptProviderContract {
         fs.writeFileSync(paramsPath, paramsContent, 'utf8');
 
         try {
-            const scriptResult = await this.runMacro('UpdateNotes', filePath);
+            const scriptResult = await this.runAppleScriptJson('trigger-macro.applescript', ['UpdateNotes', filePath]);
             if (!scriptResult.success) {
                 return { success: false, message: scriptResult.message || 'Failed to update notes.' };
             }
@@ -470,8 +444,7 @@ export class MacPptProvider implements MacPptProviderContract {
             this.focusApp();
             return { success: true };
         } finally {
-            try { fs.unlinkSync(dataPath); } catch (e) { }
-            try { fs.unlinkSync(paramsPath); } catch (e) { }
+            cleanupPaths(dataPath, paramsPath);
         }
     }
 
@@ -559,7 +532,7 @@ export class MacPptProvider implements MacPptProviderContract {
 
         try {
             const manifestPath = path.join(outputDir, 'manifest.json');
-            const slides = this.loadManifest(manifestPath);
+            const slides = loadManifest(manifestPath);
             const slide = slides.find((entry) => entry.index === slideIndex);
 
             if (slide) {
@@ -570,10 +543,10 @@ export class MacPptProvider implements MacPptProviderContract {
                 slides.sort((a, b) => a.index - b.index);
             }
 
-            this.writeManifest(manifestPath, slides);
+            writeManifest(manifestPath, slides);
 
             this.focusApp();
-            return { success: true, slides: this.buildSlidesWithPaths(slides, outputDir) };
+            return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
         } catch (e: unknown) {
             return { success: false, message: getErrorMessage(e) };
         }

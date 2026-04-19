@@ -4,16 +4,22 @@ import fs from "fs";
 import { spawn } from "child_process";
 import { NativePlatformProvider, PptProvider } from "./PptProvider.js";
 import { getErrorMessage } from "./errors.js";
-import { resolveScriptPath, resolveSlideAssetUrl } from "./helpers.js";
+import {
+  buildSlidesWithPaths,
+  buildPptAudioFileName,
+  cleanupPaths,
+  isManagedPptAudioName,
+  loadManifest,
+  resolveScriptPath,
+  writeManifest,
+} from "./helpers.js";
 import type {
   BasicPptResult,
   QuerySlidesResult,
   ReloadSlideImageResult,
   RunXmlCliResult,
   SlideAudioEntry,
-  SlideImageMap,
   SlideManifestEntry,
-  SlideWithSrc,
   SlidesPptResult,
   XmlCliOperation,
   XmlCliOperationResult,
@@ -30,58 +36,6 @@ export class XmlPptProvider implements PptProvider {
    */
   constructor(private nativeProvider?: NativePlatformProvider) {}
 
-  private normalizeNotes(notes: string): string {
-    return notes.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  }
-
-  private buildSlidesWithPaths(slides: SlideManifestEntry[], outputDir: string): SlideWithSrc[] {
-    const timestamp = Date.now();
-
-    return slides
-      .map((slide) => ({
-        ...slide,
-        src: slide.image
-          ? `${resolveSlideAssetUrl(path.join(outputDir, slide.image))}?t=${timestamp}`
-          : null,
-        notes: this.normalizeNotes(slide.notes || ""),
-      }))
-      .filter((slide): slide is SlideWithSrc => slide.src !== null);
-  }
-
-  private writeManifest(manifestPath: string, slides: SlideManifestEntry[]): void {
-    fs.writeFileSync(manifestPath, JSON.stringify(slides, null, 2), "utf8");
-  }
-
-  private loadManifest(manifestPath: string): SlideManifestEntry[] {
-    return JSON.parse(
-      fs.readFileSync(manifestPath, "utf8").replace(/^\uFEFF/, ""),
-    ) as SlideManifestEntry[];
-  }
-
-  private getSlideDataFromCliResult(cliResult: RunXmlCliResult): XmlSlideData[] | null {
-    if (!cliResult.success) {
-      return null;
-    }
-
-    const firstResult = cliResult.data?.results?.[0];
-    if (!firstResult || !Array.isArray(firstResult.result)) {
-      return null;
-    }
-
-    return firstResult.result as XmlSlideData[];
-  }
-
-  private buildSlidesFromImagesAndXmlData(
-    images: SlideImageMap,
-    slideData: XmlSlideData[],
-  ): SlideManifestEntry[] {
-    return slideData.map((slide, index) => ({
-      index: index + 1,
-      image: images[index + 1]?.image || "",
-      notes: slide?.notes || "",
-    }));
-  }
-
   private async querySlides(
     filePath: string,
     options: { skipClose?: boolean; skipReopen?: boolean } = {},
@@ -91,35 +45,12 @@ export class XmlPptProvider implements PptProvider {
       return { success: false, message: "Failed to query slide content: " + queryResult.message };
     }
 
-    const slideData = this.getSlideDataFromCliResult(queryResult);
-    if (!slideData) {
+    const firstResult = queryResult.data.results[0];
+    if (!firstResult || !Array.isArray(firstResult.result)) {
       return { success: false, message: "Could not find slide data" };
     }
 
-    return { success: true, slideData };
-  }
-
-  /**
-   * Helper to safely remove temporary files or directories.
-   *
-   * @param paths - One or more paths to remove.
-   */
-  private cleanupFiles(...paths: (string | null)[]): void {
-    for (const p of paths) {
-      if (!p) continue;
-      try {
-        if (fs.existsSync(p)) {
-          const stats = fs.statSync(p);
-          if (stats.isDirectory()) {
-            fs.rmSync(p, { recursive: true, force: true });
-          } else {
-            fs.unlinkSync(p);
-          }
-        }
-      } catch (e) {
-        console.error(`Cleanup failed for ${p}:`, e);
-      }
-    }
+    return { success: true, slideData: firstResult.result as XmlSlideData[] };
   }
 
   private buildDeleteAudioOpsForSlides(
@@ -134,7 +65,7 @@ export class XmlPptProvider implements PptProvider {
 
       const slideAudio = slide.audio || [];
       slideAudio
-        .filter((audio: XmlSlideAudio) => audio.name.toLowerCase().includes("ppt_audio"))
+        .filter((audio: XmlSlideAudio) => isManagedPptAudioName(audio.name))
         .forEach((audio) => {
           deleteOps.push({
             op: "delete_audio_for_slide",
@@ -168,7 +99,7 @@ export class XmlPptProvider implements PptProvider {
     const reqPath = path.join(tempDir, "request.json");
     const resPath = path.join(tempDir, "response.json");
 
-    const payload = { input: inputPath, output: outputPath, ops: ops };
+    const payload = { input: inputPath, output: outputPath, ops };
     fs.writeFileSync(reqPath, JSON.stringify(payload, null, 2), "utf8");
 
     let currentSlideIndex = 1;
@@ -225,12 +156,12 @@ export class XmlPptProvider implements PptProvider {
           error = `CLI did not produce response.json. Code: ${code}. Stderr: ${stderr}. Stdout: ${stdout}`;
         }
 
-        this.cleanupFiles(reqPath, resPath);
+        cleanupPaths(reqPath, resPath);
         resolve(success && data ? { success: true, data } : { success: false, message: error || "CLI failed" });
       });
 
       child.on("error", (err: Error) => {
-        this.cleanupFiles(reqPath, resPath);
+        cleanupPaths(reqPath, resPath);
         resolve({ success: false, message: `Failed to start process: ${getErrorMessage(err)}` });
       });
     });
@@ -287,7 +218,7 @@ export class XmlPptProvider implements PptProvider {
         const buffer = Buffer.from(slide.audioData);
         const slideDir = path.join(sessionDir, `slide_${slide.index}`);
         fs.mkdirSync(slideDir, { recursive: true });
-        const audioFileName = `ppt_audio_${slide.sectionIndex + 1}.mp3`;
+        const audioFileName = buildPptAudioFileName(slide.sectionIndex);
         const audioFilePath = path.join(slideDir, audioFileName);
         fs.writeFileSync(audioFilePath, buffer);
 
@@ -302,7 +233,7 @@ export class XmlPptProvider implements PptProvider {
         skipReopen: true,
       });
     } finally {
-      this.cleanupFiles(sessionDir);
+      cleanupPaths(sessionDir);
       if (this.nativeProvider) {
         await this.nativeProvider.reopenPresentation(filePath, slideIndexBefore);
       }
@@ -325,48 +256,36 @@ export class XmlPptProvider implements PptProvider {
       slideIndexBefore = await this.nativeProvider.closePresentation(filePath);
     }
 
-    const queryResult = await this.querySlides(filePath, {
-      skipClose: true,
-      skipReopen: true,
-    });
+    try {
+      const queryResult = await this.querySlides(filePath, {
+        skipClose: true,
+        skipReopen: true,
+      });
 
-    if (!queryResult.success) {
-      if (this.nativeProvider)
+      if (!queryResult.success) {
+        return queryResult;
+      }
+
+      const targetIndices = slideIndices.map((slideIndex) => slideIndex - 1);
+      const invalidIndex = targetIndices.find((targetIndex) => !queryResult.slideData[targetIndex]);
+      if (invalidIndex !== undefined) {
+        return { success: false, message: "Could not find slide data for index " + (invalidIndex + 1) };
+      }
+
+      const deleteOps = this.buildDeleteAudioOpsForSlides(queryResult.slideData, targetIndices);
+      if (deleteOps.length === 0) {
+        return { success: true };
+      }
+
+      return await this.runXmlCli(filePath, filePath, deleteOps, {
+        skipClose: true,
+        skipReopen: true,
+      });
+    } finally {
+      if (this.nativeProvider) {
         await this.nativeProvider.reopenPresentation(filePath, slideIndexBefore);
-      return queryResult;
+      }
     }
-
-    const slideData = queryResult.slideData;
-    if (!slideData) {
-      if (this.nativeProvider)
-        await this.nativeProvider.reopenPresentation(filePath, slideIndexBefore);
-      return { success: false, message: "Could not find slide data" };
-    }
-
-    const targetIndices = slideIndices.map((slideIndex) => slideIndex - 1);
-    const invalidIndex = targetIndices.find((targetIndex) => !slideData[targetIndex]);
-    if (invalidIndex !== undefined) {
-      if (this.nativeProvider)
-        await this.nativeProvider.reopenPresentation(filePath, slideIndexBefore);
-      return { success: false, message: "Could not find slide data for index " + (invalidIndex + 1) };
-    }
-
-    const deleteOps = this.buildDeleteAudioOpsForSlides(slideData, targetIndices);
-
-    if (deleteOps.length === 0) {
-      if (this.nativeProvider)
-        await this.nativeProvider.reopenPresentation(filePath, slideIndexBefore);
-      return { success: true };
-    }
-
-    const result = await this.runXmlCli(filePath, filePath, deleteOps, {
-      skipClose: true,
-      skipReopen: true,
-    });
-    if (this.nativeProvider)
-      await this.nativeProvider.reopenPresentation(filePath, slideIndexBefore);
-
-    return result;
   }
 
   /**
@@ -415,11 +334,15 @@ export class XmlPptProvider implements PptProvider {
       return { success: false, message: "Image export or slide query returned no data" };
     }
 
-    const slides = this.buildSlidesFromImagesAndXmlData(imageResult.images, queryResult.slideData);
+    const slides = queryResult.slideData.map((slide, index) => ({
+      index: index + 1,
+      image: imageResult.images[index + 1]?.image || "",
+      notes: slide?.notes || "",
+    }));
     const manifestPath = path.join(outputDir, "manifest.json");
-    this.writeManifest(manifestPath, slides);
+    writeManifest(manifestPath, slides);
 
-    return { success: true, slides: this.buildSlidesWithPaths(slides, outputDir) };
+    return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
   }
 
   /**
@@ -459,7 +382,7 @@ export class XmlPptProvider implements PptProvider {
     }
 
     const manifestPath = path.join(outputDir, "manifest.json");
-    const slides = this.loadManifest(manifestPath);
+    const slides = loadManifest(manifestPath);
     const slide = slides.find((entry) => entry.index === slideIndex);
 
     if (slide) {
@@ -474,8 +397,8 @@ export class XmlPptProvider implements PptProvider {
       slides.sort((a, b) => a.index - b.index);
     }
 
-    this.writeManifest(manifestPath, slides);
+    writeManifest(manifestPath, slides);
 
-    return { success: true, slides: this.buildSlidesWithPaths(slides, outputDir) };
+    return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
   }
 }
