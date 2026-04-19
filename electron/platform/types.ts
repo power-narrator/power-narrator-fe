@@ -31,6 +31,8 @@ export type BasicPptResult = Result;
 
 export type SlidesPptResult = Result<{ slides: SlideWithSrc[] }>;
 
+export type SlidePptResult = Result<{ slide: SlideWithSrc }>;
+
 export type VideoPptResult = Result<{ outputPath: string }>;
 
 export type SetGcpKeyResult = Result<{ path: string }>;

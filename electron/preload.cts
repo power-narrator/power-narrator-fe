@@ -5,6 +5,7 @@ import type {
   PlaySlideRequest,
   ReloadSlideRequest,
   RemoveAudioRequest,
+  SlidePptResult,
   SetGcpKeyResult,
   SlideManifestEntry,
   SlideAudioEntry,
@@ -56,7 +57,7 @@ const electronAPI = {
     ipcRenderer.invoke("remove-audio", payload),
   playSlide: (payload: PlaySlideRequest): Promise<BasicPptResult> =>
     ipcRenderer.invoke("play-slide", payload),
-  reloadSlide: (payload: ReloadSlideRequest): Promise<SlidesPptResult> =>
+  reloadSlide: (payload: ReloadSlideRequest): Promise<SlidePptResult> =>
     ipcRenderer.invoke("reload-slide", payload),
   getVideoSavePath: (): Promise<string | null> => ipcRenderer.invoke("get-video-save-path"),
 };

@@ -9,9 +9,7 @@ import {
   buildPptAudioFileName,
   cleanupPaths,
   isManagedPptAudioName,
-  loadManifest,
   resolveScriptPath,
-  writeManifest,
 } from "./helpers.js";
 import type {
   BasicPptResult,
@@ -19,6 +17,7 @@ import type {
   ReloadSlideImageResult,
   RunXmlCliResult,
   SlideAudioEntry,
+  SlidePptResult,
   SlideManifestEntry,
   SlidesPptResult,
   XmlCliOperation,
@@ -339,8 +338,6 @@ export class XmlPptProvider implements PptProvider {
       image: imageResult.images[index + 1]?.image || "",
       notes: slide?.notes || "",
     }));
-    const manifestPath = path.join(outputDir, "manifest.json");
-    writeManifest(manifestPath, slides);
 
     return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
   }
@@ -353,7 +350,7 @@ export class XmlPptProvider implements PptProvider {
    * @param slideIndex - The 1-based index of the slide to reload.
    * @param outputDir - Directory for temporary output files.
    */
-  async reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<SlidesPptResult> {
+  async reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<SlidePptResult> {
     if (!this.nativeProvider) {
       return { success: false, message: "Slide image export is not supported on this platform" };
     }
@@ -381,24 +378,17 @@ export class XmlPptProvider implements PptProvider {
       return { success: false, message: `Could not find slide data for index ${slideIndex - 1}` };
     }
 
-    const manifestPath = path.join(outputDir, "manifest.json");
-    const slides = loadManifest(manifestPath);
-    const slide = slides.find((entry) => entry.index === slideIndex);
+    const [slide] = buildSlidesWithPaths(
+      [
+        {
+          index: slideIndex,
+          image: imageResult.image,
+          notes: slideData[slideIndex - 1].notes || "",
+        },
+      ],
+      outputDir,
+    );
 
-    if (slide) {
-      slide.image = imageResult.image;
-      slide.notes = slideData[slideIndex - 1].notes || "";
-    } else {
-      slides.push({
-        index: slideIndex,
-        image: imageResult.image,
-        notes: slideData[slideIndex - 1].notes || "",
-      });
-      slides.sort((a, b) => a.index - b.index);
-    }
-
-    writeManifest(manifestPath, slides);
-
-    return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
+    return { success: true, slide };
   }
 }

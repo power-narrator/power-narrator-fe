@@ -9,10 +9,8 @@ import {
     buildSlidesWithPaths,
     buildPptAudioFileName,
     cleanupPaths,
-    loadManifest,
     normalizeNotes,
     resolveScriptPath,
-    writeManifest,
 } from './helpers.js';
 import type {
     BasicPptResult,
@@ -24,6 +22,7 @@ import type {
     SlideImageMap,
     SlideManifestEntry,
     SlideNotesMap,
+    SlidePptResult,
     SlidesPptResult,
     VideoPptResult,
 } from './types.js';
@@ -63,7 +62,7 @@ export class MacPptProvider implements MacPptProviderContract {
     }
 
     private readImageManifest(manifestPath: string): SlideImageMap {
-        const slides = loadManifest(manifestPath);
+        const slides = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as SlideManifestEntry[];
         const images: SlideImageMap = {};
 
         for (const slide of slides) {
@@ -76,7 +75,7 @@ export class MacPptProvider implements MacPptProviderContract {
     }
 
     private parseNotesExportFile(filePath: string): SlideNotesMap {
-        const content = fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, '');
+        const content = fs.readFileSync(filePath, 'utf8');
         const lines = content.split(/\r\n|\n|\r/);
         const notes: SlideNotesMap = {};
         let currentSlideIndex: number | null = null;
@@ -324,8 +323,6 @@ export class MacPptProvider implements MacPptProviderContract {
 
         try {
             const slides = this.mergeSlideData(imageResult.images, notesResult.notes);
-            const manifestPath = path.join(outputDir, 'manifest.json');
-            writeManifest(manifestPath, slides);
 
             this.focusApp();
             return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
@@ -515,7 +512,7 @@ export class MacPptProvider implements MacPptProviderContract {
      * @param outputDir - The directory where the reloaded slide assets should be updated.
      * @returns A promise resolving to the fresh set of slides or an error message.
      */
-    async reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<SlidesPptResult> {
+    async reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<SlidePptResult> {
         const imageResult = await this.reloadSlideImage(filePath, slideIndex, outputDir);
         if (!imageResult.success) {
             return imageResult;
@@ -531,22 +528,13 @@ export class MacPptProvider implements MacPptProviderContract {
         }
 
         try {
-            const manifestPath = path.join(outputDir, 'manifest.json');
-            const slides = loadManifest(manifestPath);
-            const slide = slides.find((entry) => entry.index === slideIndex);
-
-            if (slide) {
-                slide.image = imageResult.image;
-                slide.notes = notesResult.notes;
-            } else {
-                slides.push({ index: slideIndex, image: imageResult.image, notes: notesResult.notes });
-                slides.sort((a, b) => a.index - b.index);
-            }
-
-            writeManifest(manifestPath, slides);
+            const [slide] = buildSlidesWithPaths(
+                [{ index: slideIndex, image: imageResult.image, notes: notesResult.notes }],
+                outputDir,
+            );
 
             this.focusApp();
-            return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
+            return { success: true, slide };
         } catch (e: unknown) {
             return { success: false, message: getErrorMessage(e) };
         }

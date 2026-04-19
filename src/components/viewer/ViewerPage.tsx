@@ -1,7 +1,7 @@
 import { Stack } from "@mantine/core";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ActionButtonState } from "../../types/viewer";
-import type { Slide, SlidesElectronResult } from "../../types/electron";
+import type { Slide, SlideElectronResult, SlidesElectronResult } from "../../types/electron";
 import { useSettings } from "../../context/useSettings";
 import { getErrorMessage } from "../../utils/errors";
 import type { NoteSection } from "../../types/notes";
@@ -583,14 +583,35 @@ export function ViewerPage({
       return;
     }
 
-    await syncSlides(
-      electronAPI.reloadSlide({
+    if (!confirmSync()) {
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncStatus(`Syncing slide ${activeSlide.index}...`);
+
+    try {
+      const result: SlideElectronResult = await electronAPI.reloadSlide({
         filePath,
         slideIndex: getSlideNumber(activeSlide, activeSlideIndex),
-      }),
-      "Sync slide error",
-      `Syncing slide ${activeSlide.index}...`,
-    );
+      });
+      if (!result.success) {
+        alert(`Sync slide error: ${result.message}`);
+        setSyncStatus("");
+        return;
+      }
+
+      const nextSlides = [...slides];
+      nextSlides[activeSlideIndex] = result.slide;
+      resetHistoryWithSlides(nextSlides);
+      setSyncStatus("Synced!");
+      scheduleStatusClear(setSyncStatus);
+    } catch (error: unknown) {
+      alertError("Sync slide error", error);
+      setSyncStatus("");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleRemoveAudio = async () => {

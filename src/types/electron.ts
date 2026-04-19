@@ -4,6 +4,7 @@ import type {
   PlaySlideRequest,
   ReloadSlideRequest,
   RemoveAudioRequest,
+  SlidePptResult,
   SlideAudioEntry as PlatformSlideAudioEntry,
   SlideManifestEntry,
   SlideWithSrc,
@@ -19,6 +20,8 @@ export type ConvertResponse = SlidesPptResult;
 export type BasicElectronResult = BasicPptResult;
 
 export type SlidesElectronResult = SlidesPptResult;
+
+export type SlideElectronResult = SlidePptResult;
 
 export type VideoElectronResult = VideoPptResult;
 

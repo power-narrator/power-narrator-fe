@@ -7,6 +7,7 @@ import type {
     ReloadSlideImageResult,
     SlideAudioEntry,
     SlideManifestEntry,
+    SlidePptResult,
     SlidesPptResult,
     VideoPptResult,
 } from './types.js';
@@ -60,7 +61,7 @@ export class WindowsPptProvider implements MacPptProviderContract {
         return { success: false, message: 'readSlideNotes not supported on Windows yet' };
     }
 
-    async reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<SlidesPptResult> {
+    async reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<SlidePptResult> {
         return { success: false, message: 'reloadSlide not supported on Windows yet' };
     }
 }

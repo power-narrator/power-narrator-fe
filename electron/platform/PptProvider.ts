@@ -4,6 +4,7 @@ import type {
   ReadAllSlideNotesResult,
   ReadSlideNotesResult,
   ReloadSlideImageResult,
+  SlidePptResult,
   SlideAudioEntry,
   SlideManifestEntry,
   SlidesPptResult,
@@ -15,7 +16,7 @@ export interface PptProvider {
   insertAudio(filePath: string, slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult>;
   removeAudio(filePath: string, slideIndices: number[]): Promise<BasicPptResult>;
   saveNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult>;
-  reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<SlidesPptResult>;
+  reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<SlidePptResult>;
 }
 
 export interface NativePlatformProvider {

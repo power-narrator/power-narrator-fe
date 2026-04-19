@@ -7,6 +7,7 @@ import type {
   ReloadSlidePayload,
   RemoveAudioPayload,
   SaveNotesSlide,
+  SlideElectronResult,
   SetGcpKeyResult,
   Slide,
   SlideAudioEntry,
@@ -47,7 +48,7 @@ declare global {
       generateVideo: (payload: GenerateVideoPayload) => Promise<VideoElectronResult>;
       removeAudio: (payload: RemoveAudioPayload) => Promise<BasicElectronResult>;
       playSlide: (payload: PlaySlidePayload) => Promise<BasicElectronResult>;
-      reloadSlide: (payload: ReloadSlidePayload) => Promise<SlidesElectronResult>;
+      reloadSlide: (payload: ReloadSlidePayload) => Promise<SlideElectronResult>;
       getVideoSavePath: () => Promise<string | null>;
     };
   }

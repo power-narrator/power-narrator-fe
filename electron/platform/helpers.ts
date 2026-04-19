@@ -51,14 +51,6 @@ export function buildSlidesWithPaths(
   });
 }
 
-export function loadManifest(manifestPath: string): SlideManifestEntry[] {
-  return JSON.parse(fs.readFileSync(manifestPath, "utf8").replace(/^\uFEFF/, "")) as SlideManifestEntry[];
-}
-
-export function writeManifest(manifestPath: string, slides: SlideManifestEntry[]): void {
-  fs.writeFileSync(manifestPath, JSON.stringify(slides, null, 2), "utf8");
-}
-
 export function cleanupPaths(...paths: Array<string | null | undefined>): void {
   for (const currentPath of paths) {
     if (!currentPath || !fs.existsSync(currentPath)) {
