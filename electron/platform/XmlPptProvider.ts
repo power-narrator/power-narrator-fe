@@ -223,6 +223,13 @@ export class XmlPptProvider implements PptProvider {
         Array.from(slidesToClear, (slideIndex) => slideIndex - 1),
       );
 
+      const slideAudioEntriesBySlide = new Map<number, SlideAudioEntry[]>();
+      for (const slide of slidesAudio) {
+        const slideEntries = slideAudioEntriesBySlide.get(slide.index) ?? [];
+        slideEntries.push(slide);
+        slideAudioEntriesBySlide.set(slide.index, slideEntries);
+      }
+
       for (const slide of slidesAudio) {
         const buffer = Buffer.from(slide.audioData);
         const slideDir = path.join(sessionDir, `slide_${slide.index}`);
@@ -230,11 +237,19 @@ export class XmlPptProvider implements PptProvider {
         const audioFileName = buildPptAudioFileName(slide.sectionIndex);
         const audioFilePath = path.join(slideDir, audioFileName);
         fs.writeFileSync(audioFilePath, buffer);
+      }
 
-        ops.push({
-          op: "save_audio_for_slide",
-          args: { slide_index: slide.index - 1, mp3_path: audioFilePath },
-        });
+      for (const [slideIndex, slideEntries] of slideAudioEntriesBySlide) {
+        for (const slide of [...slideEntries].reverse()) {
+          const slideDir = path.join(sessionDir, `slide_${slideIndex}`);
+          const audioFileName = buildPptAudioFileName(slide.sectionIndex);
+          const audioFilePath = path.join(slideDir, audioFileName);
+
+          ops.push({
+            op: "save_audio_for_slide",
+            args: { slide_index: slideIndex - 1, mp3_path: audioFilePath },
+          });
+        }
       }
 
       return await this.runXmlCli(filePath, filePath, ops, {
