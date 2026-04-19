@@ -70,25 +70,25 @@ export function ViewerPage({
   const busyOrXml = busy || xmlCliEnabled;
 
   const headerActionStates: Record<ViewerHeaderActionKey, ActionButtonState> = {
-    syncAll: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
-    insertAudioAndNotes: {
+    reloadAllSlides: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
+    saveAllAudioAndNotes: {
       loading: isSaving || isInsertingAudio,
       busy: (busy && !isSaving && !isInsertingAudio) || isSaving || isInsertingAudio,
       status: saveStatus || insertStatus,
     },
-    removeAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
+    removeAllAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
     generateVideo: { loading: isGenerating, busy: busyOrXml && !isGenerating, status: genStatus },
   };
 
   const slideActionStates: Record<SlideActionBarKey, ActionButtonState> = {
     reloadSlide: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
-    insertAudioAndNotes: {
+    saveAudioAndNotes: {
       loading: isSaving || isInsertingAudio,
       busy: (busy && !isSaving && !isInsertingAudio) || isSaving || isInsertingAudio,
       status: saveStatus || insertStatus,
     },
     playSlide: { loading: isPlaying, busy: busyOrXml && !isPlaying, status: playStatus },
-    removeSlideAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
+    removeAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
   };
 
   const activeSlide = slides[activeSlideIndex] ?? { ...EMPTY_SLIDE, index: activeSlideIndex + 1 };
@@ -402,7 +402,7 @@ export function ViewerPage({
     }
   };
 
-  const handleInsertAudioAndNotes = async () => {
+  const handleSaveAudioAndNotes = async () => {
     if (busy) {
       return;
     }
@@ -452,7 +452,7 @@ export function ViewerPage({
     }
   };
 
-  const handleInsertAudioAndNotesForAllSlides = async () => {
+  const handleSaveAllAudioAndNotes = async () => {
     if (busy) {
       return;
     }
@@ -570,7 +570,7 @@ export function ViewerPage({
     }
   };
 
-  const handleSyncAll = async () => {
+  const handleReloadAllSlides = async () => {
     if (busy) {
       return;
     }
@@ -593,7 +593,7 @@ export function ViewerPage({
     );
   };
 
-  const handleRemoveSlideAudio = async () => {
+  const handleRemoveAudio = async () => {
     if (busy) {
       return;
     }
@@ -619,7 +619,7 @@ export function ViewerPage({
     }
   };
 
-  const handleRemoveAudio = async () => {
+  const handleRemoveAllAudio = async () => {
     if (busy) {
       return;
     }
@@ -652,9 +652,9 @@ export function ViewerPage({
         onOpenSettings={onOpenSettings}
         actionStates={headerActionStates}
         handlers={{
-          syncAll: handleSyncAll,
-          insertAudioAndNotes: handleInsertAudioAndNotesForAllSlides,
-          removeAudio: handleRemoveAudio,
+          reloadAllSlides: handleReloadAllSlides,
+          saveAllAudioAndNotes: handleSaveAllAudioAndNotes,
+          removeAllAudio: handleRemoveAllAudio,
           generateVideo: handleGenerateVideo,
         }}
       />
@@ -684,9 +684,9 @@ export function ViewerPage({
                   actionStates={slideActionStates}
                   handlers={{
                     reloadSlide: handleReloadSlide,
-                    insertAudioAndNotes: handleInsertAudioAndNotes,
+                    saveAudioAndNotes: handleSaveAudioAndNotes,
                     playSlide: handlePlaySlide,
-                    removeSlideAudio: handleRemoveSlideAudio,
+                    removeAudio: handleRemoveAudio,
                   }}
                 />
 
