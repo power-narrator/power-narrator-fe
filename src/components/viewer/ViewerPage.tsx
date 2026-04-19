@@ -77,7 +77,7 @@ export function ViewerPage({
       status: saveStatus || insertStatus,
     },
     removeAllAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
-    generateVideo: { loading: isGenerating, busy: busyOrXml && !isGenerating, status: genStatus },
+    generateVideo: { loading: isGenerating, busy: busy && !isGenerating, status: genStatus },
   };
 
   const slideActionStates: Record<SlideActionBarKey, ActionButtonState> = {
