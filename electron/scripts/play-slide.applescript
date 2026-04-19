@@ -37,16 +37,12 @@ on run {slideIndex, pptPath}
 			if full name of activePres does not contain pptPath then error "PowerPoint activated the wrong presentation before starting the slideshow."
 			
 			set slideShowSettingsRef to slide show settings of activePres
+			set starting slide of slideShowSettingsRef to targetSlideIndex
+			set ending slide of slideShowSettingsRef to slideCount
 			set advance mode of slideShowSettingsRef to slide show advance use slide timings
 			set slideShowWindowRef to run slide show slideShowSettingsRef
 			
 			if slideShowWindowRef is missing value then error "PowerPoint did not create a slide show window."
-			
-			try
-				go to slide (slideshow view of slideShowWindowRef) number targetSlideIndex
-			on error
-				-- Some PowerPoint versions already honor starting slide and reject a redundant goto.
-			end try
 		end tell
 		
 		return "{\"success\":true}"
