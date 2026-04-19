@@ -9,7 +9,6 @@ import {
   buildSlidesWithPaths,
   buildPptAudioFileName,
   cleanupPaths,
-  normalizeNotes,
   resolveScriptPath,
 } from "./helpers.js";
 import type {
@@ -92,7 +91,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
 
       if (line === "###SLIDE_END###") {
         if (currentSlideIndex !== null && !Number.isNaN(currentSlideIndex)) {
-          notes[currentSlideIndex] = normalizeNotes(currentLines.join("\n"));
+          notes[currentSlideIndex] = currentLines.join("\n");
         }
         currentSlideIndex = null;
         currentLines = [];
@@ -465,9 +464,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
 
     let dataContent = "";
     for (const s of slides) {
-      if (s.notes) {
-        dataContent += `###SLIDE_START### ${s.index}\n${s.notes}\n###SLIDE_END###\n`;
-      }
+      dataContent += `###SLIDE_START### ${s.index}\n${s.notes || ""}\n###SLIDE_END###\n`;
     }
 
     const dataPath = path.join(officeContainer, `notes_data_${Date.now()}.txt`);

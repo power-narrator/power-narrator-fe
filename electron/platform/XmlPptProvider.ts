@@ -9,6 +9,7 @@ import {
   buildPptAudioFileName,
   cleanupPaths,
   isManagedPptAudioName,
+  normalizeNotes,
   resolveScriptPath,
 } from "./helpers.js";
 import type {
@@ -321,7 +322,7 @@ export class XmlPptProvider implements PptProvider {
     return {
       success: true,
       notes: Object.fromEntries(
-        queryResult.slideData.map((slide, index) => [index + 1, slide.notes || ""]),
+        queryResult.slideData.map((slide, index) => [index + 1, normalizeNotes(slide.notes || "")]),
       ),
     };
   }
@@ -337,7 +338,7 @@ export class XmlPptProvider implements PptProvider {
       return { success: false, message: `Could not find slide data for index ${slideIndex}` };
     }
 
-    return { success: true, notes: slide.notes || "" };
+    return { success: true, notes: normalizeNotes(slide.notes || "") };
   }
 
   /**
@@ -348,14 +349,12 @@ export class XmlPptProvider implements PptProvider {
    * @returns A promise resolving to the result of the save operation.
    */
   async saveNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult> {
-    const ops = slides
-      .filter((s) => s.notes)
-      .map(
-        (s): XmlCliOperation => ({
-          op: "set_slide_notes",
-          args: { slide_index: s.index - 1, notes: s.notes },
-        }),
-      );
+    const ops = slides.map(
+      (s): XmlCliOperation => ({
+        op: "set_slide_notes",
+        args: { slide_index: s.index - 1, notes: normalizeNotes(s.notes || "") },
+      }),
+    );
 
     if (ops.length === 0) return { success: true };
 
