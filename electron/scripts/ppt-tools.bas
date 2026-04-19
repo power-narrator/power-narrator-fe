@@ -433,7 +433,7 @@ Sub UpdateNotes()
                 If currentNotes = "" Then
                     currentNotes = lineData
                 Else
-                    currentNotes = currentNotes & vbCrLf & lineData
+                    currentNotes = currentNotes & vbLf & lineData
                 End If
             End If
         End If

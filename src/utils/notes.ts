@@ -6,8 +6,10 @@ export const parseNotes = (text: string): NoteSection[] => {
     return [{ speaker: "", text: "" }];
   }
 
-  return text.split(/\r?\n---\r?\n/g).map((part) => {
-    const match = part.match(/^\[([^\]]+)\]\n([\s\S]*)$/);
+  const normalizedText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  return normalizedText.split(/\n\n---\n\n/g).map((part) => {
+    const match = part.match(/^\[([^\]]+)\]\n\n([\s\S]*)$/);
 
     if (match) {
       return { speaker: match[1], text: match[2] };
@@ -20,8 +22,8 @@ export const parseNotes = (text: string): NoteSection[] => {
 export const formatNotes = (sections: NoteSection[]): string => {
   return sections
     .map((section) => {
-      const speakerPart = section.speaker !== DEFAULT_SPEAKER_VALUE ? `[${section.speaker}]\n` : "";
+      const speakerPart = section.speaker !== DEFAULT_SPEAKER_VALUE ? `[${section.speaker}]\n\n` : "";
       return `${speakerPart}${section.text}`;
     })
-    .join("\n---\n");
+    .join("\n\n---\n\n");
 };
