@@ -6,7 +6,7 @@ import { ActionButtonList } from "./ActionButtonList";
 
 export type ViewerHeaderActionKey =
   | "reloadAllSlides"
-  | "saveAllAudioAndNotes"
+  | "saveAllSlides"
   | "removeAllAudio"
   | "generateVideo";
 
@@ -19,7 +19,7 @@ interface ViewerHeaderProps {
 
 const HEADER_ACTION_ITEMS = [
   { key: "reloadAllSlides", label: "Reload All Slides", icon: <IconRefresh size={14} /> },
-  { key: "saveAllAudioAndNotes", label: "Save All Audio and Notes" },
+  { key: "saveAllSlides", label: "Save All Slides" },
   { key: "removeAllAudio", label: "Remove All Audio" },
   { key: "generateVideo", label: "Generate Video" },
 ] satisfies Array<{ key: ViewerHeaderActionKey; label: string; icon?: ReactNode }>;

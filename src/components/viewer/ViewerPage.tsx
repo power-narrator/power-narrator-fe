@@ -14,6 +14,8 @@ import { SlideThumbnailList } from "./SlideThumbnailList";
 import { SsmlToolbar } from "./SsmlToolbar";
 import { ViewerHeader, type ViewerHeaderActionKey } from "./ViewerHeader";
 import { Split } from "@gfazioli/mantine-split-pane";
+import { getEffectiveSpeaker } from "../../utils/notes";
+import { DEFAULT_SPEAKER_VALUE } from "../../constants/speaker";
 
 interface ViewerPageProps {
   slides: Slide[];
@@ -70,9 +72,9 @@ export function ViewerPage({
 
   const headerActionStates: Record<ViewerHeaderActionKey, ActionButtonState> = {
     reloadAllSlides: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
-    saveAllAudioAndNotes: {
+    saveAllSlides: {
       loading: isSaving || isInsertingAudio,
-      busy: (busy && !isSaving && !isInsertingAudio) || isSaving || isInsertingAudio,
+      busy: busy && !(isSaving || isInsertingAudio),
       status: saveStatus || insertStatus,
     },
     removeAllAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
@@ -81,9 +83,9 @@ export function ViewerPage({
 
   const slideActionStates: Record<SlideActionBarKey, ActionButtonState> = {
     reloadSlide: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
-    saveAudioAndNotes: {
+    saveSlide: {
       loading: isSaving || isInsertingAudio,
-      busy: (busy && !isSaving && !isInsertingAudio) || isSaving || isInsertingAudio,
+      busy: busy && !(isSaving || isInsertingAudio),
       status: saveStatus || insertStatus,
     },
     playSlide: { loading: isPlaying, busy: busy && !isPlaying, status: playStatus },
@@ -166,10 +168,12 @@ export function ViewerPage({
               return null;
             }
 
-            const buffer = await getAudioBuffer(
-              section.text,
-              mappings[section.speaker] || undefined,
-            );
+            const effectiveSpeaker = getEffectiveSpeaker(sections, sectionIndex);
+            const voice =
+              effectiveSpeaker !== DEFAULT_SPEAKER_VALUE ? mappings[effectiveSpeaker] : undefined;
+
+            const buffer = await getAudioBuffer(section.text.trim(), voice);
+
             return {
               index: slide.index,
               sectionIndex,
@@ -401,7 +405,56 @@ export function ViewerPage({
     }
   };
 
-  const handleSaveAudioAndNotes = async () => {
+  const handleSaveAllSlides = async () => {
+    if (busy) {
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveStatus("Saving all notes...");
+
+    try {
+      await saveNotesToFile(slides);
+      setSaveStatus("Saved notes!");
+      scheduleStatusClear(setSaveStatus, 1500);
+    } catch (error: unknown) {
+      alertError("Save error", error);
+      return;
+    } finally {
+      setSaveStatus("");
+      setIsSaving(false);
+    }
+
+    setIsInsertingAudio(true);
+    setInsertStatus("Generating all audio...");
+
+    try {
+      const slidesAudio = await buildSlideAudioEntries(slides, setInsertStatus);
+      if (slidesAudio.length === 0) {
+        alert("No notes found to generate audio.");
+        setInsertStatus("");
+        return;
+      }
+
+      setInsertStatus("Inserting all audio...");
+      const result = await electronAPI.insertAudio(filePath, slidesAudio);
+
+      if (result.success) {
+        alert("All slides saved and audio inserted successfully!");
+        setInsertStatus("Complete!");
+        scheduleStatusClear(setInsertStatus);
+      } else {
+        alert(`Failed to insert audio: ${result.message}`);
+      }
+    } catch (error: unknown) {
+      alertError("Insert error", error);
+    } finally {
+      setInsertStatus("");
+      setIsInsertingAudio(false);
+    }
+  };
+
+  const handleSaveSlide = async () => {
     if (busy) {
       return;
     }
@@ -411,16 +464,16 @@ export function ViewerPage({
 
     try {
       await saveNotesToFile([activeSlide]);
-      setSaveStatus("Saved!");
+      setSaveStatus("Saved notes!");
+      scheduleStatusClear(setSaveStatus, 1500);
     } catch (error: unknown) {
       alertError("Save error", error);
-      setSaveStatus("");
       return;
     } finally {
+      setSaveStatus("");
       setIsSaving(false);
     }
 
-    setSaveStatus("");
     setIsInsertingAudio(true);
     setInsertStatus(`Generating audio for slide ${activeSlide.index}...`);
 
@@ -441,59 +494,8 @@ export function ViewerPage({
         return;
       }
 
-      setInsertStatus("Inserted!");
+      setInsertStatus("Complete!");
       scheduleStatusClear(setInsertStatus);
-    } catch (error: unknown) {
-      alertError("Insert error", error);
-      setInsertStatus("");
-    } finally {
-      setIsInsertingAudio(false);
-    }
-  };
-
-  const handleSaveAllAudioAndNotes = async () => {
-    if (busy) {
-      return;
-    }
-
-    setIsSaving(true);
-    setSaveStatus("Saving all notes...");
-
-    try {
-      await saveNotesToFile(slides);
-      alert("Notes saved successfully!");
-      setSaveStatus("Saved!");
-    } catch (error: unknown) {
-      alertError("Save error", error);
-      setSaveStatus("");
-      return;
-    } finally {
-      setIsSaving(false);
-    }
-
-    setSaveStatus("");
-    setIsInsertingAudio(true);
-    setInsertStatus("Generating all audio...");
-
-    try {
-      const slidesAudio = await buildSlideAudioEntries(slides, setInsertStatus);
-      if (slidesAudio.length === 0) {
-        alert("No notes found to generate audio.");
-        setInsertStatus("");
-        return;
-      }
-
-      setInsertStatus("Inserting all audio...");
-      const result = await electronAPI.insertAudio(filePath, slidesAudio);
-
-      if (result.success) {
-        alert("All audio inserted successfully!");
-        setInsertStatus("Inserted!");
-        scheduleStatusClear(setInsertStatus);
-      } else {
-        alert(`Failed to insert audio: ${result.message}`);
-        setInsertStatus("");
-      }
     } catch (error: unknown) {
       alertError("Insert error", error);
       setInsertStatus("");
@@ -673,7 +675,7 @@ export function ViewerPage({
         actionStates={headerActionStates}
         handlers={{
           reloadAllSlides: handleReloadAllSlides,
-          saveAllAudioAndNotes: handleSaveAllAudioAndNotes,
+          saveAllSlides: handleSaveAllSlides,
           removeAllAudio: handleRemoveAllAudio,
           generateVideo: handleGenerateVideo,
         }}
@@ -704,7 +706,7 @@ export function ViewerPage({
                   actionStates={slideActionStates}
                   handlers={{
                     reloadSlide: handleReloadSlide,
-                    saveAudioAndNotes: handleSaveAudioAndNotes,
+                    saveSlide: handleSaveSlide,
                     playSlide: handlePlaySlide,
                     removeAudio: handleRemoveAudio,
                   }}

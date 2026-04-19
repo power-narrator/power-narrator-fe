@@ -90,6 +90,15 @@ Reload Slide  → active provider reloads the slide image and notes
 Sync All      → full convert-pptx re-run, resets all slide state
 ```
 
+### Note Normalization & Parsing
+
+To ensure reliable cross-platform compatibility and prevent formatting loss during the round-trip between Electron and PowerPoint, the application implements a robust normalization pipeline:
+
+1. **Line Break Unification**: PowerPoint on macOS can inject various line-ending characters (e.g., `\r`, `\r\n`, `\u2028`, `\u2029`). The parser first normalizes all variations into standard `\n` to ensure regex consistency.
+2. **Whitespace Preservation**: The parser avoids aggressive trimming. It only strips horizontal whitespace around tags (`[Speaker]`) and dividers (`---`), preserving all intentional vertical spacing and indentation within the content.
+3. **Robust Section Splitting**: Uses advanced regex to identify section dividers regardless of surrounding whitespace or newline variations, preventing issues where sections might fail to split due to hidden PowerPoint formatting.
+4. **Speaker Inheritance**: Implements a "sticky" fallback logic (`getEffectiveSpeaker`) that resolves the active voice for sections without explicit tags by searching backwards through the slide's history.
+
 ---
 
 ## Features
@@ -105,16 +114,24 @@ Sync All      → full convert-pptx re-run, resets all slide state
 - Edit speaker notes per slide directly in the UI
 - **Multi-section notes** — split a slide's notes into multiple sections separated by `---`
 - **Multi-speaker support** — tag each section with a `[SpeakerName]` label to assign different voices
-- Inline SSML tag toolbar for `<break>`, `<say-as>`, `<emphasis>`, `<p>`, and custom `<break time="..."/>` tags
-- Undo / redo via the notes editor toolbar or `Cmd/Ctrl+Z` and `Cmd/Ctrl+Y`
+- **Speaker Inheritance** — sections without an explicit tag (or set to "Default") automatically inherit the voice from the most recently specified section on the slide
+- **Advanced SSML Toolbar** — insert tags at the cursor for:
+  - `<break time="..."/>` with common presets and custom duration support
+  - `<say-as interpret-as="...">` for spell-out, cardinal/ordinal numbers, digits, fractions, and expletives
+  - `<emphasis level="...">` with strong, moderate, and reduced levels
+  - `<p>` paragraph tags for structured narration
+- **Undo / Redo History** — complete history for note edits with multi-level undo/redo (`Cmd+Z` / `Cmd+Y` or toolbar buttons)
 - Save notes for a single slide or all slides back to the `.pptx`
 
 ### Text-to-Speech (TTS)
 
 - **Google Cloud TTS** (default) — uses Chirp 3 HD voices for high-quality narration
 - **Local TTS** (offline fallback) — uses a self-hosted [Mycroft Mimic 3](https://github.com/MycroftAI/mimic3) server
-- Per-section voice preview with inline audio player and seek bar
-- Preview a text selection only by highlighting it before clicking play
+- **Enhanced Preview Buttons** — per-section voice preview with smart highlighting:
+  - **Smart Highlighting**: Only the active/effective voice button is highlighted (even when inherited).
+  - **Recently Played Indicator**: The play button icon changes to a history icon (`IconHistory`) for the most recently tested voice in each section.
+- **Selection Playback** — highlight any subset of text in the editor before clicking a preview button to narrate only that specific selection
+- **Audio Orchestration** — maintains a global audio context; starting a new preview or slide-playback automatically stops any existing audio to prevent overlapping
 - Persistent audio cache (SHA-256 keyed, stored in Electron `userData`)
 
 ### Multi-Speaker Mapping
@@ -139,6 +156,7 @@ Sync All      → full convert-pptx re-run, resets all slide state
 
 - **Reload Slide** — re-exports a single slide's image and notes from the live `.pptx` (picks up edits made in PowerPoint)
 - **Sync All** — full re-conversion of the entire presentation
+- **Automatic Focus Restoration** — provides a seamless UX by automatically returning focus to the Power Narrator window after background PowerPoint operations (like video export or audio insertion) complete
 
 ### XML CLI Mode (Advanced)
 

@@ -2,21 +2,56 @@ import { DEFAULT_SPEAKER_VALUE } from "../constants/speaker";
 import type { NoteSection } from "../types/notes";
 
 export const parseNotes = (text: string): NoteSection[] => {
-  if (!text) {
+  if (!text.trim()) {
     return [{ speaker: "", text: "" }];
   }
 
-  const normalizedText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normalizedText = text.replace(/\r\n|\r/g, "\n");
 
-  return normalizedText.split(/\n\n---\n\n/g).map((part) => {
-    const match = part.match(/^\[([^\]]+)\]\n\n([\s\S]*)$/);
+  // Split by --- but only consume the divider itself and surrounding horizontal whitespace,
+  // plus up to one newline on either side to counteract the join("\n---\n") from formatNotes.
+  return normalizedText.split(/\n?[ \t]*---[ \t]*\n?/g).map((part) => {
+    // Only trim horizontal whitespace from start/end to preserve newlines
+    const trimmedPart = part.replace(/^[ \t]+|[ \t]+$/g, "");
 
-    if (match) {
-      return { speaker: match[1], text: match[2] };
+    if (trimmedPart.startsWith("[")) {
+      const closingBracketIndex = trimmedPart.indexOf("]");
+      if (closingBracketIndex !== -1 && closingBracketIndex < 50) {
+        const speaker = trimmedPart.substring(1, closingBracketIndex).trim();
+        let content = trimmedPart.substring(closingBracketIndex + 1);
+
+        // Clean up ONLY horizontal whitespace and ONE newline immediately following the tag
+        content = content.replace(/^[ \t]*\n?/, "");
+
+        return {
+          speaker: speaker || DEFAULT_SPEAKER_VALUE,
+          text: content,
+        };
+      }
     }
 
-    return { speaker: DEFAULT_SPEAKER_VALUE, text: part };
+    return {
+      speaker: DEFAULT_SPEAKER_VALUE,
+      text: trimmedPart,
+    };
   });
+};
+
+export const getEffectiveSpeaker = (sections: NoteSection[], index: number): string => {
+  const current = sections[index]?.speaker;
+  if (current && current !== DEFAULT_SPEAKER_VALUE) {
+    return current;
+  }
+
+  // Look backwards for the most recent specified speaker
+  for (let i = index - 1; i >= 0; i--) {
+    const prev = sections[i]?.speaker;
+    if (prev && prev !== DEFAULT_SPEAKER_VALUE) {
+      return prev;
+    }
+  }
+
+  return DEFAULT_SPEAKER_VALUE;
 };
 
 export const formatNotes = (sections: NoteSection[]): string => {
@@ -26,5 +61,6 @@ export const formatNotes = (sections: NoteSection[]): string => {
         section.speaker !== DEFAULT_SPEAKER_VALUE ? `[${section.speaker}]\n\n` : "";
       return `${speakerPart}${section.text}`;
     })
-    .join("\n\n---\n\n");
+    .join("\n---\n")
+    .trim();
 };

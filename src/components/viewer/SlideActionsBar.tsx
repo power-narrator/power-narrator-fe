@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { ActionButtonState } from "../../types/viewer";
 import { ActionButtonList } from "./ActionButtonList";
 
-export type SlideActionBarKey = "reloadSlide" | "saveAudioAndNotes" | "playSlide" | "removeAudio";
+export type SlideActionBarKey = "reloadSlide" | "saveSlide" | "playSlide" | "removeAudio";
 
 interface SlideActionsBarProps {
   actionStates: Record<SlideActionBarKey, ActionButtonState>;
@@ -12,7 +12,7 @@ interface SlideActionsBarProps {
 
 const SLIDE_ACTION_ITEMS = [
   { key: "reloadSlide", label: "Reload Slide", icon: <IconRefresh size={14} /> },
-  { key: "saveAudioAndNotes", label: "Save Audio and Notes" },
+  { key: "saveSlide", label: "Save Slide" },
   { key: "playSlide", label: "Play", icon: <IconDeviceTv size={14} /> },
   { key: "removeAudio", label: "Remove Audio" },
 ] satisfies Array<{ key: SlideActionBarKey; label: string; icon?: ReactNode }>;
