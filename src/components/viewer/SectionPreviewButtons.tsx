@@ -6,7 +6,7 @@ import { getErrorMessage } from "../../utils/errors";
 import { getSpeakerOptions } from "../../utils/viewer";
 import { generateAudio } from "../../utils/tts";
 import type { Voice } from "../../types/voice";
-import { useAudio } from "../../context/AudioContext";
+import { useAudio } from "../../context/useAudio";
 
 interface SectionPreviewButtonsProps {
   id: string;
@@ -124,7 +124,6 @@ export function SectionPreviewButtons({
 
   return (
     <Stack p="xs" gap="xs">
-
       <Group gap="xs">
         {speakers.map((speaker) => {
           const isActive = activePreviewTarget === speaker.value;

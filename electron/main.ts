@@ -78,7 +78,11 @@ function getActiveCoreProvider(): PptProvider {
 }
 
 function getOutputDir(absolutePath: string): string {
-  return path.join(app.getPath("temp"), APP_NAME, path.basename(absolutePath, path.extname(absolutePath)));
+  return path.join(
+    app.getPath("temp"),
+    APP_NAME,
+    path.basename(absolutePath, path.extname(absolutePath)),
+  );
 }
 
 const createWindow = () => {

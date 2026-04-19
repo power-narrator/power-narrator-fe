@@ -42,7 +42,8 @@ const electronAPI = {
   }): Promise<Uint8Array> => ipcRenderer.invoke("generate-speech", payload),
   getGcpKeyPath: (): Promise<string | null> => ipcRenderer.invoke("get-gcp-key-path"),
   setGcpKey: (): Promise<SetGcpKeyResult> => ipcRenderer.invoke("set-gcp-key"),
-  getSpeakerMappings: (): Promise<Record<string, Voice>> => ipcRenderer.invoke("get-speaker-mappings"),
+  getSpeakerMappings: (): Promise<Record<string, Voice>> =>
+    ipcRenderer.invoke("get-speaker-mappings"),
   setSpeakerMappings: (mappings: Record<string, Voice>): Promise<BasicPptResult> =>
     ipcRenderer.invoke("set-speaker-mappings", mappings),
   getTtsProvider: (): Promise<"gcp" | "local"> => ipcRenderer.invoke("get-tts-provider"),

@@ -3,11 +3,7 @@ import type { ReactNode } from "react";
 import type { ActionButtonState } from "../../types/viewer";
 import { ActionButtonList } from "./ActionButtonList";
 
-export type SlideActionBarKey =
-  | "reloadSlide"
-  | "saveAudioAndNotes"
-  | "playSlide"
-  | "removeAudio";
+export type SlideActionBarKey = "reloadSlide" | "saveAudioAndNotes" | "playSlide" | "removeAudio";
 
 interface SlideActionsBarProps {
   actionStates: Record<SlideActionBarKey, ActionButtonState>;

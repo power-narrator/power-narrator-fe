@@ -16,7 +16,6 @@ import type {
   QuerySlidesResult,
   ReadAllSlideNotesResult,
   ReadSlideNotesResult,
-  ReloadSlideImageResult,
   RunXmlCliResult,
   SlideAudioEntry,
   SlidePptResult,
@@ -41,7 +40,12 @@ export class XmlPptProvider implements PptProvider {
     filePath: string,
     options: { skipClose?: boolean; skipReopen?: boolean } = {},
   ): Promise<QuerySlidesResult> {
-    const queryResult = await this.runXmlCli(filePath, null, [{ op: "get_slides", args: {} }], options);
+    const queryResult = await this.runXmlCli(
+      filePath,
+      null,
+      [{ op: "get_slides", args: {} }],
+      options,
+    );
     if (!queryResult.success) {
       return { success: false, message: "Failed to query slide content: " + queryResult.message };
     }
@@ -158,7 +162,11 @@ export class XmlPptProvider implements PptProvider {
         }
 
         cleanupPaths(reqPath, resPath);
-        resolve(success && data ? { success: true, data } : { success: false, message: error || "CLI failed" });
+        resolve(
+          success && data
+            ? { success: true, data }
+            : { success: false, message: error || "CLI failed" },
+        );
       });
 
       child.on("error", (err: Error) => {
@@ -248,10 +256,7 @@ export class XmlPptProvider implements PptProvider {
    * @param slideIndices - The 1-based indices of the slides to update.
    * @returns A promise resolving to the result of the removal operation.
    */
-  async removeAudio(
-    filePath: string,
-    slideIndices: number[],
-  ): Promise<BasicPptResult> {
+  async removeAudio(filePath: string, slideIndices: number[]): Promise<BasicPptResult> {
     let slideIndexBefore = 1;
     if (this.nativeProvider) {
       slideIndexBefore = await this.nativeProvider.closePresentation(filePath);
@@ -270,7 +275,10 @@ export class XmlPptProvider implements PptProvider {
       const targetIndices = slideIndices.map((slideIndex) => slideIndex - 1);
       const invalidIndex = targetIndices.find((targetIndex) => !queryResult.slideData[targetIndex]);
       if (invalidIndex !== undefined) {
-        return { success: false, message: "Could not find slide data for index " + (invalidIndex + 1) };
+        return {
+          success: false,
+          message: "Could not find slide data for index " + (invalidIndex + 1),
+        };
       }
 
       const deleteOps = this.buildDeleteAudioOpsForSlides(queryResult.slideData, targetIndices);
@@ -327,10 +335,12 @@ export class XmlPptProvider implements PptProvider {
   async saveNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult> {
     const ops = slides
       .filter((s) => s.notes)
-      .map((s): XmlCliOperation => ({
-        op: "set_slide_notes",
-        args: { slide_index: s.index - 1, notes: s.notes },
-      }));
+      .map(
+        (s): XmlCliOperation => ({
+          op: "set_slide_notes",
+          args: { slide_index: s.index - 1, notes: s.notes },
+        }),
+      );
 
     if (ops.length === 0) return { success: true };
 
@@ -380,7 +390,11 @@ export class XmlPptProvider implements PptProvider {
    * @param slideIndex - The 1-based index of the slide to reload.
    * @param outputDir - Directory for temporary output files.
    */
-  async reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<SlidePptResult> {
+  async reloadSlide(
+    filePath: string,
+    slideIndex: number,
+    outputDir: string,
+  ): Promise<SlidePptResult> {
     if (!this.nativeProvider) {
       return { success: false, message: "Slide image export is not supported on this platform" };
     }

@@ -22,7 +22,8 @@ export const parseNotes = (text: string): NoteSection[] => {
 export const formatNotes = (sections: NoteSection[]): string => {
   return sections
     .map((section) => {
-      const speakerPart = section.speaker !== DEFAULT_SPEAKER_VALUE ? `[${section.speaker}]\n\n` : "";
+      const speakerPart =
+        section.speaker !== DEFAULT_SPEAKER_VALUE ? `[${section.speaker}]\n\n` : "";
       return `${speakerPart}${section.text}`;
     })
     .join("\n\n---\n\n");
