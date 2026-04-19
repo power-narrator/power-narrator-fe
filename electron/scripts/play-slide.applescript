@@ -51,7 +51,7 @@ on run {slideIndex, pptPath}
 		
 		return "{\"success\":true}"
 	on error errMsg
-		return "{\"success\":false,\"error\":\"" & my escapeJson(errMsg) & "\"}"
+		return "{\"success\":false,\"message\":\"" & my escapeJson(errMsg) & "\"}"
 	end try
 end run
 

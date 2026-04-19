@@ -27,17 +27,6 @@ import type {
   VideoPptResult,
 } from "./types.js";
 
-type AppleScriptJson<T = Record<string, unknown>> =
-  | {
-      success: true;
-      data: T;
-    }
-  | {
-      success: false;
-      message?: string;
-      error?: string;
-    };
-
 type AppleScriptResult<T = Record<string, unknown>> =
   | {
       success: true;
@@ -125,14 +114,14 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
 
     try {
-      const parsed = JSON.parse(trimmed) as AppleScriptJson<T>;
+      const parsed = JSON.parse(trimmed) as AppleScriptResult<T>;
       if (parsed.success) {
         return { success: true, data: parsed.data };
       }
 
       return {
         success: false,
-        message: parsed.message || parsed.error || "AppleScript reported failure.",
+        message: parsed.message || "AppleScript reported failure.",
       };
     } catch (error: unknown) {
       return {

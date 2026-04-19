@@ -27,7 +27,7 @@ on run {macroName, pptPath}
 
         return "{\"success\":true}"
     on error errMsg
-        return "{\"success\":false,\"error\":\"" & my escapeJson("Error calling macro '" & macroName & "': " & errMsg) & "\"}"
+        return "{\"success\":false,\"message\":\"" & my escapeJson("Error calling macro '" & macroName & "': " & errMsg) & "\"}"
     end try
 end run
 

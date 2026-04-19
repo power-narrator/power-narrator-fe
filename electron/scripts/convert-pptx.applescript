@@ -150,7 +150,7 @@ on jsonSuccess(keyName, valueText)
 end jsonSuccess
 
 on jsonError(messageText)
-	return "{\"success\":false,\"error\":\"" & my escapeJson(messageText) & "\"}"
+	return "{\"success\":false,\"message\":\"" & my escapeJson(messageText) & "\"}"
 end jsonError
 
 on escapeJson(valueText)
