@@ -1,31 +1,40 @@
-export interface Slide {
-  index: number;
-  image: string;
-  src: string;
-  notes: string;
-}
+import type {
+  BasicPptResult,
+  GenerateVideoRequest,
+  PlaySlideRequest,
+  ReloadSlideRequest,
+  RemoveAudioRequest,
+  SlidePptResult,
+  SlideAudioEntry as PlatformSlideAudioEntry,
+  SlideManifestEntry,
+  SlideWithSrc,
+  SlidesPptResult,
+  SetGcpKeyResult as PlatformSetGcpKeyResult,
+  VideoPptResult,
+} from "../../electron/platform/types";
 
-export interface ConvertResponse {
-  success: boolean;
-  slides: Slide[];
-  error?: string;
-}
+export interface Slide extends SlideWithSrc {}
 
-export interface BasicElectronResult {
-  success: boolean;
-  error?: string;
-}
+export type ConvertResponse = SlidesPptResult;
 
-export interface SlidesElectronResult extends BasicElectronResult {
-  slides?: Slide[];
-}
+export type BasicElectronResult = BasicPptResult;
 
-export interface VideoElectronResult extends BasicElectronResult {
-  outputPath?: string;
-}
+export type SlidesElectronResult = SlidesPptResult;
 
-export interface SlideAudioEntry {
-  index: number;
-  sectionIndex?: number;
-  audioData: Uint8Array;
-}
+export type SlideElectronResult = SlidePptResult;
+
+export type VideoElectronResult = VideoPptResult;
+
+export type SetGcpKeyResult = PlatformSetGcpKeyResult;
+
+export interface SlideAudioEntry extends PlatformSlideAudioEntry {}
+
+export interface SaveNotesSlide extends SlideManifestEntry {}
+
+export interface GenerateVideoPayload extends GenerateVideoRequest {}
+
+export interface PlaySlidePayload extends PlaySlideRequest {}
+
+export interface ReloadSlidePayload extends ReloadSlideRequest {}
+
+export interface RemoveAudioPayload extends RemoveAudioRequest {}

@@ -5,7 +5,7 @@ import type { ActionButtonState } from "../../types/viewer";
 import { ActionButtonList } from "./ActionButtonList";
 
 export type ViewerHeaderActionKey =
-  | "syncAll"
+  | "reloadAllSlides"
   | "saveAllSlides"
   | "removeAllAudio"
   | "generateVideo";
@@ -18,7 +18,7 @@ interface ViewerHeaderProps {
 }
 
 const HEADER_ACTION_ITEMS = [
-  { key: "syncAll", label: "Reload All Slides", icon: <IconRefresh size={14} /> },
+  { key: "reloadAllSlides", label: "Reload All Slides", icon: <IconRefresh size={14} /> },
   { key: "saveAllSlides", label: "Save All Slides" },
   { key: "removeAllAudio", label: "Remove All Audio" },
   { key: "generateVideo", label: "Generate Video" },

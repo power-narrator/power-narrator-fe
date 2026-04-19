@@ -21,7 +21,6 @@
     "@mantine/core": "^8.3.18",
     "@tabler/icons-react": "^3.41.1",
     "dotenv": "^17.4.0",
-    "electron-squirrel-startup": "^1.0.1",
     "electron-store": "^11.0.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"

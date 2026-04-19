@@ -87,9 +87,10 @@ export function NotesSectionList({
           {sections.map((section, index) => {
             const effectiveSpeaker = getEffectiveSpeaker(sections, index);
             const isInherited = section.speaker === "" || section.speaker === DEFAULT_SPEAKER_VALUE;
-            const placeholder = isInherited && effectiveSpeaker !== DEFAULT_SPEAKER_VALUE
-              ? `Speaker (${effectiveSpeaker})`
-              : "Speaker";
+            const placeholder =
+              isInherited && effectiveSpeaker !== DEFAULT_SPEAKER_VALUE
+                ? `Speaker (${effectiveSpeaker})`
+                : "Speaker";
 
             return (
               <Paper

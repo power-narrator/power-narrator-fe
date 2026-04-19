@@ -64,9 +64,9 @@ test.beforeAll(async () => {
     ipcMain.removeHandler("get-video-save-path");
     ipcMain.handle("get-video-save-path", async () => "/tmp/output.mp4");
 
-    // Mock save-all-notes just return success so we don't trigger real AppleScript which could hang
-    ipcMain.removeHandler("save-all-notes");
-    ipcMain.handle("save-all-notes", async () => ({ success: true }));
+    // Mock save-notes just return success so we don't trigger real AppleScript which could hang
+    ipcMain.removeHandler("save-notes");
+    ipcMain.handle("save-notes", async () => ({ success: true }));
 
     // Mock insert-audio just return success so we don't trigger real AppleScript which could hang
     ipcMain.removeHandler("insert-audio");
@@ -117,24 +117,11 @@ test.describe("PPT Viewer UI Workflows", () => {
     await notesTextarea.fill("Initial notes for slide 1 - EDITED IN TEST");
 
     // Click "Save Slide"
-    await window.getByRole("button", { name: "Save Slide Notes", exact: true }).click();
+    await window.getByRole("button", { name: "Save Audio and Notes", exact: true }).click();
 
     // Wait for it to be enabled (meaning saving finished)
     await expect(
-      window.getByRole("button", { name: "Save Slide Notes", exact: true }),
+      window.getByRole("button", { name: "Save Audio and Notes", exact: true }),
     ).toBeEnabled();
-  });
-
-  test("Test 3: Insert Audio", async () => {
-    // Click "Insert Audio"
-    await window.getByRole("button", { name: "Insert Audio", exact: true }).click();
-
-    // Wait for it to be enabled
-    await expect(window.getByRole("button", { name: "Insert Audio", exact: true })).toBeEnabled();
-
-    // Verify UI completes operation without throwing errors.
-    // It might take a few seconds because it actually runs the AppleScript macro...
-    const insertBtn = window.locator('button:has-text("Insert Audio")');
-    await expect(insertBtn).toBeEnabled({ timeout: 15000 });
   });
 });

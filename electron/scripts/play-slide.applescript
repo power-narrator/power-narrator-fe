@@ -1,55 +1,82 @@
 on run {slideIndex, pptPath}
-	set slideIndex to slideIndex as string
-	
-	-- 1. Write Slide Index and Path to File
-	-- This file is read by the VBA macro 'PlaySlide'
-	set paramPath to (path to library folder from user domain as string) & "Group Containers:UBF8T346G9.Office:play_slide.txt"
-	set posixParamPath to POSIX path of paramPath
-	
-	set fileContent to slideIndex & "|" & pptPath
-	
 	try
-		do shell script "echo " & quoted form of fileContent & " > " & quoted form of posixParamPath
-	on error errMsg
-		return "Error writing play_slide.txt: " & errMsg
-	end try
-	
-	-- 2. Trigger the Macro
-	tell application "Microsoft PowerPoint"
-		-- Focus the specific presentation
-		set pres to missing value
-		try
-			repeat with p in presentations
-				if full name of p contains pptPath then
-					set pres to p
-					exit repeat
-				end if
-			end repeat
-		end try
+		set targetSlideIndex to slideIndex as integer
+		if targetSlideIndex < 1 then error "Invalid slide index: " & targetSlideIndex
 		
-		if pres is not missing value then
-			-- Bring PowerPoint to the front before running macro
-			-- activate
-		end if
-		
-		try
-			-- Try running with the specific add-in syntax
-			run VB macro macro name "AudioTools.ppam!PlaySlide"
-		on error errMsg1
+		tell application "Microsoft PowerPoint"
+			set targetName to do shell script "basename " & quoted form of pptPath
+			set targetWindowIndex to my findTargetWindowIndex(pptPath, targetName)
+			if targetWindowIndex is 0 then
+				open (POSIX file pptPath)
+				set targetWindowIndex to my findTargetWindowIndex(pptPath, targetName)
+			end if
+			
+			if targetWindowIndex is 0 then error "Could not find a document window for the target presentation."
+			
+			select document window targetWindowIndex
+			activate document window targetWindowIndex
+			set pres to active presentation
+			
+			if full name of pres is not pptPath and name of pres is not targetName then error "PowerPoint activated the wrong presentation before starting the slideshow."
+			
+			set slideCount to count of slides of pres
+			if targetSlideIndex > slideCount then error "Invalid slide index: " & targetSlideIndex
+			
 			try
-				-- Fallback to simple name (if imported as module)
-				run VB macro macro name "PlaySlide"
-			on error errMsg2
-				return "Error running macro: " & errMsg1 & " // " & errMsg2
+				select slide targetSlideIndex of pres
+			on error errMsg
+				error "Could not activate presentation window for slide " & targetSlideIndex & ": " & errMsg
 			end try
-		end try
-
-		-- Force PowerPoint to the front again after starting the show
-		-- to ensure the Slide Show window is active and not behind the navbar.
-		-- activate
-		tell application "System Events"
-			set frontmost of process "Microsoft PowerPoint" to true
+			
+			activate
+			set slideShowSettingsRef to slide show settings of pres
+			set starting slide of slideShowSettingsRef to targetSlideIndex
+			set ending slide of slideShowSettingsRef to slideCount
+			set advance mode of slideShowSettingsRef to slide show advance use slide timings
+			set slideShowWindowRef to run slide show slideShowSettingsRef
+			
+			if slideShowWindowRef is missing value then error "PowerPoint did not create a slide show window."
 		end tell
+		
+		return "{\"success\":true}"
+	on error errMsg
+		return "{\"success\":false,\"message\":\"" & my escapeJson(errMsg) & "\"}"
+	end try
+end run
+
+on findTargetWindowIndex(pptPath, targetName)
+	tell application "Microsoft PowerPoint"
+		repeat with i from 1 to count of document windows
+			try
+				set windowPres to presentation of document window i
+				if full name of windowPres is pptPath or name of windowPres is targetName then
+					return i
+				end if
+			on error
+			end try
+		end repeat
 	end tell
 	
-end run
+	return 0
+end findTargetWindowIndex
+
+on escapeJson(valueText)
+	set escapedText to valueText as text
+	set escapedText to my replaceText(escapedText, "\\", "\\\\")
+	set escapedText to my replaceText(escapedText, "\"", "\\\"")
+	set escapedText to my replaceText(escapedText, tab, "\\t")
+	set escapedText to my replaceText(escapedText, return & linefeed, "\\n")
+	set escapedText to my replaceText(escapedText, return, "\\n")
+	set escapedText to my replaceText(escapedText, linefeed, "\\n")
+	return escapedText
+end escapeJson
+
+on replaceText(sourceText, findText, replaceWith)
+	set oldDelimiters to AppleScript's text item delimiters
+	set AppleScript's text item delimiters to findText
+	set textItems to text items of sourceText
+	set AppleScript's text item delimiters to replaceWith
+	set replacedText to textItems as text
+	set AppleScript's text item delimiters to oldDelimiters
+	return replacedText
+end replaceText

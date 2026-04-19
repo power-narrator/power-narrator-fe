@@ -1,12 +1,13 @@
 import { Stack } from "@mantine/core";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ActionButtonState } from "../../types/viewer";
-import type { Slide, SlidesElectronResult } from "../../types/electron";
+import type { Slide, SlideElectronResult, SlidesElectronResult } from "../../types/electron";
 import { useSettings } from "../../context/useSettings";
 import { getErrorMessage } from "../../utils/errors";
 import type { NoteSection } from "../../types/notes";
 import { formatNotes, parseNotes } from "../../utils/notes";
 import { getAudioBuffer } from "../../utils/tts";
+import { resolveSpeakerVoice } from "../../utils/viewer";
 import { NotesSectionList } from "./NotesSectionList";
 import { SlideActionsBar, type SlideActionBarKey } from "./SlideActionsBar";
 import { SlidePreviewPane } from "./SlidePreviewPane";
@@ -15,7 +16,6 @@ import { SsmlToolbar } from "./SsmlToolbar";
 import { ViewerHeader, type ViewerHeaderActionKey } from "./ViewerHeader";
 import { Split } from "@gfazioli/mantine-split-pane";
 import { getEffectiveSpeaker } from "../../utils/notes";
-import { DEFAULT_SPEAKER_VALUE } from "../../constants/speaker";
 
 interface ViewerPageProps {
   slides: Slide[];
@@ -66,31 +66,30 @@ export function ViewerPage({
     null,
   );
   const statusTimeoutsRef = useRef<number[]>([]);
-  const { mappings, xmlCliEnabled } = useSettings();
+  const { mappings } = useSettings();
   const electronAPI = window.electronAPI;
   const busy = isGenerating || isSaving || isSyncing || isInsertingAudio || isRemoving || isPlaying;
-  const busyOrXml = busy || xmlCliEnabled;
 
   const headerActionStates: Record<ViewerHeaderActionKey, ActionButtonState> = {
-    syncAll: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
-    saveAllSlides: { 
-      loading: isSaving || isInsertingAudio, 
-      busy: busy && !(isSaving || isInsertingAudio), 
-      status: saveStatus || insertStatus 
+    reloadAllSlides: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
+    saveAllSlides: {
+      loading: isSaving || isInsertingAudio,
+      busy: busy && !(isSaving || isInsertingAudio),
+      status: saveStatus || insertStatus,
     },
     removeAllAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
-    generateVideo: { loading: isGenerating, busy: busyOrXml && !isGenerating, status: genStatus },
+    generateVideo: { loading: isGenerating, busy: busy && !isGenerating, status: genStatus },
   };
 
   const slideActionStates: Record<SlideActionBarKey, ActionButtonState> = {
     reloadSlide: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
-    saveSlide: { 
-      loading: isSaving || isInsertingAudio, 
-      busy: busy && !(isSaving || isInsertingAudio), 
-      status: saveStatus || insertStatus 
+    saveSlide: {
+      loading: isSaving || isInsertingAudio,
+      busy: busy && !(isSaving || isInsertingAudio),
+      status: saveStatus || insertStatus,
     },
-    playSlide: { loading: isPlaying, busy: busyOrXml && !isPlaying, status: playStatus },
-    removeSlideAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
+    playSlide: { loading: isPlaying, busy: busy && !isPlaying, status: playStatus },
+    removeAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
   };
 
   const activeSlide = slides[activeSlideIndex] ?? { ...EMPTY_SLIDE, index: activeSlideIndex + 1 };
@@ -103,8 +102,8 @@ export function ViewerPage({
     }
   }
 
-  function scheduleStatusClear(setter: (value: string) => void, delay = 2000) {
-    const timeoutId = window.setTimeout(() => setter(""), delay);
+  function scheduleStatusClear(setter: (value: string) => void) {
+    const timeoutId = window.setTimeout(() => setter(""), 2000);
     statusTimeoutsRef.current.push(timeoutId);
   }
 
@@ -143,9 +142,9 @@ export function ViewerPage({
   }
 
   async function saveNotesToFile(slidesToSave: Slide[]) {
-    const result = await electronAPI.saveAllNotes(filePath, slidesToSave);
+    const result = await electronAPI.saveNotes(filePath, slidesToSave);
     if (!result.success) {
-      throw new Error(result.error || "Save failed");
+      throw new Error(result.message);
     }
 
     return result;
@@ -170,12 +169,10 @@ export function ViewerPage({
             }
 
             const effectiveSpeaker = getEffectiveSpeaker(sections, sectionIndex);
-            const voice = effectiveSpeaker !== DEFAULT_SPEAKER_VALUE ? mappings[effectiveSpeaker] : undefined;
+            const voice = resolveSpeakerVoice(mappings, effectiveSpeaker);
 
-            const buffer = await getAudioBuffer(
-              section.text.trim(),
-              voice,
-            );
+            const buffer = await getAudioBuffer(section.text.trim(), voice);
+
             return {
               index: slide.index,
               sectionIndex,
@@ -191,9 +188,8 @@ export function ViewerPage({
     return slideAudioGroups.flat();
   }
 
-  function runRemoveAudio(scope: "slide" | "all") {
-    const slideIndex = getSlideNumber(activeSlide, activeSlideIndex);
-    return electronAPI.removeAudio({ filePath, scope, slideIndex });
+  function runRemoveAudio(slideIndices: number[]) {
+    return electronAPI.removeAudio({ filePath, slideIndices });
   }
 
   useEffect(() => {
@@ -341,11 +337,9 @@ export function ViewerPage({
   };
 
   const handleAddSection = () => {
-    const lastSection = activeSections[activeSections.length - 1];
-    const initialSpeaker = lastSection ? lastSection.speaker : "";
     const newSectionIndex = activeSections.length;
     const nextSlides = updateActiveSlideSections((sections) => {
-      sections.push({ speaker: initialSpeaker, text: "" });
+      sections.push({ speaker: "", text: "" });
     });
     pushToHistory(nextSlides);
     setActiveSectionIndex(newSectionIndex);
@@ -388,22 +382,9 @@ export function ViewerPage({
 
       setGenStatus("Preparing audio...");
 
-      const audioSlides = slides.filter((slide) => slide.notes?.trim());
-      const slidesAudio = await Promise.all(
-        audioSlides.map(async (slide) => {
-          setGenStatus(`Generating audio for slide ${slide.index}...`);
-          const buffer = await getAudioBuffer((slide.notes || "").trim(), undefined);
-          return {
-            index: slide.index,
-            audioData: new Uint8Array(buffer),
-          };
-        }),
-      );
-
       setGenStatus("Rendering video...");
       const result = await electronAPI.generateVideo({
         filePath,
-        slidesAudio,
         videoOutputPath: savePath,
       });
 
@@ -412,7 +393,7 @@ export function ViewerPage({
         setGenStatus("Generated!");
         scheduleStatusClear(setGenStatus);
       } else {
-        alert(`Video generation failed: ${result.error}`);
+        alert(`Video generation failed: ${result.message}`);
         setGenStatus("");
       }
     } catch (error: unknown) {
@@ -423,27 +404,29 @@ export function ViewerPage({
     }
   };
 
-  const handleSaveAllSlides = async () => {
-    if (busy) {
-      return;
-    }
-
+  const saveAllNotes = async () => {
     setIsSaving(true);
     setSaveStatus("Saving all notes...");
 
     try {
       await saveNotesToFile(slides);
-      setSaveStatus("Saved notes!");
-      scheduleStatusClear(setSaveStatus, 1500);
-    } catch (error: unknown) {
-      alertError("Save error", error);
-      setSaveStatus("");
+    } finally {
       setIsSaving(false);
-      return;
     }
+  };
 
-    setIsSaving(false);
+  const saveCurrentSlideNotes = async () => {
+    setIsSaving(true);
+    setSaveStatus(`Saving slide ${activeSlide.index}...`);
 
+    try {
+      await saveNotesToFile([activeSlide]);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const generateAndInsertAllAudio = async () => {
     setIsInsertingAudio(true);
     setInsertStatus("Generating all audio...");
 
@@ -460,41 +443,17 @@ export function ViewerPage({
 
       if (result.success) {
         alert("All slides saved and audio inserted successfully!");
-        setInsertStatus("Complete!");
-        scheduleStatusClear(setInsertStatus);
+        setInsertStatus("");
       } else {
-        alert(`Failed to insert audio: ${result.error}`);
+        alert(`Failed to insert audio: ${result.message}`);
         setInsertStatus("");
       }
-    } catch (error: unknown) {
-      alertError("Insert error", error);
-      setInsertStatus("");
     } finally {
       setIsInsertingAudio(false);
     }
   };
 
-  const handleSaveSlide = async () => {
-    if (busy) {
-      return;
-    }
-
-    setIsSaving(true);
-    setSaveStatus(`Saving slide ${activeSlide.index}...`);
-
-    try {
-      await saveNotesToFile([activeSlide]);
-      setSaveStatus("Saved notes!");
-      scheduleStatusClear(setSaveStatus, 1500);
-    } catch (error: unknown) {
-      alertError("Save error", error);
-      setSaveStatus("");
-      setIsSaving(false);
-      return;
-    }
-
-    setIsSaving(false);
-
+  const generateAndInsertCurrentSlideAudio = async () => {
     setIsInsertingAudio(true);
     setInsertStatus(`Generating audio for slide ${activeSlide.index}...`);
 
@@ -510,22 +469,62 @@ export function ViewerPage({
       const result = await electronAPI.insertAudio(filePath, slidesAudio);
 
       if (!result.success) {
-        alert(`Failed to insert audio: ${result.error}`);
+        alert(`Failed to insert audio: ${result.message}`);
         setInsertStatus("");
         return;
       }
 
-      setInsertStatus("Complete!");
-      scheduleStatusClear(setInsertStatus);
-    } catch (error: unknown) {
-      alertError("Insert error", error);
       setInsertStatus("");
     } finally {
       setIsInsertingAudio(false);
     }
   };
 
+  const handleSaveAllSlides = async () => {
+    if (busy) {
+      return;
+    }
 
+    try {
+      await saveAllNotes();
+    } catch (error: unknown) {
+      setSaveStatus("");
+      alertError("Save error", error);
+      return;
+    }
+
+    try {
+      await generateAndInsertAllAudio();
+      setSaveStatus("Saved slides!");
+      scheduleStatusClear(setSaveStatus);
+    } catch (error: unknown) {
+      setInsertStatus("");
+      alertError("Insert error", error);
+    }
+  };
+
+  const handleSaveSlide = async () => {
+    if (busy) {
+      return;
+    }
+
+    try {
+      await saveCurrentSlideNotes();
+    } catch (error: unknown) {
+      setSaveStatus("");
+      alertError("Save error", error);
+      return;
+    }
+
+    try {
+      await generateAndInsertCurrentSlideAudio();
+      setSaveStatus("Saved slides!");
+      scheduleStatusClear(setSaveStatus);
+    } catch (error: unknown) {
+      setInsertStatus("");
+      alertError("Insert error", error);
+    }
+  };
 
   const handlePlaySlide = async () => {
     if (busy) {
@@ -535,15 +534,18 @@ export function ViewerPage({
     try {
       setIsPlaying(true);
       setPlayStatus(`Playing slide ${activeSlide.index}...`);
-      const result = await electronAPI.playSlide(getSlideNumber(activeSlide, activeSlideIndex), filePath);
+      const result = await electronAPI.playSlide({
+        filePath,
+        slideIndex: getSlideNumber(activeSlide, activeSlideIndex),
+      });
       if (!result.success) {
-        alert(`Failed to play slide: ${result.error}`);
+        alert(`Failed to play slide: ${result.message}`);
         setPlayStatus("");
         return;
       }
 
       setPlayStatus("Played");
-      scheduleStatusClear(setPlayStatus, 1200);
+      scheduleStatusClear(setPlayStatus);
     } catch (error: unknown) {
       alertError("Play slide error", error);
       setPlayStatus("");
@@ -571,8 +573,8 @@ export function ViewerPage({
 
     try {
       const result = await request;
-      if (!result.success || !result.slides) {
-        alert(`${failureMessage}: ${result.error || "Unknown error"}`);
+      if (!result.success) {
+        alert(`${failureMessage}: ${result.message}`);
         setSyncStatus("");
         return;
       }
@@ -591,7 +593,7 @@ export function ViewerPage({
     }
   };
 
-  const handleSyncAll = async () => {
+  const handleReloadAllSlides = async () => {
     if (busy) {
       return;
     }
@@ -604,17 +606,38 @@ export function ViewerPage({
       return;
     }
 
-    await syncSlides(
-      electronAPI.reloadSlide({
+    if (!confirmSync()) {
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncStatus(`Syncing slide ${activeSlide.index}...`);
+
+    try {
+      const result: SlideElectronResult = await electronAPI.reloadSlide({
         filePath,
         slideIndex: getSlideNumber(activeSlide, activeSlideIndex),
-      }),
-      "Sync slide error",
-      `Syncing slide ${activeSlide.index}...`,
-    );
+      });
+      if (!result.success) {
+        alert(`Sync slide error: ${result.message}`);
+        setSyncStatus("");
+        return;
+      }
+
+      const nextSlides = [...slides];
+      nextSlides[activeSlideIndex] = result.slide;
+      resetHistoryWithSlides(nextSlides);
+      setSyncStatus("Synced!");
+      scheduleStatusClear(setSyncStatus);
+    } catch (error: unknown) {
+      alertError("Sync slide error", error);
+      setSyncStatus("");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
-  const handleRemoveSlideAudio = async () => {
+  const handleRemoveAudio = async () => {
     if (busy) {
       return;
     }
@@ -623,9 +646,9 @@ export function ViewerPage({
     setRemoveStatus("Removing audio...");
 
     try {
-      const result = await runRemoveAudio("slide");
+      const result = await runRemoveAudio([getSlideNumber(activeSlide, activeSlideIndex)]);
       if (!result.success) {
-        alert(`Failed to remove audio: ${result.error || "Unknown error"}`);
+        alert(`Failed to remove audio: ${result.message}`);
         setRemoveStatus("");
         return;
       }
@@ -649,13 +672,13 @@ export function ViewerPage({
     setRemoveStatus("Removing all audio...");
 
     try {
-      const result = await runRemoveAudio("all");
+      const result = await runRemoveAudio(slides.map((slide) => slide.index));
       if (result.success) {
         alert("Successfully removed audio from all slides.");
         setRemoveStatus("Removed!");
         scheduleStatusClear(setRemoveStatus);
       } else {
-        alert(`Failed to remove audio: ${result.error || "Unknown error"}`);
+        alert(`Failed to remove audio: ${result.message}`);
         setRemoveStatus("");
       }
     } catch (error: unknown) {
@@ -673,7 +696,7 @@ export function ViewerPage({
         onOpenSettings={onOpenSettings}
         actionStates={headerActionStates}
         handlers={{
-          syncAll: handleSyncAll,
+          reloadAllSlides: handleReloadAllSlides,
           saveAllSlides: handleSaveAllSlides,
           removeAllAudio: handleRemoveAllAudio,
           generateVideo: handleGenerateVideo,
@@ -707,7 +730,7 @@ export function ViewerPage({
                     reloadSlide: handleReloadSlide,
                     saveSlide: handleSaveSlide,
                     playSlide: handlePlaySlide,
-                    removeSlideAudio: handleRemoveSlideAudio,
+                    removeAudio: handleRemoveAudio,
                   }}
                 />
 
@@ -720,11 +743,11 @@ export function ViewerPage({
                   onInsertWrappedTag={insertWrappedTag}
                 />
 
-                  <NotesSectionList
-                    sections={activeSections}
-                    mappings={mappings}
-                    slideIndex={activeSlide.index}
-                    onFocusSection={setActiveSectionIndex}
+                <NotesSectionList
+                  sections={activeSections}
+                  mappings={mappings}
+                  slideIndex={activeSlide.index}
+                  onFocusSection={setActiveSectionIndex}
                   onSpeakerChange={handleSpeakerChange}
                   onSectionTextChange={handleSectionTextChange}
                   onDeleteSection={handleDeleteSection}

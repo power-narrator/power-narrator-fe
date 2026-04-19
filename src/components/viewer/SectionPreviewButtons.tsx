@@ -3,10 +3,10 @@ import { IconHistory, IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react
 import { useEffect, useRef, useState } from "react";
 import type { NoteSection } from "../../types/notes";
 import { getErrorMessage } from "../../utils/errors";
-import { getSpeakerOptions } from "../../utils/viewer";
+import { getSpeakerOptions, resolveSpeakerVoice } from "../../utils/viewer";
 import { generateAudio } from "../../utils/tts";
 import type { Voice } from "../../types/voice";
-import { useAudio } from "../../context/AudioContext";
+import { useAudio } from "../../context/useAudio";
 
 interface SectionPreviewButtonsProps {
   id: string;
@@ -96,7 +96,7 @@ export function SectionPreviewButtons({
       setActivePreviewTarget(speakerValue);
       setLastPlayedSpeaker(speakerValue);
       const resolvedSpeaker = speakerValue || effectiveSpeaker;
-      const voiceOverride = resolvedSpeaker ? mappings[resolvedSpeaker] : undefined;
+      const voiceOverride = resolveSpeakerVoice(mappings, resolvedSpeaker);
       const url = await generateAudio(textToPlay, voiceOverride);
 
       if (previewRequestIdRef.current !== requestId) {
@@ -129,7 +129,6 @@ export function SectionPreviewButtons({
 
   return (
     <Stack p="xs" gap="xs">
-
       <Group gap="xs">
         {speakers.map((speaker) => {
           const isSelected = speaker.value === effectiveSpeaker;

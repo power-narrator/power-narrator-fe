@@ -1,6 +1,0 @@
-dist/
-**/__pycache__/
-rc_resources.py
-src/slide_voice_app/qml_modules/**/*.qmltypes
-src/slide_voice_app/qml_modules/**/*.json
-src/slide_voice_app/qml_modules/**/*.cpp
