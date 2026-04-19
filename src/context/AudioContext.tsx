@@ -50,6 +50,15 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, []);
 
+  const stop = useCallback(() => {
+    if (!audioRef.current) return;
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
+    setActiveId(null);
+    setCurrentUrl(null);
+    setIsPlaying(false);
+  }, []);
+
   const play = useCallback(
     (id: string, url: string) => {
       if (!audioRef.current) return;
@@ -79,15 +88,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     },
     [activeId, currentUrl, isPlaying, stop],
   );
-
-  const stop = useCallback(() => {
-    if (!audioRef.current) return;
-    audioRef.current.pause();
-    audioRef.current.currentTime = 0;
-    setActiveId(null);
-    setCurrentUrl(null);
-    setIsPlaying(false);
-  }, []);
 
   const seek = useCallback((time: number) => {
     if (!audioRef.current) return;
