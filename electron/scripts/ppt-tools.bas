@@ -31,6 +31,41 @@ Function GetPresentation(targetPath As String) As Presentation
     Next p
 End Function
 
+Function GetOfficeContainerPath() As String
+    GetOfficeContainerPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office"
+End Function
+
+Function GetOfficeFilePath(fileName As String) As String
+    GetOfficeFilePath = GetOfficeContainerPath() & "/" & fileName
+End Function
+
+Function ReadSingleLineFile(filePath As String, missingMessage As String) As String
+    Dim fileNum As Integer
+
+    If Dir(filePath) = "" Then
+        MsgBox missingMessage
+        ReadSingleLineFile = ""
+        Exit Function
+    End If
+
+    fileNum = FreeFile
+    Open filePath For Input As fileNum
+    Line Input #fileNum, ReadSingleLineFile
+    Close fileNum
+End Function
+
+Function GetPresentationOrShowError(targetPath As String) As Presentation
+    Set GetPresentationOrShowError = GetPresentation(targetPath)
+
+    If GetPresentationOrShowError Is Nothing Then
+        MsgBox "Error: Presentation not found: " & targetPath
+    End If
+End Function
+
+Function IsManagedAudioShapeName(shapeName As String) As Boolean
+    IsManagedAudioShapeName = InStr(1, shapeName, "ppt_audio") = 1
+End Function
+
 Function GetSlideNotesText(sld As Slide) As String
     On Error GoTo EmptyNotes
 
@@ -61,6 +96,24 @@ Sub WriteSlideNotesBlock(fileNum As Integer, slideIndex As Integer, notesText As
     End If
 
     Print #fileNum, "###SLIDE_END###"
+End Sub
+
+Sub ExportNotesToFile(pres As Presentation, outputPath As String, Optional slideIndex As Integer = 0)
+    Dim outputNum As Integer
+    Dim i As Integer
+
+    outputNum = FreeFile
+    Open outputPath For Output As outputNum
+
+    If slideIndex > 0 Then
+        WriteSlideNotesBlock outputNum, slideIndex, GetSlideNotesText(pres.Slides(slideIndex))
+    Else
+        For i = 1 To pres.Slides.Count
+            WriteSlideNotesBlock outputNum, i, GetSlideNotesText(pres.Slides(i))
+        Next i
+    End If
+
+    Close outputNum
 End Sub
 
 Sub InsertAudio()
@@ -99,7 +152,7 @@ Sub InsertAudio()
     newAudioInsertIndex = 1
     
     ' Path construction for Mac Office sandbox
-    paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/insert_audio_params.txt"
+    paramsPath = GetOfficeFilePath("insert_audio_params.txt")
     
     If Dir(paramsPath) = "" Then
         MsgBox "Error: Could not find insert_audio_params.txt at " & paramsPath
@@ -196,7 +249,7 @@ Sub InsertAudio()
                         
                         ' Count existing audio shapes to determine vertical stack position
                         For Each tempShape In sld.Shapes
-                            If InStr(1, tempShape.Name, "ppt_audio") = 1 Then
+                            If IsManagedAudioShapeName(tempShape.Name) Then
                                 audioCount = audioCount + 1
                             End If
                         Next tempShape
@@ -269,23 +322,12 @@ Sub ExportAllSlideNotes()
     Dim paramsPath As String
     Dim outputPath As String
     Dim targetPath As String
-    Dim fileNum As Integer
     Dim fileContent As String
     Dim params() As String
-    Dim outputNum As Integer
-    Dim i As Integer
 
-    paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/export_all_notes_params.txt"
-
-    If Dir(paramsPath) = "" Then
-        MsgBox "Error: Could not find export_all_notes_params.txt"
-        Exit Sub
-    End If
-
-    fileNum = FreeFile
-    Open paramsPath For Input As fileNum
-    Line Input #fileNum, fileContent
-    Close fileNum
+    paramsPath = GetOfficeFilePath("export_all_notes_params.txt")
+    fileContent = ReadSingleLineFile(paramsPath, "Error: Could not find export_all_notes_params.txt")
+    If fileContent = "" Then Exit Sub
 
     params = Split(fileContent, "|")
     If UBound(params) < 1 Then Exit Sub
@@ -293,21 +335,10 @@ Sub ExportAllSlideNotes()
     targetPath = params(0)
     outputPath = params(1)
 
-    Set pres = GetPresentation(targetPath)
+    Set pres = GetPresentationOrShowError(targetPath)
+    If pres Is Nothing Then Exit Sub
 
-    If pres Is Nothing Then
-        MsgBox "Error: Presentation not found: " & targetPath
-        Exit Sub
-    End If
-
-    outputNum = FreeFile
-    Open outputPath For Output As outputNum
-
-    For i = 1 To pres.Slides.Count
-        WriteSlideNotesBlock outputNum, i, GetSlideNotesText(pres.Slides(i))
-    Next i
-
-    Close outputNum
+    ExportNotesToFile pres, outputPath
 End Sub
 
 Sub ExportSlideNotes()
@@ -315,23 +346,13 @@ Sub ExportSlideNotes()
     Dim paramsPath As String
     Dim outputPath As String
     Dim targetPath As String
-    Dim fileNum As Integer
     Dim fileContent As String
     Dim params() As String
-    Dim outputNum As Integer
     Dim slideIndex As Integer
 
-    paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/export_slide_notes_params.txt"
-
-    If Dir(paramsPath) = "" Then
-        MsgBox "Error: Could not find export_slide_notes_params.txt"
-        Exit Sub
-    End If
-
-    fileNum = FreeFile
-    Open paramsPath For Input As fileNum
-    Line Input #fileNum, fileContent
-    Close fileNum
+    paramsPath = GetOfficeFilePath("export_slide_notes_params.txt")
+    fileContent = ReadSingleLineFile(paramsPath, "Error: Could not find export_slide_notes_params.txt")
+    If fileContent = "" Then Exit Sub
 
     params = Split(fileContent, "|")
     If UBound(params) < 2 Then Exit Sub
@@ -340,22 +361,15 @@ Sub ExportSlideNotes()
     slideIndex = CInt(params(1))
     outputPath = params(2)
 
-    Set pres = GetPresentation(targetPath)
-
-    If pres Is Nothing Then
-        MsgBox "Error: Presentation not found: " & targetPath
-        Exit Sub
-    End If
+    Set pres = GetPresentationOrShowError(targetPath)
+    If pres Is Nothing Then Exit Sub
 
     If slideIndex < 1 Or slideIndex > pres.Slides.Count Then
         MsgBox "Invalid slide index: " & slideIndex
         Exit Sub
     End If
 
-    outputNum = FreeFile
-    Open outputPath For Output As outputNum
-    WriteSlideNotesBlock outputNum, slideIndex, GetSlideNotesText(pres.Slides(slideIndex))
-    Close outputNum
+    ExportNotesToFile pres, outputPath, slideIndex
 End Sub
 
 Sub UpdateNotes()
@@ -363,7 +377,6 @@ Sub UpdateNotes()
     Dim paramsPath As String
     Dim dataPath As String
     Dim targetPath As String
-    Dim fileNum As Integer
     Dim fileContent As String
     Dim params() As String
     Dim dataNum As Integer
@@ -373,17 +386,9 @@ Sub UpdateNotes()
     Dim isReadingNotes As Boolean
     
     ' 1. Read Parameters (Presentation Path | Data File Path)
-    paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/update_notes_params.txt"
-    
-    If Dir(paramsPath) = "" Then
-        MsgBox "Error: Could not find update_notes_params.txt"
-        Exit Sub
-    End If
-    
-    fileNum = FreeFile
-    Open paramsPath For Input As fileNum
-    Line Input #fileNum, fileContent
-    Close fileNum
+    paramsPath = GetOfficeFilePath("update_notes_params.txt")
+    fileContent = ReadSingleLineFile(paramsPath, "Error: Could not find update_notes_params.txt")
+    If fileContent = "" Then Exit Sub
     
     params = Split(fileContent, "|")
     If UBound(params) < 1 Then Exit Sub
@@ -392,12 +397,8 @@ Sub UpdateNotes()
     dataPath = params(1)
     
     ' 2. Find Presentation
-    Set pres = GetPresentation(targetPath)
-    
-    If pres Is Nothing Then
-        MsgBox "Error: Presentation not found: " & targetPath
-        Exit Sub
-    End If
+    Set pres = GetPresentationOrShowError(targetPath)
+    If pres Is Nothing Then Exit Sub
     
     ' 3. Read Data File
     If Dir(dataPath) = "" Then
@@ -452,24 +453,15 @@ Sub PlaySlide()
     Dim pres As Presentation
     Dim slideIndex As Integer
     Dim paramsPath As String
-    Dim fileNum As Integer
     Dim fileContent As String
     Dim params() As String
     Dim i As Integer
     Dim sw As SlideShowWindow
     
     ' 1. Read parameters (TargetPath | SlideIndex)
-    paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/play_slide_params.txt"
-    
-    If Dir(paramsPath) = "" Then
-        MsgBox "Error: Could not find play_slide_params.txt"
-        Exit Sub
-    End If
-    
-    fileNum = FreeFile
-    Open paramsPath For Input As fileNum
-    Line Input #fileNum, fileContent
-    Close fileNum
+    paramsPath = GetOfficeFilePath("play_slide_params.txt")
+    fileContent = ReadSingleLineFile(paramsPath, "Error: Could not find play_slide_params.txt")
+    If fileContent = "" Then Exit Sub
     
     params = Split(fileContent, "|")
     If UBound(params) < 1 Then Exit Sub
@@ -478,12 +470,8 @@ Sub PlaySlide()
     slideIndex = CInt(Trim(params(1)))
     
     ' 2. Find Presentation
-    Set pres = GetPresentation(targetPath)
-    
-    If pres Is Nothing Then
-        MsgBox "Error: Presentation not found: " & targetPath
-        Exit Sub
-    End If
+    Set pres = GetPresentationOrShowError(targetPath)
+    If pres Is Nothing Then Exit Sub
     
     ' 3. Validate Index
     If slideIndex < 1 Or slideIndex > pres.Slides.Count Then
@@ -525,7 +513,6 @@ End Sub
 Sub RemoveAudio()
     Dim pres As Presentation
     Dim paramsPath As String
-    Dim fileNum As Integer
     Dim fileContent As String
     Dim params() As String
     Dim slideIndices() As String
@@ -537,17 +524,9 @@ Sub RemoveAudio()
     Dim i As Integer
     
     ' 1. Read Parameters
-    paramsPath = "/Users/" & Environ("USER") & "/Library/Group Containers/UBF8T346G9.Office/remove_audio_params.txt"
-    
-    If Dir(paramsPath) = "" Then
-        MsgBox "Error: Could not find remove_audio_params.txt"
-        Exit Sub
-    End If
-    
-    fileNum = FreeFile
-    Open paramsPath For Input As fileNum
-    Line Input #fileNum, fileContent
-    Close fileNum
+    paramsPath = GetOfficeFilePath("remove_audio_params.txt")
+    fileContent = ReadSingleLineFile(paramsPath, "Error: Could not find remove_audio_params.txt")
+    If fileContent = "" Then Exit Sub
     
     ' Format: TargetPath|SlideIndex1,SlideIndex2,...
     params = Split(fileContent, "|")
@@ -557,12 +536,8 @@ Sub RemoveAudio()
     slideIndices = Split(params(1), ",")
     
     ' 2. Find Presentation
-    Set pres = GetPresentation(targetPath)
-    
-    If pres Is Nothing Then
-        MsgBox "Error: Presentation not found: " & targetPath
-        Exit Sub
-    End If
+    Set pres = GetPresentationOrShowError(targetPath)
+    If pres Is Nothing Then Exit Sub
     
     ' 3. Remove Audio
     For i = LBound(slideIndices) To UBound(slideIndices)
@@ -572,7 +547,7 @@ Sub RemoveAudio()
                 Set sld = pres.Slides(slideIndex)
                 For iShape = sld.Shapes.Count To 1 Step -1
                     Set s = sld.Shapes(iShape)
-                    If InStr(1, s.Name, "ppt_audio") = 1 Then
+                    If IsManagedAudioShapeName(s.Name) Then
                         s.Delete
                     End If
                 Next iShape
