@@ -6,6 +6,8 @@ import {
   Divider,
   Group,
   Modal,
+  PasswordInput,
+  Select,
   Stack,
   Switch,
   Text,
@@ -30,8 +32,8 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [newAlias, setNewAlias] = useState("");
   const [voices, setVoices] = useState<Voice[]>([]);
+  const [elevenLabsApiKey, setElevenLabsApiKey] = useState("");
   const [xmlCliEnabled, setXmlCliEnabled] = useState(false);
-  const [providerMode, setProviderMode] = useState<"gcp" | "local">("local");
   const { mappings, saveMappings } = useSettings();
   const mappedVoices = Object.entries(mappings).filter(([key]) => key !== DEFAULT_SPEAKER_KEY);
 
@@ -43,14 +45,14 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
     Promise.all([
       window.electronAPI.getGcpKeyPath(),
       window.electronAPI.getVoices(),
-      window.electronAPI.getTtsProvider(),
       window.electronAPI.getXmlCliEnabled(),
+      window.electronAPI.getElevenLabsApiKey(),
     ])
-      .then(([path, loadedVoices, provider, xmlEnabled]) => {
+      .then(([path, loadedVoices, xmlEnabled, elevenApiKey]) => {
         setKeyPath(path || null);
         setVoices(loadedVoices || []);
-        setProviderMode(provider || "local");
         setXmlCliEnabled(Boolean(xmlEnabled));
+        setElevenLabsApiKey(elevenApiKey || "");
       })
       .catch((loadError) => {
         console.error(loadError);
@@ -133,6 +135,24 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
 
         <Divider my="sm" />
 
+        <Text fw={500}>Eleven Labs Configuration</Text>
+        <Text size="sm" c="dimmed">
+          To use Eleven Labs voices, you must provide a valid API key.
+        </Text>
+
+        <PasswordInput
+          placeholder="Enter Eleven Labs API Key"
+          value={elevenLabsApiKey}
+          onChange={(event) => {
+            const key = event.currentTarget.value;
+            setElevenLabsApiKey(key);
+            void window.electronAPI.setElevenLabsApiKey(key);
+          }}
+          size="sm"
+        />
+
+        <Divider my="sm" />
+
         <Group justify="space-between" align="center">
           <Box>
             <Text fw={500}>Speaker Voices Mapping</Text>
@@ -142,7 +162,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
             </Text>
           </Box>
           <Text size="sm" fw={600} c="dimmed">
-            {providerMode === "gcp" ? "Google Cloud" : "Local TTS"}
+            All Engines
           </Text>
         </Group>
 
@@ -160,7 +180,6 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
               value={mappings[DEFAULT_SPEAKER_KEY] || null}
               onChange={(voice) => updateMapping(DEFAULT_SPEAKER_KEY, voice)}
               voices={voices}
-              providerFilter={providerMode}
             />
           </Group>
 
@@ -178,7 +197,6 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
                   value={voice}
                   onChange={(nextVoice) => updateMapping(alias, nextVoice)}
                   voices={voices}
-                  providerFilter={providerMode}
                 />
                 <ActionIcon color="red" variant="subtle" onClick={() => removeMapping(alias)}>
                   <IconTrash size={16} />

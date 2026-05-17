@@ -5,6 +5,7 @@ import { app } from "electron";
 import { TtsProvider, VoiceOption } from "./TtsProvider.js";
 import { GcpTtsProvider } from "./GcpTtsProvider.js";
 import { LocalTtsProvider } from "./LocalTtsProvider.js";
+import { ElevenLabsTtsProvider } from "./ElevenLabsTtsProvider.js";
 
 export class TtsManager {
   private providers: Record<string, TtsProvider> = {};
@@ -12,9 +13,15 @@ export class TtsManager {
   constructor(
     private defaultProviderName: string,
     gcpKeyPathProvider: () => string | undefined,
+    elevenLabsApiKeyProvider: () => string | undefined,
   ) {
     this.providers["gcp"] = new GcpTtsProvider(gcpKeyPathProvider);
     this.providers["local"] = new LocalTtsProvider();
+    this.providers["elevenlabs"] = new ElevenLabsTtsProvider(elevenLabsApiKeyProvider);
+  }
+
+  setDefaultProvider(providerName: string) {
+    this.defaultProviderName = providerName;
   }
 
   async getVoices(): Promise<VoiceOption[]> {

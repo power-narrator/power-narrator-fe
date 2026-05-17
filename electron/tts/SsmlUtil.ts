@@ -38,4 +38,19 @@ export class SsmlUtil {
 
     return ssmlBody;
   }
+
+  /**
+   * Formats text for Eleven Labs. Eleven Labs supports basic <break> tags natively in the text,
+   * but reading <speak> tags will result in them being read aloud. We strip <speak> wrappers.
+   */
+  static formatForElevenLabs(text: string): string {
+    let content = text.trim();
+    if (content.startsWith("<speak>")) {
+      content = content.replace(/^<speak>/i, "");
+    }
+    if (content.endsWith("</speak>")) {
+      content = content.replace(/<\/speak>$/i, "");
+    }
+    return content.trim();
+  }
 }

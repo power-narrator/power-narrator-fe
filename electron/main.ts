@@ -54,7 +54,15 @@ function getGcpKeyPath(): string | undefined {
   return store.get("gcpKeyPath") as string;
 }
 
-const ttsManager = new TtsManager(process.env.TTS_PROVIDER ?? "gcp", getGcpKeyPath);
+function getElevenLabsApiKey(): string | undefined {
+  return store.get("elevenLabsApiKey") as string | undefined;
+}
+
+const ttsManager = new TtsManager(
+  (store.get("ttsProvider") as string) || process.env.TTS_PROVIDER || "gcp",
+  getGcpKeyPath,
+  getElevenLabsApiKey
+);
 
 const nativeProvider: (PptProvider & NativePlatformProvider) | null =
   process.platform === "darwin"
@@ -238,7 +246,14 @@ ipcMain.handle("generate-video", async (_, { filePath, videoOutputPath }: Genera
 // Settings Handlers
 // ==========================================
 ipcMain.handle("get-tts-provider", async () => {
-  return process.env.TTS_PROVIDER ?? "gcp";
+  return store.get("ttsProvider") || process.env.TTS_PROVIDER || "gcp";
+});
+
+ipcMain.handle("set-tts-provider", async (_, provider) => {
+  store.set("ttsProvider", provider);
+  // Also update the default provider in ttsManager dynamically
+  ttsManager.setDefaultProvider(provider);
+  return { success: true };
 });
 
 ipcMain.handle("get-speaker-mappings", async () => {
@@ -282,6 +297,15 @@ ipcMain.handle("set-gcp-key", async () => {
 
   store.set("gcpKeyPath", keyPath);
   return { success: true, path: keyPath };
+});
+
+ipcMain.handle("get-eleven-labs-api-key", async () => {
+  return store.get("elevenLabsApiKey");
+});
+
+ipcMain.handle("set-eleven-labs-api-key", async (_, apiKey) => {
+  store.set("elevenLabsApiKey", apiKey);
+  return { success: true };
 });
 
 ipcMain.handle("get-xml-cli-enabled", async () => {

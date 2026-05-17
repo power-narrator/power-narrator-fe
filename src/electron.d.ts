@@ -35,10 +35,13 @@ declare global {
       }) => Promise<Uint8Array>;
       getGcpKeyPath: () => Promise<string | null>;
       setGcpKey: () => Promise<SetGcpKeyResult>;
+      getElevenLabsApiKey: () => Promise<string | null>;
+      setElevenLabsApiKey: (apiKey: string) => Promise<BasicElectronResult>;
       setInsertMethod: (method: string) => Promise<void>;
       getSpeakerMappings: () => Promise<Record<string, Voice>>;
       setSpeakerMappings: (mappings: Record<string, Voice>) => Promise<BasicElectronResult>;
-      getTtsProvider: () => Promise<"gcp" | "local">;
+      getTtsProvider: () => Promise<"gcp" | "local" | "elevenlabs">;
+      setTtsProvider: (provider: "gcp" | "local" | "elevenlabs") => Promise<BasicElectronResult>;
       getXmlCliEnabled: () => Promise<boolean>;
       setXmlCliEnabled: (enabled: boolean) => Promise<BasicElectronResult>;
       insertAudio: (

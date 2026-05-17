@@ -125,7 +125,8 @@ To ensure reliable cross-platform compatibility and prevent formatting loss duri
 
 ### Text-to-Speech (TTS)
 
-- **Google Cloud TTS** (default) — uses Chirp 3 HD voices for high-quality narration
+- **Google Cloud TTS** (default) — uses Chirp 3 HD voices for high-quality narration. Fully supports all SSML tags.
+- **Eleven Labs** — uses highly realistic voices prioritizing a more natural language style. *Note: Only supports `<break>` tags. Other SSML tags are safely stripped before generation so they aren't read aloud.*
 - **Local TTS** (offline fallback) — uses a self-hosted [Mycroft Mimic 3](https://github.com/MycroftAI/mimic3) server
 - **Enhanced Preview Buttons** — per-section voice preview with smart highlighting:
   - **Smart Highlighting**: Only the active/effective voice button is highlighted (even when inherited).
@@ -248,7 +249,13 @@ npm run dev
 2. Open the app → click the **Settings (⚙)** icon → **Select Key File...**.
 3. The app stores the path and uses it whenever GCP is selected for TTS.
 
-### Option 2 — Local TTS (Offline)
+### Option 2 — Eleven Labs
+
+1. Obtain an API key from your Eleven Labs account.
+2. Open the app → click the **Settings (⚙)** icon.
+3. Enter your key in the **Eleven Labs Configuration** section.
+
+### Option 3 — Local TTS (Offline)
 
 Start the Mimic 3 Docker container:
 
@@ -264,7 +271,7 @@ LOCAL_TTS_URL=http://localhost:59125/api/tts
 LOCAL_TTS_VOICE=en_UK/apope_low
 ```
 
-### Option 3 — PowerPoint Add-in (PPAM)
+### Option 4 — PowerPoint Add-in (PPAM)
 
 For reliable VBA macro execution:
 

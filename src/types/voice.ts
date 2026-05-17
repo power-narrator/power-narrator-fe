@@ -3,4 +3,6 @@ export interface Voice {
   languageCodes: string[];
   ssmlGender: string;
   provider: string;
+  displayName?: string;
+  voiceId?: string;
 }

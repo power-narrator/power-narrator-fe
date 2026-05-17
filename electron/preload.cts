@@ -18,6 +18,8 @@ interface Voice {
   languageCodes: string[];
   ssmlGender: string;
   provider: string;
+  displayName?: string;
+  voiceId?: string;
 }
 
 const electronAPI = {
@@ -42,11 +44,16 @@ const electronAPI = {
   }): Promise<Uint8Array> => ipcRenderer.invoke("generate-speech", payload),
   getGcpKeyPath: (): Promise<string | null> => ipcRenderer.invoke("get-gcp-key-path"),
   setGcpKey: (): Promise<SetGcpKeyResult> => ipcRenderer.invoke("set-gcp-key"),
+  getElevenLabsApiKey: (): Promise<string | null> => ipcRenderer.invoke("get-eleven-labs-api-key"),
+  setElevenLabsApiKey: (apiKey: string): Promise<BasicPptResult> =>
+    ipcRenderer.invoke("set-eleven-labs-api-key", apiKey),
   getSpeakerMappings: (): Promise<Record<string, Voice>> =>
     ipcRenderer.invoke("get-speaker-mappings"),
   setSpeakerMappings: (mappings: Record<string, Voice>): Promise<BasicPptResult> =>
     ipcRenderer.invoke("set-speaker-mappings", mappings),
-  getTtsProvider: (): Promise<"gcp" | "local"> => ipcRenderer.invoke("get-tts-provider"),
+  getTtsProvider: (): Promise<"gcp" | "local" | "elevenlabs"> => ipcRenderer.invoke("get-tts-provider"),
+  setTtsProvider: (provider: "gcp" | "local" | "elevenlabs"): Promise<BasicPptResult> =>
+    ipcRenderer.invoke("set-tts-provider", provider),
   getXmlCliEnabled: (): Promise<boolean> => ipcRenderer.invoke("get-xml-cli-enabled"),
   setXmlCliEnabled: (enabled: boolean): Promise<BasicPptResult> =>
     ipcRenderer.invoke("set-xml-cli-enabled", enabled),
