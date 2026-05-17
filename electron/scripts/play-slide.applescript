@@ -2,9 +2,9 @@ on run {slideIndex, pptPath}
 	try
 		set targetSlideIndex to slideIndex as integer
 		if targetSlideIndex < 1 then error "Invalid slide index: " & targetSlideIndex
+		set targetName to my baseNameFromPosixPath(pptPath)
 		
 		tell application "Microsoft PowerPoint"
-			set targetName to do shell script "basename " & quoted form of pptPath
 			set targetWindowIndex to my findTargetWindowIndex(pptPath, targetName)
 			if targetWindowIndex is 0 then
 				open (POSIX file pptPath)
@@ -30,6 +30,7 @@ on run {slideIndex, pptPath}
 			
 			activate
 			set slideShowSettingsRef to slide show settings of pres
+			set range type of slideShowSettingsRef to slide show range
 			set starting slide of slideShowSettingsRef to targetSlideIndex
 			set ending slide of slideShowSettingsRef to slideCount
 			set advance mode of slideShowSettingsRef to slide show advance use slide timings
@@ -59,6 +60,14 @@ on findTargetWindowIndex(pptPath, targetName)
 	
 	return 0
 end findTargetWindowIndex
+
+on baseNameFromPosixPath(posixPath)
+	set oldDelimiters to AppleScript's text item delimiters
+	set AppleScript's text item delimiters to "/"
+	set pathItems to text items of posixPath
+	set AppleScript's text item delimiters to oldDelimiters
+	return last item of pathItems
+end baseNameFromPosixPath
 
 on escapeJson(valueText)
 	set escapedText to valueText as text
