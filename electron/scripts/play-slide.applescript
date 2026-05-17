@@ -22,12 +22,6 @@ on run {slideIndex, pptPath}
 			set slideCount to count of slides of pres
 			if targetSlideIndex > slideCount then error "Invalid slide index: " & targetSlideIndex
 			
-			try
-				select slide targetSlideIndex of pres
-			on error errMsg
-				error "Could not activate presentation window for slide " & targetSlideIndex & ": " & errMsg
-			end try
-			
 			activate
 			set slideShowSettingsRef to slide show settings of pres
 			set range type of slideShowSettingsRef to slide show range
