@@ -32,7 +32,7 @@ on run {slideIndex, pptPath}
 			set slideShowSettingsRef to slide show settings of pres
 			set range type of slideShowSettingsRef to slide show range
 			set starting slide of slideShowSettingsRef to targetSlideIndex
-			set ending slide of slideShowSettingsRef to slideCount
+			set ending slide of slideShowSettingsRef to targetSlideIndex
 			set advance mode of slideShowSettingsRef to slide show advance use slide timings
 			set slideShowWindowRef to run slide show slideShowSettingsRef
 			
