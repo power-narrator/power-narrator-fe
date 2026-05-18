@@ -40,8 +40,6 @@ declare global {
       setInsertMethod: (method: string) => Promise<void>;
       getSpeakerMappings: () => Promise<Record<string, Voice>>;
       setSpeakerMappings: (mappings: Record<string, Voice>) => Promise<BasicElectronResult>;
-      getTtsProvider: () => Promise<"gcp" | "local" | "elevenlabs">;
-      setTtsProvider: (provider: "gcp" | "local" | "elevenlabs") => Promise<BasicElectronResult>;
       getXmlCliEnabled: () => Promise<boolean>;
       setXmlCliEnabled: (enabled: boolean) => Promise<BasicElectronResult>;
       insertAudio: (

@@ -40,7 +40,7 @@ The application is split into three layers:
 - **Provider Pattern** — `PptProvider` is an interface with two implementations:
   - `MacPptProvider` — drives PowerPoint directly via AppleScript (`osascript`) and VBA macros (`.ppam` add-in).
   - `XmlPptProvider` — a **Decorator** that wraps any `PptProvider`. Instead of VBA macros, it calls a bundled Python CLI (`slide-voice-pptx`) that directly manipulates the `.pptx` XML. It closes and reopens the presentation around each CLI invocation.
-- **Strategy Pattern** — `TtsProvider` is an interface with `GcpTtsProvider` and `LocalTtsProvider` implementations. `TtsManager` selects the active provider at startup and handles persistent audio caching.
+- **Strategy Pattern** — `TtsProvider` is an interface implemented by `GcpTtsProvider`, `LocalTtsProvider`, and `ElevenLabsTtsProvider`. `TtsManager` receives a map of these providers at instantiation and dynamically routes speech generation requests to the correct provider strategy based on the selected voice option's `provider` property. It also handles robust, persistent audio caching on disk.
 
 ---
 
@@ -64,14 +64,13 @@ User clicks "Insert Audio"
   → Frontend: getAudioBuffer(notes text)
     → tts.ts: splits text on [speaker] tags into segments
       → IPC: generate-speech { text, voiceOption }
-        → TtsManager → GcpTtsProvider or LocalTtsProvider
+        → TtsManager → GcpTtsProvider, LocalTtsProvider, or ElevenLabsTtsProvider
         → TTS audio cached to disk (SHA-256 hash key)
     → Segments concatenated into final MP3 buffer
   → IPC: insert-audio { filePath, slidesAudio[] }
     → MacPptProvider: writes MP3 to Office temp dir → VBA macro InsertAudio
     → XmlPptProvider: writes MP3 to temp dir → slide-voice-pptx CLI (save_audio_for_slide op)
 ```
-
 ### Generate Video
 
 ```
@@ -169,7 +168,8 @@ To ensure reliable cross-platform compatibility and prevent formatting loss duri
 ### Settings
 
 - Select GCP Service Account JSON key via file picker (stored securely in Electron Store)
-- Configure speaker alias → voice mappings
+- Configure Eleven Labs API key (stored securely in Electron Store)
+- Configure speaker alias → voice mappings across all active providers (GCP, Local, and Eleven Labs)
 - Toggle XML CLI mode on/off
 
 ---
@@ -190,6 +190,7 @@ electron/
     TtsManager.ts       # Provider registry + disk cache
     GcpTtsProvider.ts   # Google Cloud TTS
     LocalTtsProvider.ts # Mimic 3 local server integration
+    ElevenLabsTtsProvider.ts # Eleven Labs integration
     SsmlUtil.ts         # SSML formatting helpers
   scripts/
     convert-pptx.applescript

@@ -7,7 +7,6 @@ import {
   Group,
   Modal,
   PasswordInput,
-  Select,
   Stack,
   Switch,
   Text,

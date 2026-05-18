@@ -85,7 +85,7 @@ export const getAudioBuffer = async (
           const ab = await res.arrayBuffer();
           chunkData = new Uint8Array(ab);
         }
-      } catch (e) {
+      } catch {
         // Ignore fetch cache failure and regenerate
       }
     }

@@ -3,26 +3,9 @@ import * as path from "path";
 import * as crypto from "crypto";
 import { app } from "electron";
 import { TtsProvider, VoiceOption } from "./TtsProvider.js";
-import { GcpTtsProvider } from "./GcpTtsProvider.js";
-import { LocalTtsProvider } from "./LocalTtsProvider.js";
-import { ElevenLabsTtsProvider } from "./ElevenLabsTtsProvider.js";
 
 export class TtsManager {
-  private providers: Record<string, TtsProvider> = {};
-
-  constructor(
-    private defaultProviderName: string,
-    gcpKeyPathProvider: () => string | undefined,
-    elevenLabsApiKeyProvider: () => string | undefined,
-  ) {
-    this.providers["gcp"] = new GcpTtsProvider(gcpKeyPathProvider);
-    this.providers["local"] = new LocalTtsProvider();
-    this.providers["elevenlabs"] = new ElevenLabsTtsProvider(elevenLabsApiKeyProvider);
-  }
-
-  setDefaultProvider(providerName: string) {
-    this.defaultProviderName = providerName;
-  }
+  constructor(private providers: Record<string, TtsProvider> = {}) {}
 
   async getVoices(): Promise<VoiceOption[]> {
     const allVoices: VoiceOption[] = [];
@@ -42,10 +25,9 @@ export class TtsManager {
 
   async generateSpeech(
     text: string,
-    voiceOption: VoiceOption | null,
-    fallbackProviderName?: string,
+    voiceOption: VoiceOption,
   ): Promise<Uint8Array | null> {
-    const providerName = voiceOption?.provider || fallbackProviderName || this.defaultProviderName;
+    const providerName = voiceOption.provider;
     const provider = this.providers[providerName];
 
     if (!provider) {
@@ -57,7 +39,7 @@ export class TtsManager {
       fs.mkdirSync(cacheDir, { recursive: true });
     }
 
-    const voiceStr = voiceOption ? JSON.stringify(voiceOption) : "default";
+    const voiceStr = JSON.stringify(voiceOption);
     const hash = crypto
       .createHash("sha256")
       .update(text + voiceStr + providerName)

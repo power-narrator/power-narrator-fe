@@ -1,5 +1,4 @@
 import { TtsProvider, VoiceOption } from "./TtsProvider.js";
-import { SsmlUtil } from "./SsmlUtil.js";
 
 export class ElevenLabsTtsProvider implements TtsProvider {
   constructor(private getApiKey: () => string | undefined) {}
@@ -49,9 +48,20 @@ export class ElevenLabsTtsProvider implements TtsProvider {
     }
   }
 
+  formatText(text: string): string {
+    let content = text.trim();
+    if (content.startsWith("<speak>")) {
+      content = content.replace(/^<speak>/i, "");
+    }
+    if (content.endsWith("</speak>")) {
+      content = content.replace(/<\/speak>$/i, "");
+    }
+    return content.trim();
+  }
+
   async generateSpeech(
     text: string,
-    voiceOption: VoiceOption | null,
+    voiceOption: VoiceOption,
   ): Promise<Uint8Array | Buffer | null> {
     const apiKey = this.getApiKey();
     if (!apiKey) {
@@ -59,8 +69,8 @@ export class ElevenLabsTtsProvider implements TtsProvider {
     }
 
     // Default to a common voice (e.g., Rachel) if no voice is provided
-    const voiceId = voiceOption?.voiceId || voiceOption?.name || "21m00Tcm4TlvDq8ikWAM";
-    const formattedText = SsmlUtil.formatForElevenLabs(text);
+    const voiceId = voiceOption?.name || "21m00Tcm4TlvDq8ikWAM";
+    const formattedText = this.formatText(text);
 
     try {
       const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
@@ -84,7 +94,7 @@ export class ElevenLabsTtsProvider implements TtsProvider {
             errorMessage += ` - ${errorData.detail.message}`;
           }
         } catch (e) {
-          // ignore
+          console.error("Failed to parse Eleven Labs error response:", e);
         }
         throw new Error(errorMessage);
       }
