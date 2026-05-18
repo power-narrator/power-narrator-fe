@@ -5,17 +5,12 @@ interface VoiceSelectorProps {
   value: Voice | null;
   onChange: (voice: Voice) => void;
   voices: Voice[];
-  providerFilter?: "gcp" | "local";
 }
 
-export function VoiceSelector({ value, onChange, voices, providerFilter }: VoiceSelectorProps) {
-  const filteredVoices = providerFilter
-    ? voices.filter((voice) => voice.provider === providerFilter)
-    : voices;
-
-  const options = filteredVoices.map((voice) => ({
+export function VoiceSelector({ value, onChange, voices }: VoiceSelectorProps) {
+  const options = voices.map((voice) => ({
     value: voice.name,
-    label: `${voice.name.split("/").pop()} (${voice.provider === "gcp" ? "Google" : "Local"}, ${voice.ssmlGender})`,
+    label: `${voice.displayName || voice.name.split("/").pop()} (${voice.provider === "gcp" ? "Google" : voice.provider === "elevenlabs" ? "ElevenLabs" : "Local"}, ${voice.ssmlGender})`,
   }));
 
   const handleChange = (selectedValue: string | null) => {

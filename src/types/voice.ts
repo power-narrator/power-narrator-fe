@@ -1,6 +1,1 @@
-export interface Voice {
-  name: string;
-  languageCodes: string[];
-  ssmlGender: string;
-  provider: string;
-}
+export type { Voice, TtsProviderType } from "../../electron/platform/types";
