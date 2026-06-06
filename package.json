@@ -16,32 +16,32 @@
     "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
-    "@gfazioli/mantine-split-pane": "^3.0.0",
-    "@google-cloud/text-to-speech": "^6.4.0",
-    "@mantine/core": "^8.3.18",
-    "@tabler/icons-react": "^3.41.1",
-    "dotenv": "^17.4.0",
+    "@gfazioli/mantine-split-pane": "^4.1.5",
+    "@google-cloud/text-to-speech": "^6.4.1",
+    "@mantine/core": "^9.3.0",
+    "@tabler/icons-react": "^3.44.0",
+    "dotenv": "^17.4.2",
     "electron-store": "^11.0.2",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
-    "@rolldown/plugin-babel": "^0.2.2",
-    "@types/node": "^25.5.2",
-    "@types/react": "^19.2.14",
+    "@playwright/test": "^1.60.0",
+    "@rolldown/plugin-babel": "^0.2.3",
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.1",
+    "@vitejs/plugin-react": "^6.0.2",
     "babel-plugin-react-compiler": "^1.0.0",
-    "concurrently": "^9.2.1",
-    "electron": "^41.1.1",
-    "electron-builder": "^26.8.1",
-    "globals": "^17.4.0",
-    "oxfmt": "^0.43.0",
-    "oxlint": "^1.58.0",
-    "playwright": "^1.59.1",
+    "concurrently": "^10.0.3",
+    "electron": "^42.3.1",
+    "electron-builder": "^26.14.0",
+    "globals": "^17.6.0",
+    "oxfmt": "^0.53.0",
+    "oxlint": "^1.68.0",
+    "playwright": "^1.60.0",
     "pptxgenjs": "^4.0.1",
-    "typescript": "~6.0.2",
-    "vite": "^8.0.3"
+    "typescript": "~6.0.3",
+    "vite": "^8.0.16"
   }
 }
