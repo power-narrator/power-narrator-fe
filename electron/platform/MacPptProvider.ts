@@ -255,7 +255,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
 
     try {
       const scriptResult = await this.runAppleScriptJson<{ manifestPath: string }>(
-        "convert-pptx.applescript",
+        "export-slide-images.applescript",
         [filePath, outputDir],
       );
       if (!scriptResult.success) {
@@ -276,17 +276,24 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     slideIndex: number,
     outputDir: string,
   ): Promise<ReloadSlideImageResult> {
-    const imageResult = await this.exportSlideImages(filePath, outputDir);
-    if (!imageResult.success) {
-      return imageResult;
-    }
+    try {
+      const scriptResult = await this.runAppleScriptJson<{ image: string }>(
+        "export-slide-images.applescript",
+        [filePath, outputDir, slideIndex.toString()],
+      );
+      if (!scriptResult.success) {
+        return { success: false, message: scriptResult.message || "Slide image export failed." };
+      }
 
-    const image = imageResult.images?.[slideIndex]?.image;
-    if (!image) {
-      return { success: false, message: `Could not find exported image for slide ${slideIndex}` };
-    }
+      const image = scriptResult.data.image;
+      if (!image) {
+        return { success: false, message: `Could not find exported image for slide ${slideIndex}` };
+      }
 
-    return { success: true, image };
+      return { success: true, image };
+    } catch (err: unknown) {
+      return { success: false, message: getErrorMessage(err) };
+    }
   }
 
   async readAllSlideNotes(filePath: string): Promise<ReadAllSlideNotesResult> {
