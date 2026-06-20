@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
   Button,
   Divider,
@@ -32,31 +31,19 @@ interface NotesSectionListProps {
 }
 
 interface SectionTextEditorProps {
-  initialValue: string;
+  value: string;
   onChange: (value: string) => void;
   onFocus: () => void;
   assignRef: (element: HTMLTextAreaElement | null) => void;
 }
 
-function SectionTextEditor({ initialValue, onChange, onFocus, assignRef }: SectionTextEditorProps) {
-  const [localValue, setLocalValue] = useState(initialValue);
-
-  // Sync from outside if needed (e.g. Undo/Redo)
-  useEffect(() => {
-    setLocalValue(initialValue);
-  }, [initialValue]);
-
+function SectionTextEditor({ value, onChange, onFocus, assignRef }: SectionTextEditorProps) {
   return (
     <Textarea
       ref={assignRef}
       onFocus={onFocus}
-      value={localValue}
-      onChange={(event) => setLocalValue(event.currentTarget.value)}
-      onBlur={() => {
-        if (localValue !== initialValue) {
-          onChange(localValue);
-        }
-      }}
+      value={value}
+      onChange={(event) => onChange(event.currentTarget.value)}
       ff="monospace"
       resize="vertical"
       autosize
@@ -130,7 +117,7 @@ export function NotesSectionList({
                 />
                 <Divider />
                 <SectionTextEditor
-                  initialValue={section.text}
+                  value={section.text}
                   onChange={(value) => onSectionTextChange(index, value)}
                   onFocus={() => onFocusSection(index)}
                   assignRef={(element) => assignTextareaRef(index, element)}

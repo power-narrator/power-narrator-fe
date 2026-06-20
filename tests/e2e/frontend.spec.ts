@@ -12,6 +12,20 @@ let window: Page;
 
 const FIXTURE_ORIGINAL = path.join(__dirname, "../fixtures/test-presentation.pptx");
 const FIXTURE_TEST = path.join(__dirname, "../fixtures/test-presentation-run.pptx");
+const TEST_VOICES = {
+  _default_: {
+    name: "default-test-voice",
+    languageCodes: ["en-US"],
+    ssmlGender: "NEUTRAL",
+    provider: "gcp",
+  },
+  Narrator: {
+    name: "narrator-test-voice",
+    languageCodes: ["en-US"],
+    ssmlGender: "FEMALE",
+    provider: "gcp",
+  },
+};
 
 test.beforeAll(async () => {
   // Copy the fixture so we don't modify the original
@@ -36,7 +50,7 @@ test.beforeAll(async () => {
   // Furthermore, calling AppleScript from an automated test environment often hangs or requires
   // accessibility permissions we don't have. Thus, we will mock `convert-pptx` to just
   // return a snapshot of what it would have done. The rest of the workflow (Save, Audio) are tested.
-  await electronApp.evaluate(({ ipcMain }, testFilePath) => {
+  await electronApp.evaluate(({ ipcMain }, { testFilePath, testVoices }) => {
     ipcMain.removeHandler("select-file");
     ipcMain.handle("select-file", async () => testFilePath);
 
@@ -71,7 +85,25 @@ test.beforeAll(async () => {
     // Mock insert-audio just return success so we don't trigger real AppleScript which could hang
     ipcMain.removeHandler("insert-audio");
     ipcMain.handle("insert-audio", async () => ({ success: true }));
-  }, FIXTURE_TEST);
+
+    ipcMain.removeHandler("get-speaker-mappings");
+    ipcMain.handle("get-speaker-mappings", async () => testVoices);
+
+    ipcMain.removeHandler("set-speaker-mappings");
+    ipcMain.handle("set-speaker-mappings", async () => ({ success: true }));
+
+    ipcMain.removeHandler("generate-speech");
+    (globalThis as typeof globalThis & { __generatedSpeechCalls?: unknown[] }).__generatedSpeechCalls =
+      [];
+    ipcMain.handle("generate-speech", async (_, payload) => {
+      (
+        globalThis as typeof globalThis & {
+          __generatedSpeechCalls: unknown[];
+        }
+      ).__generatedSpeechCalls.push(payload);
+      return new Uint8Array([1, 2, 3, 4]);
+    });
+  }, { testFilePath: FIXTURE_TEST, testVoices: TEST_VOICES });
 });
 
 test.afterAll(async () => {
@@ -104,24 +136,56 @@ test.describe("PPT Viewer UI Workflows", () => {
     await expect(thumbnails).toHaveCount(2, { timeout: 10000 });
 
     // Verify the first slide's notes are present
-    const notesTextarea = window.locator("textarea");
+    const notesTextarea = window.locator("textarea").first();
     await expect(notesTextarea).toHaveValue("Initial notes for slide 1");
   });
 
-  test("Test 2: Modify and Save Notes", async () => {
+  test("Test 2: Preview Uses Edited Text Before Blur", async () => {
+    await electronApp.evaluate(() => {
+      (
+        globalThis as typeof globalThis & {
+          __generatedSpeechCalls: unknown[];
+        }
+      ).__generatedSpeechCalls = [];
+    });
+
+    const notesTextarea = window.locator("textarea").first();
+    await expect(notesTextarea).toBeVisible();
+
+    await notesTextarea.fill("Preview text edited before blur");
+    await window.getByRole("button", { name: "Narrator", exact: true }).click();
+
+    await expect
+      .poll(async () =>
+        electronApp.evaluate(() => {
+          return (
+            globalThis as typeof globalThis & {
+              __generatedSpeechCalls: Array<{
+                text: string;
+                voiceOption?: { name: string };
+              }>;
+            }
+          ).__generatedSpeechCalls;
+        }),
+      )
+      .toContainEqual({
+        text: "Preview text edited before blur",
+        voiceOption: TEST_VOICES.Narrator,
+      });
+  });
+
+  test("Test 3: Modify and Save Notes", async () => {
     // Verify we are on Slide 1
-    const notesTextarea = window.locator("textarea");
+    const notesTextarea = window.locator("textarea").first();
     await expect(notesTextarea).toBeVisible();
 
     // Change text
     await notesTextarea.fill("Initial notes for slide 1 - EDITED IN TEST");
 
     // Click "Save Slide"
-    await window.getByRole("button", { name: "Save Audio and Notes", exact: true }).click();
+    await window.getByRole("button", { name: "Save Slide", exact: true }).click();
 
     // Wait for it to be enabled (meaning saving finished)
-    await expect(
-      window.getByRole("button", { name: "Save Audio and Notes", exact: true }),
-    ).toBeEnabled();
+    await expect(window.getByRole("button", { name: "Save Slide", exact: true })).toBeEnabled();
   });
 });
