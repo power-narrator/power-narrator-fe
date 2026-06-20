@@ -768,10 +768,7 @@ export function ViewerPage({
         <Split.Pane grow>
           <Split orientation="horizontal" h="100%">
             <Split.Pane initialHeight="30%">
-              <SlidePreviewPane
-                activeSlideSrc={activeSlide.src}
-                slideNumber={activeSlideNumber}
-              />
+              <SlidePreviewPane activeSlideSrc={activeSlide.src} slideNumber={activeSlideNumber} />
             </Split.Pane>
 
             <Split.Resizer />

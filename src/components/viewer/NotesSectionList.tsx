@@ -38,13 +38,7 @@ interface SectionTextEditorProps {
   assignRef: (element: HTMLTextAreaElement | null) => void;
 }
 
-function SectionTextEditor({
-  label,
-  value,
-  onChange,
-  onFocus,
-  assignRef,
-}: SectionTextEditorProps) {
+function SectionTextEditor({ label, value, onChange, onFocus, assignRef }: SectionTextEditorProps) {
   return (
     <Textarea
       ref={assignRef}
