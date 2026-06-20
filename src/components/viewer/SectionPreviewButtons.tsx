@@ -75,8 +75,11 @@ export function SectionPreviewButtons({
     let textToPlay = section.text;
     if (getTextarea) {
       const textarea = getTextarea();
-      if (textarea && textarea.selectionStart !== textarea.selectionEnd) {
-        textToPlay = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+      if (textarea) {
+        textToPlay =
+          textarea.selectionStart !== textarea.selectionEnd
+            ? textarea.value.substring(textarea.selectionStart, textarea.selectionEnd)
+            : textarea.value;
       }
     }
 
