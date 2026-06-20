@@ -40,7 +40,11 @@ export function SlideThumbnailList({
             >
               {index + 1}
             </Box>
-            <Image src={slide.src} radius={activeSlideIndex === index ? "none" : "sm"} />
+            <Image
+              src={slide.src}
+              alt={`Slide ${index + 1} thumbnail`}
+              radius={activeSlideIndex === index ? "none" : "sm"}
+            />
           </Box>
         ))}
       </Stack>

@@ -30,10 +30,6 @@ const EMPTY_SLIDE: Slide = {
   notes: "",
 };
 
-function getSlideNumber(slide: Slide, fallbackIndex: number) {
-  return slide.index || fallbackIndex + 1;
-}
-
 export function ViewerPage({
   slides: initialSlides,
   filePath,
@@ -92,6 +88,7 @@ export function ViewerPage({
   };
 
   const activeSlide = slides[activeSlideIndex] ?? { ...EMPTY_SLIDE, index: activeSlideIndex + 1 };
+  const activeSlideNumber = activeSlide.index || activeSlideIndex + 1;
   const activeSections = parseNotes(activeSlide.notes || "");
 
   function clearDebounce() {
@@ -587,10 +584,10 @@ export function ViewerPage({
 
     try {
       setIsPlaying(true);
-      setPlayStatus(`Playing slide ${activeSlide.index}...`);
+      setPlayStatus(`Playing slide ${activeSlideNumber}...`);
       const result = await electronAPI.playSlide({
         filePath,
-        slideIndex: getSlideNumber(activeSlide, activeSlideIndex),
+        slideIndex: activeSlideNumber,
       });
       if (!result.success) {
         alert(`Failed to play slide: ${result.message}`);
@@ -665,12 +662,12 @@ export function ViewerPage({
     }
 
     setIsSyncing(true);
-    setSyncStatus(`Syncing slide ${activeSlide.index}...`);
+    setSyncStatus(`Syncing slide ${activeSlideNumber}...`);
 
     try {
       const result: SlideElectronResult = await electronAPI.reloadSlide({
         filePath,
-        slideIndex: getSlideNumber(activeSlide, activeSlideIndex),
+        slideIndex: activeSlideNumber,
       });
       if (!result.success) {
         alert(`Sync slide error: ${result.message}`);
@@ -700,7 +697,7 @@ export function ViewerPage({
     setRemoveStatus("Removing audio...");
 
     try {
-      const result = await runRemoveAudio([getSlideNumber(activeSlide, activeSlideIndex)]);
+      const result = await runRemoveAudio([activeSlideNumber]);
       if (!result.success) {
         alert(`Failed to remove audio: ${result.message}`);
         setRemoveStatus("");
@@ -771,7 +768,10 @@ export function ViewerPage({
         <Split.Pane grow>
           <Split orientation="horizontal" h="100%">
             <Split.Pane initialHeight="30%">
-              <SlidePreviewPane activeSlideSrc={activeSlide.src} />
+              <SlidePreviewPane
+                activeSlideSrc={activeSlide.src}
+                slideNumber={activeSlideNumber}
+              />
             </Split.Pane>
 
             <Split.Resizer />

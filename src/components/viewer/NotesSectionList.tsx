@@ -31,16 +31,24 @@ interface NotesSectionListProps {
 }
 
 interface SectionTextEditorProps {
+  label: string;
   value: string;
   onChange: (value: string) => void;
   onFocus: () => void;
   assignRef: (element: HTMLTextAreaElement | null) => void;
 }
 
-function SectionTextEditor({ value, onChange, onFocus, assignRef }: SectionTextEditorProps) {
+function SectionTextEditor({
+  label,
+  value,
+  onChange,
+  onFocus,
+  assignRef,
+}: SectionTextEditorProps) {
   return (
     <Textarea
       ref={assignRef}
+      aria-label={label}
       onFocus={onFocus}
       value={value}
       onChange={(event) => onChange(event.currentTarget.value)}
@@ -117,6 +125,7 @@ export function NotesSectionList({
                 />
                 <Divider />
                 <SectionTextEditor
+                  label={`Slide ${slideIndex} section ${index + 1} notes`}
                   value={section.text}
                   onChange={(value) => onSectionTextChange(index, value)}
                   onFocus={() => onFocusSection(index)}
