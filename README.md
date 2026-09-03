@@ -52,7 +52,7 @@ The application is split into three layers:
 User selects .pptx
   → IPC: convert-pptx
     → MacPptProvider.convertPptx()
-      → convert-pptx.applescript
+      → export-slide-images.applescript (full-export mode)
         → PowerPoint exports slide images + manifest.json
     → Returns: slides[] with { index, src (image path), notes }
 ```
@@ -191,7 +191,7 @@ electron/
     LocalTtsProvider.ts # Mimic 3 local server integration
     SsmlUtil.ts         # SSML formatting helpers
   scripts/
-    convert-pptx.applescript
+    export-slide-images.applescript # Exports all slide images or one requested slide
     close-presentation.applescript
     export-to-video.applescript
     play-slide.applescript # Pure AppleScript slideshow start/jump
