@@ -13,6 +13,7 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run src",
     "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
@@ -42,6 +43,7 @@
     "playwright": "^1.60.0",
     "pptxgenjs": "^4.0.1",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "vitest": "^4.1.11"
   }
 }
