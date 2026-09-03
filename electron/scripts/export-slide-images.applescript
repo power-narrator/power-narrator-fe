@@ -5,7 +5,7 @@ on run argv
 		if (count of argv) < 2 then
 			error "Usage: export-slide-images.applescript <inputPath> <outputDir> [slideIndex]"
 		end if
-		
+
 		set inputPath to item 1 of argv
 		set outputDir to item 2 of argv
 		set slidesDir to outputDir & "/slides"
@@ -13,39 +13,38 @@ on run argv
 		if (count of argv) > 2 then
 			set targetSlideIndex to my parseSlideIndex(item 3 of argv)
 		end if
-		
+
 		set shouldRebuildSlidesDir to (targetSlideIndex is missing value)
 		my prepareOutputDirectory(outputDir, slidesDir, shouldRebuildSlidesDir)
-		set ts to (do shell script "date +%s")
-		
+		set exportToken to (do shell script "uuidgen")
+
 		tell application "Microsoft PowerPoint"
 			set pres to my locateOrOpenPresentation(inputPath)
 			activate
-			
+
 			set slideCount to count of slides of pres
 			if targetSlideIndex is not missing value then
 				if targetSlideIndex > slideCount then
 					error "Slide index " & targetSlideIndex & " is out of range. Presentation has " & slideCount & " slide(s)."
 				end if
-				
+
 				set slidesHFS to my toHfsDirectoryPath(slidesDir)
-				my deleteSlideImages(slidesDir, targetSlideIndex)
-				set imageRelPath to my exportSlideToPng(pres, targetSlideIndex, slidesDir, slidesHFS, ts)
+				set imageRelPath to my exportSlideToPng(pres, targetSlideIndex, slidesDir, slidesHFS, exportToken)
 				if imageRelPath is "" then
 					error "Could not export image for slide " & targetSlideIndex
 				end if
 				return my jsonSuccess("image", imageRelPath)
 			end if
-			
+
 			set slidesHFS to my toHfsDirectoryPath(slidesDir)
 			set imageData to {}
 			repeat with i from 1 to slideCount
-				set imageRelPath to my exportSlideToPng(pres, i, slidesDir, slidesHFS, ts)
+				set imageRelPath to my exportSlideToPng(pres, i, slidesDir, slidesHFS, exportToken)
 				set dataItem to (i as text) & "|||" & imageRelPath
 				copy dataItem to end of imageData
 			end repeat
 		end tell
-		
+
 		set manifestPath to my writeImageManifest(outputDir, imageData)
 		return my jsonSuccess("manifestPath", manifestPath)
 	on error errMsg
@@ -59,18 +58,18 @@ on parseSlideIndex(slideIndexText)
 	on error
 		error "Slide index must be a 1-based integer."
 	end try
-	
+
 	if slideIndex < 1 then
 		error "Slide index must be a 1-based integer."
 	end if
-	
+
 	return slideIndex
 end parseSlideIndex
 
 on locateOrOpenPresentation(inputPath)
 	tell application "Microsoft PowerPoint"
 		launch -- Start without activating/stealing focus
-		
+
 		set pres to missing value
 		try
 			repeat with p in presentations
@@ -80,12 +79,12 @@ on locateOrOpenPresentation(inputPath)
 				end if
 			end repeat
 		end try
-		
+
 		if pres is missing value then
 			open (POSIX file inputPath)
 			set pres to active presentation
 		end if
-		
+
 		return pres
 	end tell
 end locateOrOpenPresentation
@@ -104,24 +103,19 @@ on toHfsDirectoryPath(slidesDir)
 	on error
 		set slidesHFS to slidesDir
 	end try
-	
+
 	if slidesHFS does not end with ":" then
 		set slidesHFS to slidesHFS & ":"
 	end if
-	
+
 	return slidesHFS
 end toHfsDirectoryPath
 
-on deleteSlideImages(slidesDir, slideIndex)
-	set slidePattern to "Slide_" & slideIndex & "_*.png"
-	do shell script "find " & quoted form of slidesDir & " -maxdepth 1 -type f -name " & quoted form of slidePattern & " -delete"
-end deleteSlideImages
-
-on exportSlideToPng(pres, slideIndex, slidesDir, slidesHFS, timestampText)
-	set slideName to "Slide_" & slideIndex & "_" & timestampText & ".png"
+on exportSlideToPng(pres, slideIndex, slidesDir, slidesHFS, exportToken)
+	set slideName to "Slide_" & slideIndex & "_" & exportToken & ".png"
 	set slidePathPosix to slidesDir & "/" & slideName
 	set slidePathHFS to slidesHFS & slideName as text
-	
+
 	try
 		tell application "Microsoft PowerPoint"
 			tell slide slideIndex of pres
@@ -129,17 +123,17 @@ on exportSlideToPng(pres, slideIndex, slidesDir, slidesHFS, timestampText)
 			end tell
 		end tell
 	end try
-	
+
 	if not my fileExists(slidePathPosix) then
 		try
 			my exportSlideWithClipboard(pres, slideIndex, slidePathPosix)
 		end try
 	end if
-	
+
 	if my fileExists(slidePathPosix) then
 		return "slides/" & slideName
 	end if
-	
+
 	return ""
 end exportSlideToPng
 
@@ -152,7 +146,7 @@ on exportSlideWithClipboard(pres, slideIndex, slidePathPosix)
 			end tell
 		end tell
 		delay 0.2
-		
+
 		set pngData to the clipboard as «class PNGf»
 		set fRef to open for access (POSIX file slidePathPosix) with write permission
 		set eof fRef to 0
@@ -176,7 +170,7 @@ on writeImageManifest(outputDir, imageData)
 	set manifestPath to outputDir & "/images.json"
 	set inputData to my joinList(imageData, linefeed)
 	set tempPath to outputDir & "/temp_images.txt"
-	
+
 	try
 		set fileRef to open for access (POSIX file tempPath) with write permission
 		set eof fileRef to 0
@@ -185,7 +179,7 @@ on writeImageManifest(outputDir, imageData)
 	on error
 		do shell script "echo " & quoted form of inputData & " > " & quoted form of tempPath
 	end try
-	
+
 	set perlScript to "use JSON::PP; use strict; use warnings; " & ¬
 		"open(my $fh, '<:encoding(UTF-8)', $ARGV[0]) or die $!; " & ¬
 		"my @slides; " & ¬
@@ -194,13 +188,13 @@ on writeImageManifest(outputDir, imageData)
 		"open(my $out, '>:encoding(UTF-8)', $ARGV[1]) or die $!; " & ¬
 		"print $out encode_json(\\@slides); " & ¬
 		"close($out);"
-	
+
 	do shell script "perl -e " & quoted form of perlScript & " -- " & quoted form of tempPath & " " & quoted form of manifestPath
-	
+
 	try
 		do shell script "rm " & quoted form of tempPath
 	end try
-	
+
 	return manifestPath
 end writeImageManifest
 

@@ -12,6 +12,7 @@ import {
   normalizeNotes,
   resolveScriptPath,
 } from "./helpers.js";
+import { completeSlideReload } from "./slideReload.js";
 import type {
   BasicPptResult,
   QuerySlidesResult,
@@ -418,35 +419,18 @@ export class XmlPptProvider implements PptProvider {
       return imageResult;
     }
 
-    const queryResult = await this.querySlides(filePath);
-    if (!queryResult.success) {
-      return queryResult;
-    }
+    return completeSlideReload(outputDir, slideIndex, imageResult.image, async () => {
+      const queryResult = await this.querySlides(filePath);
+      if (!queryResult.success) {
+        return queryResult;
+      }
 
-    const slideData = queryResult.slideData;
-    if (!slideData) {
-      return { success: false, message: "Could not find slide data" };
-    }
+      const slide = queryResult.slideData?.[slideIndex - 1];
+      if (!slide) {
+        return { success: false, message: `Could not find slide data for index ${slideIndex - 1}` };
+      }
 
-    if (!imageResult.image) {
-      return { success: false, message: `Could not find exported image for slide ${slideIndex}` };
-    }
-
-    if (!slideData[slideIndex - 1]) {
-      return { success: false, message: `Could not find slide data for index ${slideIndex - 1}` };
-    }
-
-    const [slide] = buildSlidesWithPaths(
-      [
-        {
-          index: slideIndex,
-          image: imageResult.image,
-          notes: slideData[slideIndex - 1].notes || "",
-        },
-      ],
-      outputDir,
-    );
-
-    return { success: true, slide };
+      return { success: true, notes: slide.notes || "" };
+    });
   }
 }

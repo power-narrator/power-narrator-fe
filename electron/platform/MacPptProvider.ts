@@ -11,6 +11,7 @@ import {
   cleanupPaths,
   resolveScriptPath,
 } from "./helpers.js";
+import { completeSlideReload } from "./slideReload.js";
 import type {
   BasicPptResult,
   ExportSlideImagesResult,
@@ -565,25 +566,18 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       return imageResult;
     }
 
-    const notesResult = await this.readSlideNotes(filePath, slideIndex);
-    if (!notesResult.success) {
-      return notesResult;
+    const result = await completeSlideReload(outputDir, slideIndex, imageResult.image, () =>
+      this.readSlideNotes(filePath, slideIndex),
+    );
+
+    if (result.success) {
+      try {
+        this.focusApp();
+      } catch (error) {
+        console.error("Failed to focus app after reloading slide:", error);
+      }
     }
 
-    if (!imageResult.image || notesResult.notes === undefined) {
-      return { success: false, message: "Slide image or notes export returned no data." };
-    }
-
-    try {
-      const [slide] = buildSlidesWithPaths(
-        [{ index: slideIndex, image: imageResult.image, notes: notesResult.notes }],
-        outputDir,
-      );
-
-      this.focusApp();
-      return { success: true, slide };
-    } catch (e: unknown) {
-      return { success: false, message: getErrorMessage(e) };
-    }
+    return result;
   }
 }
