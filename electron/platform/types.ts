@@ -1,3 +1,13 @@
+export type TtsProviderType = "gcp" | "local" | "elevenlabs";
+
+export interface Voice {
+  name: string;
+  languageCodes: string[];
+  ssmlGender: string;
+  provider: TtsProviderType;
+  displayName?: string;
+}
+
 export interface SlideManifestEntry {
   index: number;
   image: string;

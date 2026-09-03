@@ -10,6 +10,7 @@ export interface TtsProvider {
   getVoices(): Promise<VoiceOption[]>;
   generateSpeech(
     text: string,
-    voiceOption: VoiceOption | null,
+    voiceOption: VoiceOption,
   ): Promise<Uint8Array | Buffer | null>;
+  formatText(text: string, voiceOption?: VoiceOption): string | { isSsml: boolean; content: string };
 }

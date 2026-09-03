@@ -11,14 +11,8 @@ import type {
   SlideAudioEntry,
   SlidesPptResult,
   VideoPptResult,
+  Voice,
 } from "./platform/types.js";
-
-interface Voice {
-  name: string;
-  languageCodes: string[];
-  ssmlGender: string;
-  provider: string;
-}
 
 const electronAPI = {
   convertPptx: (filePath: string): Promise<SlidesPptResult> =>
@@ -33,20 +27,18 @@ const electronAPI = {
   getVoices: (): Promise<Voice[]> => ipcRenderer.invoke("get-voices"),
   generateSpeech: (payload: {
     text: string;
-    voiceOption?: {
-      name: string;
-      languageCodes: string[];
-      ssmlGender: string;
-      provider?: string;
-    };
+    voiceOption: Voice;
   }): Promise<Uint8Array> => ipcRenderer.invoke("generate-speech", payload),
   getGcpKeyPath: (): Promise<string | null> => ipcRenderer.invoke("get-gcp-key-path"),
   setGcpKey: (): Promise<SetGcpKeyResult> => ipcRenderer.invoke("set-gcp-key"),
+  getElevenLabsApiKey: (): Promise<string | null> => ipcRenderer.invoke("get-eleven-labs-api-key"),
+  setElevenLabsApiKey: (apiKey: string): Promise<BasicPptResult> =>
+    ipcRenderer.invoke("set-eleven-labs-api-key", apiKey),
   getSpeakerMappings: (): Promise<Record<string, Voice>> =>
     ipcRenderer.invoke("get-speaker-mappings"),
   setSpeakerMappings: (mappings: Record<string, Voice>): Promise<BasicPptResult> =>
     ipcRenderer.invoke("set-speaker-mappings", mappings),
-  getTtsProvider: (): Promise<"gcp" | "local"> => ipcRenderer.invoke("get-tts-provider"),
+
   getXmlCliEnabled: (): Promise<boolean> => ipcRenderer.invoke("get-xml-cli-enabled"),
   setXmlCliEnabled: (enabled: boolean): Promise<BasicPptResult> =>
     ipcRenderer.invoke("set-xml-cli-enabled", enabled),

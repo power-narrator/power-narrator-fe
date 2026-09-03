@@ -39,7 +39,19 @@ export class GcpTtsProvider implements TtsProvider {
     return voices;
   }
 
-  async generateSpeech(text: string, voiceOption: VoiceOption | null): Promise<Uint8Array | null> {
+  formatText(text: string): { isSsml: boolean; content: string } {
+    const hasTags = SsmlUtil.isSsml(text);
+    if (hasTags) {
+      let ssmlText = text.trim();
+      if (!ssmlText.startsWith("<speak>")) {
+        ssmlText = `<speak>${ssmlText}</speak>`;
+      }
+      return { isSsml: true, content: ssmlText };
+    }
+    return { isSsml: false, content: text };
+  }
+
+  async generateSpeech(text: string, voiceOption: VoiceOption): Promise<Uint8Array | null> {
     const keyPath = this.keyPathProvider();
     if (!keyPath) {
       throw new Error("GCP TTS requested but GOOGLE_APPLICATION_CREDENTIALS is not set");
@@ -48,7 +60,7 @@ export class GcpTtsProvider implements TtsProvider {
     const options: any = { keyFilename: keyPath };
     const client = new TextToSpeechClient(options);
 
-    const formatted = SsmlUtil.formatForGcp(text);
+    const formatted = this.formatText(text);
     const input: any = formatted.isSsml ? { ssml: formatted.content } : { text: formatted.content };
 
     const request: any = {
