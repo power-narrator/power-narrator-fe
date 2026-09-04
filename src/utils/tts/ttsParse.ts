@@ -35,18 +35,18 @@ export const parseTtsSegments = (
   const segments: AudioSegment[] = [];
 
   if (parts.length === 1) {
-    segments.push({ voice: currentVoice, text: parts[0] });
+    segments.push({ voice: currentVoice, text: parts[0] ?? "" });
   } else {
     let i = 0;
     while (i < parts.length) {
-      const textSegment = parts[i];
+      const textSegment = parts[i] ?? "";
 
       if (textSegment.trim().length > 0) {
         segments.push({ voice: currentVoice, text: textSegment });
       }
 
       if (i + 1 < parts.length) {
-        const tag = parts[i + 1].trim();
+        const tag = (parts[i + 1] ?? "").trim();
 
         if (mappings[tag]) {
           currentVoice = mappings[tag];
