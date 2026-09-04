@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+const { contextBridge, ipcRenderer } = require("electron") as typeof import("electron");
 import type {
   BasicPptResult,
   GenerateVideoRequest,
