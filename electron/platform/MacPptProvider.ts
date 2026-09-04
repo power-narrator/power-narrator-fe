@@ -185,10 +185,10 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
    * Programmatically returns focus to the Electron window.
    */
   private focusApp(): void {
-    const windows = BrowserWindow.getAllWindows();
-    if (windows.length > 0) {
-      windows[0].show();
-      windows[0].focus();
+    const [firstWindow] = BrowserWindow.getAllWindows();
+    if (firstWindow) {
+      firstWindow.show();
+      firstWindow.focus();
     }
   }
 
