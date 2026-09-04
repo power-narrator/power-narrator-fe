@@ -1,8 +1,8 @@
-import type { TtsProvider, VoiceOption } from "./TtsProvider.js";
+import type { TtsProvider, Voice, VoiceOption } from "./TtsProvider.js";
 import { SsmlUtil } from "./SsmlUtil.js";
 
 export class LocalTtsProvider implements TtsProvider {
-  async getVoices(): Promise<VoiceOption[]> {
+  async getVoices(): Promise<Voice[]> {
     return [
       { name: "en_UK/apope_low", ssmlGender: "MALE", languageCodes: ["en-GB"], provider: "local" },
       {

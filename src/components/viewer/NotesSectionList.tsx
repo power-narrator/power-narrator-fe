@@ -12,7 +12,7 @@ import {
 } from "@mantine/core";
 import type { NoteSection } from "../../types/notes";
 import { getSpeakerOptions } from "../../utils/viewer";
-import type { Voice } from "../../types/voice";
+import type { Voice } from "../../../shared/types/tts";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
 import { IconPlus } from "@tabler/icons-react";
 import { getEffectiveSpeaker } from "../../utils/notes";

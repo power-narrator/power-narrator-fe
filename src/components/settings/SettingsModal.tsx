@@ -15,7 +15,7 @@ import { IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { DEFAULT_SPEAKER_KEY } from "../../constants/speaker";
 import { useSettings } from "../../context/useSettings";
-import type { Voice } from "../../types/voice";
+import type { Voice } from "../../../shared/types/tts";
 import { VoiceSelector } from "./VoiceSelector";
 
 interface SettingsModalProps {

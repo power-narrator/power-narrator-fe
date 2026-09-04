@@ -18,6 +18,7 @@ import type {
   SlideAudioEntry,
   SlideManifestEntry,
 } from "./platform/types.js";
+import type { GenerateSpeechRequest } from "../shared/types/tts.js";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -299,6 +300,6 @@ ipcMain.handle("get-voices", async () => {
   return ttsManager.getVoices();
 });
 
-ipcMain.handle("generate-speech", async (_, { text, voiceOption }) => {
+ipcMain.handle("generate-speech", async (_, { text, voiceOption }: GenerateSpeechRequest) => {
   return ttsManager.generateSpeech(text, voiceOption);
 });

@@ -1,5 +1,5 @@
 import { Select } from "@mantine/core";
-import type { Voice } from "../../types/voice";
+import type { Voice } from "../../../shared/types/tts";
 
 interface VoiceSelectorProps {
   value: Voice | null;

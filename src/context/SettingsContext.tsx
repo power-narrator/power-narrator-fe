@@ -1,6 +1,6 @@
 import { createContext, useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import type { Voice } from "../types/voice";
+import type { Voice } from "../../shared/types/tts";
 
 interface SettingsContextValue {
   mappings: Record<string, Voice>;
