@@ -260,11 +260,10 @@ ipcMain.handle("set-gcp-key", async () => {
     filters: [{ name: "JSON", extensions: ["json"] }],
   });
 
-  if (canceled || filePaths.length === 0) {
+  const [keyPath] = filePaths;
+  if (canceled || !keyPath) {
     return { success: false, message: "No file selected" };
   }
-
-  const keyPath = filePaths[0];
 
   // Basic validation
   try {
