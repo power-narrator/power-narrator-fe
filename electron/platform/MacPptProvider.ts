@@ -2,7 +2,7 @@ import { app, BrowserWindow } from "electron";
 import path from "path";
 import fs from "fs";
 import { spawn } from "child_process";
-import { NativePlatformProvider, PptProvider } from "./PptProvider.js";
+import type { NativePlatformProvider, PptProvider } from "./PptProvider.js";
 import { getErrorMessage } from "./errors.js";
 import {
   APP_NAME,

@@ -1,4 +1,4 @@
-import { NativePlatformProvider, PptProvider } from "./PptProvider.js";
+import type { NativePlatformProvider, PptProvider } from "./PptProvider.js";
 import type {
   BasicPptResult,
   ExportSlideImagesResult,

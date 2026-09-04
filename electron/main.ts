@@ -4,7 +4,7 @@ import fs from "fs";
 import dotenv from "dotenv";
 import { fileURLToPath, pathToFileURL } from "url";
 import Store from "electron-store";
-import { NativePlatformProvider, PptProvider } from "./platform/PptProvider.js";
+import type { NativePlatformProvider, PptProvider } from "./platform/PptProvider.js";
 import { MacPptProvider } from "./platform/MacPptProvider.js";
 import { WindowsPptProvider } from "./platform/WindowsPptProvider.js";
 import { XmlPptProvider } from "./platform/XmlPptProvider.js";
