@@ -12,8 +12,8 @@
     "dist": "npm run build && electron-builder",
     "lint": "oxlint",
     "format": "oxfmt",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run src",
+    "typecheck": "tsc --noEmit && tsc -p electron/tsconfig.test.json",
+    "test": "vitest run src electron",
     "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
