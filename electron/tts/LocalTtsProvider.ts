@@ -1,4 +1,4 @@
-import { TtsProvider, VoiceOption } from "./TtsProvider.js";
+import type { TtsProvider, VoiceOption } from "./TtsProvider.js";
 import { SsmlUtil } from "./SsmlUtil.js";
 
 export class LocalTtsProvider implements TtsProvider {

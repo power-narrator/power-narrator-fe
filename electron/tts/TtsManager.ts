@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import { app } from "electron";
-import { TtsProvider, VoiceOption } from "./TtsProvider.js";
+import type { TtsProvider, VoiceOption } from "./TtsProvider.js";
 import { GcpTtsProvider } from "./GcpTtsProvider.js";
 import { LocalTtsProvider } from "./LocalTtsProvider.js";
 

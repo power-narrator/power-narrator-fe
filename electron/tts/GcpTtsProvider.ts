@@ -1,5 +1,5 @@
 import { TextToSpeechClient } from "@google-cloud/text-to-speech";
-import { TtsProvider, VoiceOption } from "./TtsProvider.js";
+import type { TtsProvider, VoiceOption } from "./TtsProvider.js";
 import { SsmlUtil } from "./SsmlUtil.js";
 
 export class GcpTtsProvider implements TtsProvider {
