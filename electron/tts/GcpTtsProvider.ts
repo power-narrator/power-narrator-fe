@@ -1,11 +1,11 @@
 import { TextToSpeechClient } from "@google-cloud/text-to-speech";
-import type { TtsProvider, VoiceOption } from "./TtsProvider.js";
+import type { TtsProvider, Voice, VoiceOption } from "./TtsProvider.js";
 import { SsmlUtil } from "./SsmlUtil.js";
 
 export class GcpTtsProvider implements TtsProvider {
   constructor(private keyPathProvider: () => string | undefined) {}
 
-  async getVoices(): Promise<VoiceOption[]> {
+  async getVoices(): Promise<Voice[]> {
     const keyPath = this.keyPathProvider();
     if (!keyPath) {
       console.warn("GOOGLE_APPLICATION_CREDENTIALS is not set; skipping GCP voices.");
@@ -14,14 +14,14 @@ export class GcpTtsProvider implements TtsProvider {
 
     const options: any = { keyFilename: keyPath };
     const client = new TextToSpeechClient(options);
-    const voices: VoiceOption[] = [];
+    const voices: Voice[] = [];
 
     try {
       const [gbResult] = await client.listVoices({ languageCode: "en-GB" });
       if (gbResult.voices) {
         const gbGcpVoices = gbResult.voices
           .filter((v) => v.name && v.name.includes("Chirp3-HD"))
-          .map((v) => ({ ...v, provider: "gcp" })) as VoiceOption[];
+          .map((v) => ({ ...v, provider: "gcp" })) as Voice[];
         voices.push(...gbGcpVoices);
       }
 
@@ -29,7 +29,7 @@ export class GcpTtsProvider implements TtsProvider {
       if (usResult.voices) {
         const usGcpVoices = usResult.voices
           .filter((v) => v.name && v.name.includes("Chirp3-HD"))
-          .map((v) => ({ ...v, provider: "gcp" })) as VoiceOption[];
+          .map((v) => ({ ...v, provider: "gcp" })) as Voice[];
         voices.push(...usGcpVoices);
       }
     } catch (error) {

@@ -1,4 +1,4 @@
-import type { Voice } from "./types/voice";
+import type { GenerateSpeechRequest, Voice } from "../shared/types/tts";
 import type {
   BasicElectronResult,
   ConvertResponse,
@@ -24,15 +24,7 @@ declare global {
       selectFile: () => Promise<string | null>;
       saveNotes: (filePath: string, slides: SaveNotesSlide[]) => Promise<BasicElectronResult>;
       getVoices: () => Promise<Voice[]>;
-      generateSpeech: (payload: {
-        text: string;
-        voiceOption?: {
-          name: string;
-          languageCodes: string[];
-          ssmlGender: string;
-          provider?: string;
-        };
-      }) => Promise<Uint8Array>;
+      generateSpeech: (payload: GenerateSpeechRequest) => Promise<Uint8Array>;
       getGcpKeyPath: () => Promise<string | null>;
       setGcpKey: () => Promise<SetGcpKeyResult>;
       setInsertMethod: (method: string) => Promise<void>;

@@ -5,7 +5,7 @@ import type { NoteSection } from "../../types/notes";
 import { getErrorMessage } from "../../utils/errors";
 import { getSpeakerOptions, resolveSpeakerVoice } from "../../utils/viewer";
 import { generateAudio } from "../../utils/tts";
-import type { Voice } from "../../types/voice";
+import type { Voice } from "../../../shared/types/tts";
 import { useAudio } from "../../context/useAudio";
 
 interface SectionPreviewButtonsProps {

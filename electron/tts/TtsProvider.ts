@@ -1,12 +1,8 @@
-export interface VoiceOption {
-  name: string;
-  ssmlGender: string;
-  languageCodes: string[];
-  provider: string;
-  [key: string]: any;
-}
+import type { Voice, VoiceOption } from "../../shared/types/tts.js";
+
+export type { Voice, VoiceOption } from "../../shared/types/tts.js";
 
 export interface TtsProvider {
-  getVoices(): Promise<VoiceOption[]>;
+  getVoices(): Promise<Voice[]>;
   generateSpeech(text: string, voiceOption?: VoiceOption): Promise<Uint8Array | Buffer | null>;
 }

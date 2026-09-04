@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import { app } from "electron";
-import type { TtsProvider, VoiceOption } from "./TtsProvider.js";
+import type { TtsProvider, Voice, VoiceOption } from "./TtsProvider.js";
 import { GcpTtsProvider } from "./GcpTtsProvider.js";
 import { LocalTtsProvider } from "./LocalTtsProvider.js";
 
@@ -17,8 +17,8 @@ export class TtsManager {
     this.providers["local"] = new LocalTtsProvider();
   }
 
-  async getVoices(): Promise<VoiceOption[]> {
-    const allVoices: VoiceOption[] = [];
+  async getVoices(): Promise<Voice[]> {
+    const allVoices: Voice[] = [];
 
     // Fetch from all registered providers
     for (const provider of Object.values(this.providers)) {

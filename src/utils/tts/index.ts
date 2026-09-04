@@ -1,12 +1,4 @@
-/**
- * Configuration options specifying the generated speech voice characteristics.
- */
-export interface VoiceOption {
-  name: string;
-  languageCodes: string[];
-  ssmlGender: string;
-  provider?: string;
-}
+import type { VoiceOption } from "../../../shared/types/tts";
 
 const RIFF_SIGNATURE = [0x52, 0x49, 0x46, 0x46] as const;
 

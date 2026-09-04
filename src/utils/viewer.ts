@@ -3,7 +3,7 @@ import {
   DEFAULT_SPEAKER_LABEL,
   DEFAULT_SPEAKER_VALUE,
 } from "../constants/speaker";
-import type { Voice } from "../types/voice";
+import type { Voice } from "../../shared/types/tts";
 
 export function getSpeakerOptions(mappings: Record<string, Voice>) {
   return [{ value: DEFAULT_SPEAKER_VALUE, label: DEFAULT_SPEAKER_LABEL }].concat(
