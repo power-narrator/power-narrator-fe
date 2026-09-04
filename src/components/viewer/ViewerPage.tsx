@@ -121,12 +121,17 @@ export function ViewerPage({
   }
 
   function updateActiveSlideSections(updater: (sections: NoteSection[]) => void) {
-    const sections = parseNotes(activeSlide.notes || "");
+    const currentSlide = slides[activeSlideIndex];
+    if (!currentSlide) {
+      return slides;
+    }
+
+    const sections = parseNotes(currentSlide.notes || "");
     updater(sections);
 
     const nextSlides = [...slides];
     nextSlides[activeSlideIndex] = {
-      ...nextSlides[activeSlideIndex],
+      ...currentSlide,
       notes: formatNotes(sections),
     };
 
@@ -230,9 +235,14 @@ export function ViewerPage({
     }
 
     const nextHistoryIndex = historyIndexRef.current - 1;
+    const nextSlides = history[nextHistoryIndex];
+    if (!nextSlides) {
+      return;
+    }
+
     historyIndexRef.current = nextHistoryIndex;
     setHistoryIndex(nextHistoryIndex);
-    setSlides(history[nextHistoryIndex]);
+    setSlides(nextSlides);
   }, [history]);
 
   const handleRedo = useCallback(() => {
@@ -241,9 +251,14 @@ export function ViewerPage({
     }
 
     const nextHistoryIndex = historyIndexRef.current + 1;
+    const nextSlides = history[nextHistoryIndex];
+    if (!nextSlides) {
+      return;
+    }
+
     historyIndexRef.current = nextHistoryIndex;
     setHistoryIndex(nextHistoryIndex);
-    setSlides(history[nextHistoryIndex]);
+    setSlides(nextSlides);
   }, [history]);
 
   useEffect(() => {
