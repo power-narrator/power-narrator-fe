@@ -15,7 +15,7 @@ export class LocalTtsProvider implements TtsProvider {
     ];
   }
 
-  async generateSpeech(text: string, voiceOption: VoiceOption | null): Promise<Uint8Array | null> {
+  async generateSpeech(text: string, voiceOption?: VoiceOption): Promise<Uint8Array | null> {
     const localUrl = process.env.LOCAL_TTS_URL || "http://localhost:59125/api/tts";
     const defaultVoice = process.env.LOCAL_TTS_VOICE || "en_UK/apope_low";
     const voiceName = voiceOption?.name;

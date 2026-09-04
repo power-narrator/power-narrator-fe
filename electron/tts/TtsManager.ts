@@ -35,7 +35,7 @@ export class TtsManager {
 
   async generateSpeech(
     text: string,
-    voiceOption: VoiceOption | null,
+    voiceOption?: VoiceOption,
     fallbackProviderName?: string,
   ): Promise<Uint8Array | null> {
     const providerName = voiceOption?.provider || fallbackProviderName || this.defaultProviderName;
