@@ -2,9 +2,7 @@
   "extends": "../tsconfig.node.json",
   "compilerOptions": {
     "noEmit": false,
-    "outDir": "../dist-electron",
-    "sourceMap": true,
-    "tsBuildInfoFile": "../node_modules/.tmp/tsconfig.electron.tsbuildinfo"
+    "outDir": "../dist-electron"
   },
   "include": ["**/*.ts", "**/*.cts"],
   "exclude": ["**/*.test.ts"]
