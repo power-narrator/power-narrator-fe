@@ -65,7 +65,7 @@ function parseSection(rawSection: RawNoteSection): NoteSection {
     };
   }
 
-  const speakerText = speakerMatch[2];
+  const speakerText = speakerMatch[2] ?? "";
   const leadingSpeakerWhitespace = speakerText.match(LEADING_WHITESPACE_PATTERN)?.[0] || "";
   const trailingSpeakerWhitespace = speakerText.match(TRAILING_WHITESPACE_PATTERN)?.[0] || "";
 
