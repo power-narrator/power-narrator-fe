@@ -39,7 +39,7 @@ export class GcpTtsProvider implements TtsProvider {
     return voices;
   }
 
-  async generateSpeech(text: string, voiceOption: VoiceOption | null): Promise<Uint8Array | null> {
+  async generateSpeech(text: string, voiceOption?: VoiceOption): Promise<Uint8Array | null> {
     const keyPath = this.keyPathProvider();
     if (!keyPath) {
       throw new Error("GCP TTS requested but GOOGLE_APPLICATION_CREDENTIALS is not set");

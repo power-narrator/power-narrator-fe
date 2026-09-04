@@ -8,8 +8,5 @@ export interface VoiceOption {
 
 export interface TtsProvider {
   getVoices(): Promise<VoiceOption[]>;
-  generateSpeech(
-    text: string,
-    voiceOption: VoiceOption | null,
-  ): Promise<Uint8Array | Buffer | null>;
+  generateSpeech(text: string, voiceOption?: VoiceOption): Promise<Uint8Array | Buffer | null>;
 }

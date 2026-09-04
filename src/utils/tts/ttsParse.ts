@@ -4,7 +4,7 @@ import type { VoiceOption } from "./index";
  * Represents a parsed audio segment containing text and its assigned voice characteristics.
  */
 export interface AudioSegment {
-  voice: VoiceOption | null;
+  voice: VoiceOption | undefined;
   text: string;
 }
 
@@ -30,7 +30,7 @@ export const parseTtsSegments = (
 
   const parts = textWithoutSeparators.split(tagRegex);
 
-  let currentVoice = voiceOption || mappings["_default_"] || null;
+  let currentVoice = voiceOption ?? mappings["_default_"];
 
   const segments: AudioSegment[] = [];
 
