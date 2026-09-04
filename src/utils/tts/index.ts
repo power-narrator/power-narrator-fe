@@ -1,12 +1,5 @@
 import type { VoiceOption } from "../../../shared/types/tts";
 
-const RIFF_SIGNATURE = [0x52, 0x49, 0x46, 0x46] as const;
-
-function getAudioMimeType(audioData: Uint8Array): "audio/wav" | "audio/mp3" {
-  const isWav = RIFF_SIGNATURE.every((byte, index) => audioData[index] === byte);
-  return isWav ? "audio/wav" : "audio/mp3";
-}
-
 function getCacheKey(text: string, voiceOption?: VoiceOption): string {
   if (!voiceOption) {
     return `${text}_default`;
@@ -32,7 +25,7 @@ export const generateAudio = async (text: string, voiceOption?: VoiceOption): Pr
 
   try {
     const buffer = await getAudioBuffer(text, voiceOption);
-    const blob = new Blob([buffer], { type: getAudioMimeType(new Uint8Array(buffer)) });
+    const blob = new Blob([buffer]);
     const url = URL.createObjectURL(blob);
     generateAudio.cache.set(key, url);
     return url;
