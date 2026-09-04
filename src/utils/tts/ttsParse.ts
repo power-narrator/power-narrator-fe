@@ -35,42 +35,36 @@ export const parseTtsSegments = (
   const segments: AudioSegment[] = [];
 
   if (parts.length === 1) {
-    segments.push({ voice: currentVoice, text: parts[0] ?? "" });
+    segments.push({ voice: currentVoice, text: textWithoutSeparators });
   } else {
-    let i = 0;
-    while (i < parts.length) {
-      const textSegment = parts[i] ?? "";
-
-      if (textSegment.trim().length > 0) {
-        segments.push({ voice: currentVoice, text: textSegment });
-      }
-
-      if (i + 1 < parts.length) {
-        const tag = (parts[i + 1] ?? "").trim();
-
-        if (mappings[tag]) {
-          currentVoice = mappings[tag];
-          if (!currentVoice || !currentVoice.name) {
-            throw new Error(
-              `Speaker alias '[${tag}]' exists but has no voice assigned. Please configure it in Settings.`,
-            );
-          }
-        } else if (tag.includes(":")) {
-          const tagParts = tag.split(":");
-          const provider = tagParts[0];
-          const name = tagParts[1];
-          currentVoice = {
-            name,
-            provider,
-            languageCodes: ["en-US"],
-            ssmlGender: "NEUTRAL",
-          } as VoiceOption;
-        } else {
-          throw new Error(`Speaker alias '[${tag}]' is not configured. Please add it in Settings.`);
+    for (const [index, part] of parts.entries()) {
+      if (index % 2 === 0) {
+        if (part.trim().length > 0) {
+          segments.push({ voice: currentVoice, text: part });
         }
+        continue;
       }
 
-      i += 2;
+      const tag = part.trim();
+
+      if (mappings[tag]) {
+        currentVoice = mappings[tag];
+        if (!currentVoice.name) {
+          throw new Error(
+            `Speaker alias '[${tag}]' exists but has no voice assigned. Please configure it in Settings.`,
+          );
+        }
+      } else if (tag.includes(":")) {
+        const [provider, name] = tag.split(":");
+        currentVoice = {
+          name,
+          provider,
+          languageCodes: ["en-US"],
+          ssmlGender: "NEUTRAL",
+        } as VoiceOption;
+      } else {
+        throw new Error(`Speaker alias '[${tag}]' is not configured. Please add it in Settings.`);
+      }
     }
   }
 

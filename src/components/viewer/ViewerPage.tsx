@@ -5,7 +5,7 @@ import type { Slide, SlideElectronResult, SlidesElectronResult } from "../../typ
 import { useSettings } from "../../context/useSettings";
 import { getErrorMessage } from "../../utils/errors";
 import type { NoteSection } from "../../types/notes";
-import { formatNotes, parseNotes } from "../../utils/notes";
+import { formatNotes, getEffectiveSpeaker, parseNotes } from "../../utils/notes";
 import { getAudioBuffer } from "../../utils/tts";
 import { resolveSpeakerVoice } from "../../utils/viewer";
 import { NotesSectionList } from "./NotesSectionList";
@@ -15,7 +15,6 @@ import { SlideThumbnailList } from "./SlideThumbnailList";
 import { SsmlToolbar } from "./SsmlToolbar";
 import { ViewerHeader, type ViewerHeaderActionKey } from "./ViewerHeader";
 import { Split } from "@gfazioli/mantine-split-pane";
-import { getEffectiveSpeaker } from "../../utils/notes";
 
 interface ViewerPageProps {
   slides: Slide[];
@@ -120,14 +119,16 @@ export function ViewerPage({
     setHistoryIndex(nextHistoryIndex);
   }
 
-  function updateActiveSlideSections(updater: (sections: NoteSection[]) => void) {
+  function updateActiveSlideSections(updater: (sections: NoteSection[]) => boolean) {
     const currentSlide = slides[activeSlideIndex];
     if (!currentSlide) {
-      return slides;
+      return undefined;
     }
 
     const sections = parseNotes(currentSlide.notes || "");
-    updater(sections);
+    if (!updater(sections)) {
+      return undefined;
+    }
 
     const nextSlides = [...slides];
     nextSlides[activeSlideIndex] = {
@@ -305,7 +306,7 @@ export function ViewerPage({
     const nextSlides = updateActiveSlideSections((sections) => {
       const activeSection = sections[activeSectionIndex];
       if (!activeSection) {
-        return;
+        return false;
       }
 
       const text = activeSection.text || "";
@@ -313,7 +314,12 @@ export function ViewerPage({
       const selection = text.substring(selectionStart, selectionEnd);
       const after = text.substring(selectionEnd);
       activeSection.text = before + startTag + selection + endTag + after;
+      return true;
     });
+
+    if (!nextSlides) {
+      return;
+    }
 
     pendingSelectionRef.current = {
       sectionIndex: activeSectionIndex,
@@ -330,10 +336,18 @@ export function ViewerPage({
 
   const handleSectionTextChange = (index: number, value: string) => {
     const nextSlides = updateActiveSlideSections((sections) => {
-      if (sections[index]) {
-        sections[index].text = value;
+      const section = sections[index];
+      if (!section) {
+        return false;
       }
+
+      section.text = value;
+      return true;
     });
+
+    if (!nextSlides) {
+      return;
+    }
 
     clearDebounce();
     debounceRef.current = setTimeout(() => {
@@ -344,10 +358,19 @@ export function ViewerPage({
 
   const handleSpeakerChange = (index: number, speaker: string | null) => {
     const nextSlides = updateActiveSlideSections((sections) => {
-      if (sections[index]) {
-        sections[index].speaker = speaker || "";
+      const section = sections[index];
+      if (!section) {
+        return false;
       }
+
+      section.speaker = speaker || "";
+      return true;
     });
+
+    if (!nextSlides) {
+      return;
+    }
+
     pushToHistory(nextSlides);
   };
 
@@ -355,7 +378,13 @@ export function ViewerPage({
     const newSectionIndex = activeSections.length;
     const nextSlides = updateActiveSlideSections((sections) => {
       sections.push({ speaker: "", text: "" });
+      return true;
     });
+
+    if (!nextSlides) {
+      return;
+    }
+
     pushToHistory(nextSlides);
     setActiveSectionIndex(newSectionIndex);
   };
@@ -363,8 +392,18 @@ export function ViewerPage({
   const handleDeleteSection = (index: number) => {
     const nextSectionCount = Math.max(0, activeSections.length - 1);
     const nextSlides = updateActiveSlideSections((sections) => {
+      if (!sections[index]) {
+        return false;
+      }
+
       sections.splice(index, 1);
+      return true;
     });
+
+    if (!nextSlides) {
+      return;
+    }
+
     pushToHistory(nextSlides);
 
     if (activeSectionIndex >= nextSectionCount) {
