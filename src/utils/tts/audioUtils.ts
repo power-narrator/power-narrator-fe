@@ -8,53 +8,47 @@
  * @returns A single Uint8Array containing the concatenated audio data.
  */
 export function concatUint8Arrays(arrays: Uint8Array[]): Uint8Array {
-  if (arrays.length === 0) return new Uint8Array(0);
+  const [firstArray] = arrays;
+  if (!firstArray) return new Uint8Array(0);
 
   const isWav =
-    arrays[0].length >= 44 &&
-    arrays[0][0] === 0x52 &&
-    arrays[0][1] === 0x49 &&
-    arrays[0][2] === 0x46 &&
-    arrays[0][3] === 0x46;
+    firstArray.length >= 44 &&
+    new DataView(firstArray.buffer, firstArray.byteOffset, firstArray.byteLength).getUint32(
+      0,
+      false,
+    ) === 0x52494646;
 
   if (isWav) {
-    let totalDataLength = 0;
     const mapped = arrays.map((arr) => {
-      let offset = 12;
-      let dataOffset = 44;
-      let dataLen = arr.length - 44;
+      const view = new DataView(arr.buffer, arr.byteOffset, arr.byteLength);
+      let chunkOffset = 12;
+      let dataOffset = Math.min(44, arr.length);
+      let dataLen = Math.max(0, arr.length - dataOffset);
 
-      while (offset < arr.length - 8) {
-        if (
-          arr[offset] === 0x64 &&
-          arr[offset + 1] === 0x61 &&
-          arr[offset + 2] === 0x74 &&
-          arr[offset + 3] === 0x61
-        ) {
-          dataLen =
-            arr[offset + 4] |
-            (arr[offset + 5] << 8) |
-            (arr[offset + 6] << 16) |
-            (arr[offset + 7] << 24);
-          dataOffset = offset + 8;
+      while (chunkOffset + 8 <= arr.length) {
+        const chunkName = view.getUint32(chunkOffset, false);
+        const chunkLen = view.getUint32(chunkOffset + 4, true);
+
+        if (chunkName === 0x64617461) {
+          dataOffset = chunkOffset + 8;
+          dataLen = Math.min(chunkLen, arr.length - dataOffset);
           break;
         }
-        const chunkLen =
-          arr[offset + 4] |
-          (arr[offset + 5] << 8) |
-          (arr[offset + 6] << 16) |
-          (arr[offset + 7] << 24);
-        offset += 8 + chunkLen;
+
+        chunkOffset += 8 + chunkLen;
       }
-      return { headerLen: dataOffset, dataLen: dataLen, arr };
+
+      return { headerLen: dataOffset, dataLen, arr };
     });
 
-    totalDataLength = mapped.reduce((sum, item) => sum + item.dataLen, 0);
+    const totalDataLength = mapped.reduce((sum, item) => sum + item.dataLen, 0);
+    const [firstMapped] = mapped;
+    if (!firstMapped) return new Uint8Array(0);
 
-    const firstHeaderLen = mapped[0].headerLen;
+    const firstHeaderLen = firstMapped.headerLen;
     const out = new Uint8Array(firstHeaderLen + totalDataLength);
 
-    out.set(mapped[0].arr.slice(0, firstHeaderLen), 0);
+    out.set(firstMapped.arr.slice(0, firstHeaderLen), 0);
 
     const riffSize = firstHeaderLen + totalDataLength - 8;
     out[4] = riffSize & 0xff;
