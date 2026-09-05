@@ -21,18 +21,14 @@ export class LocalTtsProvider implements TtsProvider {
     const voiceName = voiceOption?.name;
     const voice = voiceName && voiceName !== "default" ? voiceName : defaultVoice;
 
-    const ssmlBody = SsmlUtil.formatForLocal(text, voice);
-
     const url = new URL(localUrl);
-    url.searchParams.append("voice", voice);
-    url.searchParams.append("ssml", "true");
-
-    const sanitizedText = ssmlBody.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
+    url.searchParams.set("voice", voice);
+    url.searchParams.set("ssml", "true");
 
     const resp = await fetch(url.toString(), {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
-      body: sanitizedText,
+      body: this.formatBody(text),
     });
 
     if (!resp.ok) {
@@ -41,5 +37,9 @@ export class LocalTtsProvider implements TtsProvider {
 
     const arrayBuffer = await resp.arrayBuffer();
     return new Uint8Array(arrayBuffer);
+  }
+
+  private formatBody(text: string): string {
+    return SsmlUtil.removeInvalidXmlControlCharacters(SsmlUtil.ensureSpeakElement(text));
   }
 }

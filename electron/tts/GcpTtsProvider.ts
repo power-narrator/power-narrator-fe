@@ -2,6 +2,33 @@ import { TextToSpeechClient } from "@google-cloud/text-to-speech";
 import type { TtsProvider, Voice } from "./TtsProvider.js";
 import { SsmlUtil } from "./SsmlUtil.js";
 
+type GcpVoice = {
+  name?: string | null;
+  languageCodes?: string[] | null;
+  ssmlGender?: string | number | null;
+};
+
+function normalizeVoices(voices: GcpVoice[]): Voice[] {
+  return voices.flatMap((voice) => {
+    if (
+      !voice.name?.includes("Chirp3-HD") ||
+      !voice.languageCodes?.length ||
+      voice.ssmlGender == null
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        name: voice.name,
+        languageCodes: [...voice.languageCodes],
+        ssmlGender: String(voice.ssmlGender),
+        provider: "gcp",
+      },
+    ];
+  });
+}
+
 export class GcpTtsProvider implements TtsProvider {
   constructor(private keyPathProvider: () => string | undefined) {}
 
@@ -12,26 +39,15 @@ export class GcpTtsProvider implements TtsProvider {
       return [];
     }
 
-    const options: any = { keyFilename: keyPath };
-    const client = new TextToSpeechClient(options);
+    const client = new TextToSpeechClient({ keyFilename: keyPath });
     const voices: Voice[] = [];
 
     try {
       const [gbResult] = await client.listVoices({ languageCode: "en-GB" });
-      if (gbResult.voices) {
-        const gbGcpVoices = gbResult.voices
-          .filter((v) => v.name && v.name.includes("Chirp3-HD"))
-          .map((v) => ({ ...v, provider: "gcp" })) as Voice[];
-        voices.push(...gbGcpVoices);
-      }
+      voices.push(...normalizeVoices(gbResult.voices ?? []));
 
       const [usResult] = await client.listVoices({ languageCode: "en-US" });
-      if (usResult.voices) {
-        const usGcpVoices = usResult.voices
-          .filter((v) => v.name && v.name.includes("Chirp3-HD"))
-          .map((v) => ({ ...v, provider: "gcp" })) as Voice[];
-        voices.push(...usGcpVoices);
-      }
+      voices.push(...normalizeVoices(usResult.voices ?? []));
     } catch (error) {
       console.error("Failed to list GCP voices:", error);
     }
@@ -45,21 +61,24 @@ export class GcpTtsProvider implements TtsProvider {
       throw new Error("GCP TTS requested but GOOGLE_APPLICATION_CREDENTIALS is not set");
     }
 
-    const options: any = { keyFilename: keyPath };
-    const client = new TextToSpeechClient(options);
-
-    const formatted = SsmlUtil.formatForGcp(text);
-    const input: any = formatted.isSsml ? { ssml: formatted.content } : { text: formatted.content };
-
-    const request: any = {
-      input: input,
+    const client = new TextToSpeechClient({ keyFilename: keyPath });
+    const [response] = await client.synthesizeSpeech({
+      input: this.formatInput(text),
       voice: voiceOption
         ? { languageCode: voiceOption.languageCodes[0], name: voiceOption.name }
         : { languageCode: "en-US", name: "en-US-Journey-F" },
       audioConfig: { audioEncoding: "MP3" },
-    };
+    });
+    if (!response.audioContent) {
+      return null;
+    }
 
-    const [response] = await client.synthesizeSpeech(request);
-    return response.audioContent ? (response.audioContent as Uint8Array) : null;
+    return typeof response.audioContent === "string"
+      ? Buffer.from(response.audioContent, "base64")
+      : response.audioContent;
+  }
+
+  private formatInput(text: string): { text: string } | { ssml: string } {
+    return SsmlUtil.isSsml(text) ? { ssml: SsmlUtil.ensureSpeakElement(text) } : { text };
   }
 }
