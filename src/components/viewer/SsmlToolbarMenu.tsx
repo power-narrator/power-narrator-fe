@@ -11,7 +11,7 @@ export interface SsmlToolbarMenuItem {
 interface SsmlToolbarMenuProps {
   icon: ReactNode;
   menuLabel?: string;
-  items?: SsmlToolbarMenuItem[];
+  items: SsmlToolbarMenuItem[];
   closeOnItemClick?: boolean;
   children?: ReactNode;
 }
@@ -19,7 +19,7 @@ interface SsmlToolbarMenuProps {
 export function SsmlToolbarMenu({
   icon,
   menuLabel,
-  items = [],
+  items,
   closeOnItemClick = true,
   children,
 }: SsmlToolbarMenuProps) {
