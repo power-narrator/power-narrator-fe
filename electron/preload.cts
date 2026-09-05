@@ -12,7 +12,7 @@ import type {
   SlidesPptResult,
   VideoPptResult,
 } from "./platform/types.js";
-import type { GenerateSpeechRequest, Voice } from "../shared/types/tts.js";
+import type { GenerateSpeechRequest, TtsProviderId, Voice } from "../shared/types/tts.js";
 
 const electronAPI = {
   convertPptx: (filePath: string): Promise<SlidesPptResult> =>
@@ -33,7 +33,7 @@ const electronAPI = {
     ipcRenderer.invoke("get-speaker-mappings"),
   setSpeakerMappings: (mappings: Record<string, Voice>): Promise<BasicPptResult> =>
     ipcRenderer.invoke("set-speaker-mappings", mappings),
-  getTtsProvider: (): Promise<"gcp" | "local"> => ipcRenderer.invoke("get-tts-provider"),
+  getTtsProvider: (): Promise<TtsProviderId> => ipcRenderer.invoke("get-tts-provider"),
   getXmlCliEnabled: (): Promise<boolean> => ipcRenderer.invoke("get-xml-cli-enabled"),
   setXmlCliEnabled: (enabled: boolean): Promise<BasicPptResult> =>
     ipcRenderer.invoke("set-xml-cli-enabled", enabled),

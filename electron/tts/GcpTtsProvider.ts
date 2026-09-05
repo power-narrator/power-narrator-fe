@@ -1,5 +1,5 @@
 import { TextToSpeechClient } from "@google-cloud/text-to-speech";
-import type { TtsProvider, Voice, VoiceOption } from "./TtsProvider.js";
+import type { TtsProvider, Voice } from "./TtsProvider.js";
 import { SsmlUtil } from "./SsmlUtil.js";
 
 export class GcpTtsProvider implements TtsProvider {
@@ -39,7 +39,7 @@ export class GcpTtsProvider implements TtsProvider {
     return voices;
   }
 
-  async generateSpeech(text: string, voiceOption?: VoiceOption): Promise<Uint8Array | null> {
+  async generateSpeech(text: string, voiceOption?: Voice): Promise<Uint8Array | null> {
     const keyPath = this.keyPathProvider();
     if (!keyPath) {
       throw new Error("GCP TTS requested but GOOGLE_APPLICATION_CREDENTIALS is not set");

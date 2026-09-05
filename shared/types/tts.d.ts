@@ -1,15 +1,13 @@
-export interface VoiceOption {
+export type TtsProviderId = "gcp" | "local";
+
+export interface Voice {
   name: string;
   languageCodes: string[];
   ssmlGender: string;
-  provider?: string;
+  provider: TtsProviderId;
 }
 
-export interface Voice extends VoiceOption {
-  provider: string;
-}
-
-export interface GenerateSpeechRequest {
+export type GenerateSpeechRequest = {
   text: string;
-  voiceOption?: VoiceOption;
-}
+  voiceOption?: Voice;
+};

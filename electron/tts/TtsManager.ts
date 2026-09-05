@@ -2,47 +2,45 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import { app } from "electron";
-import type { TtsProvider, Voice, VoiceOption } from "./TtsProvider.js";
-import { GcpTtsProvider } from "./GcpTtsProvider.js";
-import { LocalTtsProvider } from "./LocalTtsProvider.js";
+import type { TtsProviderId, TtsProviderRegistry, Voice } from "./TtsProvider.js";
 
 export class TtsManager {
-  private providers: Record<string, TtsProvider> = {};
+  private readonly providers: TtsProviderRegistry;
+  readonly defaultProviderId: TtsProviderId;
 
-  constructor(
-    private defaultProviderName: string,
-    gcpKeyPathProvider: () => string | undefined,
-  ) {
-    this.providers["gcp"] = new GcpTtsProvider(gcpKeyPathProvider);
-    this.providers["local"] = new LocalTtsProvider();
+  constructor(providers: TtsProviderRegistry, configuredDefaultProvider: string) {
+    const defaultProviderId = Array.from(providers.keys()).find(
+      (providerId) => providerId === configuredDefaultProvider,
+    );
+    if (!defaultProviderId) {
+      throw new Error(`TTS Provider '${configuredDefaultProvider}' is not registered.`);
+    }
+
+    this.providers = new Map(providers);
+    this.defaultProviderId = defaultProviderId;
   }
 
   async getVoices(): Promise<Voice[]> {
-    const allVoices: Voice[] = [];
+    const voiceLists = await Promise.all(
+      Array.from(this.providers, async ([providerId, provider]) => {
+        try {
+          return await provider.getVoices();
+        } catch (error) {
+          console.error(`Failed fetching voices from provider '${providerId}':`, error);
+          return [];
+        }
+      }),
+    );
 
-    // Fetch from all registered providers
-    for (const provider of Object.values(this.providers)) {
-      try {
-        const voices = await provider.getVoices();
-        allVoices.push(...voices);
-      } catch (error) {
-        console.error("Failed fetching voices from provider", error);
-      }
-    }
-
-    return allVoices;
+    return voiceLists.flat();
   }
 
-  async generateSpeech(
-    text: string,
-    voiceOption?: VoiceOption,
-    fallbackProviderName?: string,
-  ): Promise<Uint8Array | null> {
-    const providerName = voiceOption?.provider || fallbackProviderName || this.defaultProviderName;
-    const provider = this.providers[providerName];
+  async generateSpeech(text: string, voiceOption?: Voice): Promise<Uint8Array | null> {
+    const providerId = voiceOption?.provider ?? this.defaultProviderId;
+    const provider = this.providers.get(providerId);
 
     if (!provider) {
-      throw new Error(`TTS Provider '${providerName}' is not registered.`);
+      throw new Error(`TTS Provider '${providerId}' is not registered.`);
     }
 
     const cacheDir = path.join(app.getPath("userData"), "tts_cache");
@@ -53,7 +51,7 @@ export class TtsManager {
     const voiceStr = voiceOption ? JSON.stringify(voiceOption) : "default";
     const hash = crypto
       .createHash("sha256")
-      .update(text + voiceStr + providerName)
+      .update(text + voiceStr + providerId)
       .digest("hex");
     const cachePath = path.join(cacheDir, `${hash}.mp3`);
 
@@ -75,9 +73,9 @@ export class TtsManager {
       }
 
       return audioData;
-    } catch (error: any) {
-      console.error(`TTS generation failed via ${providerName}:`, error);
-      throw new Error(error.message || "Unknown TTS error");
+    } catch (error: unknown) {
+      console.error(`TTS generation failed via ${providerId}:`, error);
+      throw new Error(error instanceof Error ? error.message : "Unknown TTS error");
     }
   }
 }

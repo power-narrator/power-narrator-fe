@@ -10,6 +10,9 @@ import { WindowsPptProvider } from "./platform/WindowsPptProvider.js";
 import { XmlPptProvider } from "./platform/XmlPptProvider.js";
 import { APP_NAME } from "./platform/helpers.js";
 import { TtsManager } from "./tts/TtsManager.js";
+import { GcpTtsProvider } from "./tts/GcpTtsProvider.js";
+import { LocalTtsProvider } from "./tts/LocalTtsProvider.js";
+import type { TtsProvider, TtsProviderId } from "./tts/TtsProvider.js";
 import type {
   GenerateVideoRequest,
   PlaySlideRequest,
@@ -55,7 +58,13 @@ function getGcpKeyPath(): string | undefined {
   return store.get("gcpKeyPath") as string;
 }
 
-const ttsManager = new TtsManager(process.env.TTS_PROVIDER ?? "gcp", getGcpKeyPath);
+const ttsManager = new TtsManager(
+  new Map<TtsProviderId, TtsProvider>([
+    ["gcp", new GcpTtsProvider(getGcpKeyPath)],
+    ["local", new LocalTtsProvider()],
+  ]),
+  process.env.TTS_PROVIDER ?? "gcp",
+);
 
 const nativeProvider: (PptProvider & NativePlatformProvider) | null =
   process.platform === "darwin"
@@ -239,7 +248,7 @@ ipcMain.handle("generate-video", async (_, { filePath, videoOutputPath }: Genera
 // Settings Handlers
 // ==========================================
 ipcMain.handle("get-tts-provider", async () => {
-  return process.env.TTS_PROVIDER ?? "gcp";
+  return ttsManager.defaultProviderId;
 });
 
 ipcMain.handle("get-speaker-mappings", async () => {
