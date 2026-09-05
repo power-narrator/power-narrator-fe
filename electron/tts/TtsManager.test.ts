@@ -93,6 +93,21 @@ describe("TtsManager", () => {
     );
   });
 
+  it("rejects a supplied runtime voice without a provider instead of using the default", async () => {
+    const gcp = createProvider();
+    const manager = new TtsManager(new Map([["gcp", gcp]]), "gcp");
+    const voiceWithoutProvider = {
+      name: "legacy-voice",
+      languageCodes: ["en-US"],
+      ssmlGender: "NEUTRAL",
+    } as unknown as Voice;
+
+    await expect(
+      manager.generateSpeech("Malformed persisted voice", voiceWithoutProvider),
+    ).rejects.toThrow("TTS Provider 'undefined' is not registered.");
+    expect(gcp.generateSpeech).not.toHaveBeenCalled();
+  });
+
   it("loads providers concurrently and retains registry order", async () => {
     let releaseGcp: (voices: Voice[]) => void = () => {};
     let releaseLocal: (voices: Voice[]) => void = () => {};
