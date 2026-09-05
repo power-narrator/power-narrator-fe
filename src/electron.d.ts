@@ -1,4 +1,4 @@
-import type { GenerateSpeechRequest, Voice } from "../shared/types/tts";
+import type { GenerateSpeechRequest, TtsProviderId, Voice } from "../shared/types/tts";
 import type {
   BasicElectronResult,
   ConvertResponse,
@@ -30,7 +30,7 @@ declare global {
       setInsertMethod: (method: string) => Promise<void>;
       getSpeakerMappings: () => Promise<Record<string, Voice>>;
       setSpeakerMappings: (mappings: Record<string, Voice>) => Promise<BasicElectronResult>;
-      getTtsProvider: () => Promise<"gcp" | "local">;
+      getTtsProvider: () => Promise<TtsProviderId>;
       getXmlCliEnabled: () => Promise<boolean>;
       setXmlCliEnabled: (enabled: boolean) => Promise<BasicElectronResult>;
       insertAudio: (

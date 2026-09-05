@@ -1,11 +1,11 @@
-import type { VoiceOption } from "../../../shared/types/tts";
+import type { Voice } from "../../../shared/types/tts";
 
-function getCacheKey(text: string, voiceOption?: VoiceOption): string {
+function getCacheKey(text: string, voiceOption?: Voice): string {
   if (!voiceOption) {
     return `${text}_default`;
   }
 
-  return `${text}_${voiceOption.provider ?? "default"}_${voiceOption.name}`;
+  return `${text}_${voiceOption.provider}_${voiceOption.name}`;
 }
 
 /**
@@ -13,10 +13,10 @@ function getCacheKey(text: string, voiceOption?: VoiceOption): string {
  * Extensively caches requests to prevent redundant API calls for identical phrases.
  *
  * @param text - The text to be synthesized into speech.
- * @param voiceOption - The VoiceOption indicating the desired speaker characteristics.
+ * @param voiceOption - The voice indicating the desired speaker characteristics.
  * @returns A promise resolving to a local blob URL of the audio file.
  */
-export const generateAudio = async (text: string, voiceOption?: VoiceOption): Promise<string> => {
+export const generateAudio = async (text: string, voiceOption?: Voice): Promise<string> => {
   const key = getCacheKey(text, voiceOption);
 
   if (generateAudio.cache.has(key)) {
@@ -39,13 +39,10 @@ export const generateAudio = async (text: string, voiceOption?: VoiceOption): Pr
  * Generates one audio file for the complete section text.
  *
  * @param text - The full section text to synthesize.
- * @param voiceOption - The VoiceOption selected for the section.
+ * @param voiceOption - The voice selected for the section.
  * @returns A promise resolving to the generated audio bytes.
  */
-export const getAudioBuffer = async (
-  text: string,
-  voiceOption?: VoiceOption,
-): Promise<ArrayBuffer> => {
+export const getAudioBuffer = async (text: string, voiceOption?: Voice): Promise<ArrayBuffer> => {
   const result = await window.electronAPI.generateSpeech({ text, voiceOption });
   return Uint8Array.from(result).buffer;
 };

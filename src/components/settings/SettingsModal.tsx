@@ -15,7 +15,7 @@ import { IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { DEFAULT_SPEAKER_KEY } from "../../constants/speaker";
 import { useSettings } from "../../context/useSettings";
-import type { Voice } from "../../../shared/types/tts";
+import type { TtsProviderId, Voice } from "../../../shared/types/tts";
 import { VoiceSelector } from "./VoiceSelector";
 
 interface SettingsModalProps {
@@ -23,7 +23,9 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-const EMPTY_VOICE: Voice = { name: "", languageCodes: [], ssmlGender: "", provider: "" };
+function createEmptyVoice(provider: TtsProviderId): Voice {
+  return { name: "", languageCodes: [], ssmlGender: "", provider };
+}
 
 export function SettingsModal({ opened, onClose }: SettingsModalProps) {
   const [keyPath, setKeyPath] = useState<string | null>(null);
@@ -31,7 +33,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
   const [newAlias, setNewAlias] = useState("");
   const [voices, setVoices] = useState<Voice[]>([]);
   const [xmlCliEnabled, setXmlCliEnabled] = useState(false);
-  const [providerMode, setProviderMode] = useState<"gcp" | "local">("local");
+  const [providerMode, setProviderMode] = useState<TtsProviderId>("local");
   const { mappings, saveMappings } = useSettings();
   const mappedVoices = Object.entries(mappings).filter(([key]) => key !== DEFAULT_SPEAKER_KEY);
 
@@ -73,7 +75,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
       return;
     }
 
-    void saveMappings({ ...mappings, [trimmedAlias]: EMPTY_VOICE });
+    void saveMappings({ ...mappings, [trimmedAlias]: createEmptyVoice(providerMode) });
     setNewAlias("");
   };
 
