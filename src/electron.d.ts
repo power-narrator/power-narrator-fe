@@ -58,6 +58,8 @@ declare global {
       playSlide: (payload: PlaySlidePayload) => Promise<BasicElectronResult>;
       reloadSlide: (payload: ReloadSlidePayload) => Promise<SlideElectronResult>;
       getVideoSavePath: () => Promise<string | null>;
+      setHasUnsavedNarrationChanges: (hasChanges: boolean) => void;
+      confirmDiscardNarrationChanges: () => Promise<boolean>;
     };
   }
 }

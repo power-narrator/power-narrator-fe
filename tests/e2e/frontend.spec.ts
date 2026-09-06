@@ -56,6 +56,11 @@ type ConvertPptxCall = {
   filePath: string;
 };
 
+type ReloadSlideCall = {
+  filePath: string;
+  slideIndex: number;
+};
+
 type SaveNotesCall = {
   filePath: string;
   slides: Array<{ index: number; notes: string }>;
@@ -64,6 +69,14 @@ type SaveNotesCall = {
 type InsertAudioCall = {
   filePath: string;
   slidesAudio: Array<{ index: number; sectionIndex: number; audioData: Uint8Array }>;
+};
+
+type DiscardConfirmationTestGlobals = typeof globalThis & {
+  __discardConfirmationCalls: unknown[];
+  __shouldDiscardNarrationChanges: boolean;
+  __installDiscardNarrationChangesTestAdapter: (
+    adapter: (options: unknown) => Promise<boolean>,
+  ) => void;
 };
 
 let electronApp: ElectronApplication;
@@ -83,6 +96,17 @@ async function launchTestApp() {
 async function installMockIpcHandlers(app: ElectronApplication) {
   await app.evaluate(
     async ({ ipcMain }, { testFilePath, mockSlides, mockVoices, tinyFakeAudioBytes }) => {
+      const discardConfirmationGlobals = globalThis as DiscardConfirmationTestGlobals;
+      discardConfirmationGlobals.__discardConfirmationCalls = [];
+      discardConfirmationGlobals.__shouldDiscardNarrationChanges = false;
+      const installDiscardConfirmationAdapter =
+        discardConfirmationGlobals.__installDiscardNarrationChangesTestAdapter;
+      installDiscardConfirmationAdapter(async (options) => {
+        const globals = globalThis as DiscardConfirmationTestGlobals;
+        globals.__discardConfirmationCalls.push(options);
+        return globals.__shouldDiscardNarrationChanges;
+      });
+
       ipcMain.removeHandler("select-file");
       ipcMain.handle("select-file", async () => testFilePath);
 
@@ -99,6 +123,22 @@ async function installMockIpcHandlers(app: ElectronApplication) {
         return {
           success: true,
           slides: mockSlides,
+        };
+      });
+
+      ipcMain.removeHandler("reload-slide");
+      (globalThis as typeof globalThis & { __reloadSlideCalls?: unknown[] }).__reloadSlideCalls =
+        [];
+      ipcMain.handle("reload-slide", async (_, { filePath, slideIndex }) => {
+        (
+          globalThis as typeof globalThis & {
+            __reloadSlideCalls: unknown[];
+          }
+        ).__reloadSlideCalls.push({ filePath, slideIndex });
+
+        return {
+          success: true,
+          slide: mockSlides[slideIndex - 1],
         };
       });
 
@@ -162,6 +202,14 @@ async function installMockIpcHandlers(app: ElectronApplication) {
       const deterministicFakeTtsAdapter = {
         supportsProvider: () => true,
         generateSpeech: async (text: string, voiceOption: Voice) => {
+          const synthesisGlobals = globalThis as typeof globalThis & {
+            __failNextNarrationSynthesis?: boolean;
+          };
+          if (synthesisGlobals.__failNextNarrationSynthesis) {
+            synthesisGlobals.__failNextNarrationSynthesis = false;
+            throw new Error("narration synthesis failed");
+          }
+
           (
             globalThis as typeof globalThis & {
               __generatedSpeechCalls: unknown[];
@@ -257,6 +305,37 @@ async function getConvertPptxCalls(): Promise<ConvertPptxCall[]> {
   });
 }
 
+async function getReloadSlideCalls(): Promise<ReloadSlideCall[]> {
+  return electronApp.evaluate(() => {
+    return (
+      globalThis as typeof globalThis & {
+        __reloadSlideCalls: ReloadSlideCall[];
+      }
+    ).__reloadSlideCalls;
+  });
+}
+
+async function getDiscardConfirmationCalls(): Promise<unknown[]> {
+  return electronApp.evaluate(() => {
+    return (globalThis as DiscardConfirmationTestGlobals).__discardConfirmationCalls;
+  });
+}
+
+async function setShouldDiscardNarrationChanges(shouldDiscard: boolean) {
+  await electronApp.evaluate((_, nextValue) => {
+    (globalThis as DiscardConfirmationTestGlobals).__shouldDiscardNarrationChanges = nextValue;
+  }, shouldDiscard);
+}
+
+async function attemptCloseAndKeepEditing(
+  attemptClose: () => Promise<unknown>,
+  expectedConfirmations: number,
+) {
+  await attemptClose();
+  await expect.poll(getDiscardConfirmationCalls).toHaveLength(expectedConfirmations);
+  await expect(notesEditor()).toHaveValue("Unsaved close warning");
+}
+
 async function getSaveNotesCalls(): Promise<SaveNotesCall[]> {
   return electronApp.evaluate(() => {
     return (
@@ -291,19 +370,25 @@ async function resetCapturedIpcCalls() {
   await electronApp.evaluate((_, mockVoices) => {
     const globals = globalThis as typeof globalThis & {
       __convertPptxCalls: unknown[];
+      __discardConfirmationCalls: unknown[];
+      __reloadSlideCalls: unknown[];
       __saveNotesCalls: unknown[];
       __generatedSpeechCalls: unknown[];
       __insertAudioCalls: unknown[];
       __completedPreviewSyntheses: number;
       __previewMappings: Record<string, Voice>;
+      __failNextNarrationSynthesis?: boolean;
     };
 
     globals.__convertPptxCalls = [];
+    globals.__discardConfirmationCalls = [];
+    globals.__reloadSlideCalls = [];
     globals.__saveNotesCalls = [];
     globals.__generatedSpeechCalls = [];
     globals.__insertAudioCalls = [];
     globals.__completedPreviewSyntheses = 0;
     globals.__previewMappings = mockVoices;
+    globals.__failNextNarrationSynthesis = false;
   }, MOCK_VOICES);
 }
 
@@ -374,6 +459,38 @@ async function failNextAudioInsertion() {
   });
 }
 
+async function failNextNarrationSynthesis() {
+  await electronApp.evaluate(() => {
+    (
+      globalThis as typeof globalThis & {
+        __failNextNarrationSynthesis?: boolean;
+      }
+    ).__failNextNarrationSynthesis = true;
+  });
+}
+
+async function expectFailedSaveToKeepEditedNarration() {
+  const saveFailure = new Promise<void>((resolve) => {
+    window.once("dialog", async (dialog) => {
+      await dialog.dismiss();
+      resolve();
+    });
+  });
+  await window.getByRole("button", { name: "Save Slide", exact: true }).click();
+  await saveFailure;
+  await expect(window.getByRole("button", { name: "Save Slide", exact: true })).toBeEnabled();
+
+  await window.getByRole("button", { name: "Back", exact: false }).click();
+  await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
+  await expect(notesEditor()).toHaveValue("Failed save stays edited");
+}
+
+async function expectBackNavigationToWarn() {
+  await window.getByRole("button", { name: "Back", exact: false }).click();
+  await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
+  await expect(window.getByText("Add Section")).toBeVisible();
+}
+
 test.beforeAll(async () => {
   fs.copyFileSync(FIXTURE_ORIGINAL, FIXTURE_TEST);
 
@@ -441,6 +558,17 @@ test.describe("PPT Viewer UI Workflows", () => {
     await loadViewer();
   });
 
+  test.afterEach(async () => {
+    const backButton = window.getByRole("button", { name: "Back", exact: false });
+    if (!(await backButton.isVisible())) {
+      return;
+    }
+
+    await setShouldDiscardNarrationChanges(true);
+    await backButton.click();
+    await setShouldDiscardNarrationChanges(false);
+  });
+
   test("loads mocked slides into the viewer", async () => {
     await expect.poll(getConvertPptxCalls).toEqual([{ filePath: FIXTURE_TEST }]);
 
@@ -469,6 +597,110 @@ test.describe("PPT Viewer UI Workflows", () => {
 
     await window.getByRole("img", { name: "Slide 1 thumbnail" }).click();
     await expect(notesEditor()).toHaveValue(firstSlideEdit);
+  });
+
+  test("warns only when a reload would discard an affected edited slide", async () => {
+    const editedNotes = "Keep this edit after declining reload";
+    await notesEditor().fill(editedNotes);
+    await window.getByRole("img", { name: "Slide 2 thumbnail" }).click();
+
+    await window.getByRole("button", { name: "Reload Slide", exact: true }).click();
+    await expect.poll(getReloadSlideCalls).toEqual([{ filePath: FIXTURE_TEST, slideIndex: 2 }]);
+
+    await window.getByRole("button", { name: "Reload All Slides", exact: true }).click();
+
+    await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
+    await expect.poll(getConvertPptxCalls).toEqual([{ filePath: FIXTURE_TEST }]);
+    await window.getByRole("img", { name: "Slide 1 thumbnail" }).click();
+    await expect(notesEditor()).toHaveValue(editedNotes);
+  });
+
+  test("warns before returning to the landing page and preserves edits when declined", async () => {
+    const editedNotes = "Stay in the Viewer";
+    await notesEditor().fill(editedNotes);
+    await window.getByRole("button", { name: "Back", exact: false }).click();
+
+    await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
+    await expect(notesEditor()).toHaveValue(editedNotes);
+  });
+
+  test("clears dirty state after accepting reload of an edited slide", async () => {
+    await notesEditor().fill("Discard this slide edit");
+    await setShouldDiscardNarrationChanges(true);
+
+    await window.getByRole("button", { name: "Reload Slide", exact: true }).click();
+
+    await setShouldDiscardNarrationChanges(false);
+    await expect(notesEditor()).toHaveValue(MOCK_SLIDES[0]!.notes);
+    await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
+    await window.getByRole("button", { name: "Back", exact: false }).click();
+    await expect(window.getByRole("button", { name: "Select PowerPoint File" })).toBeVisible();
+    await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
+  });
+
+  test("clears dirty state when notes return to their loaded value", async () => {
+    await notesEditor().fill("Temporary edit");
+    await notesEditor().fill(MOCK_SLIDES[0]!.notes);
+
+    await window.getByRole("button", { name: "Back", exact: false }).click();
+
+    await expect(window.getByRole("button", { name: "Select PowerPoint File" })).toBeVisible();
+    await expect.poll(getDiscardConfirmationCalls).toEqual([]);
+  });
+
+  test("marks section changes as dirty", async () => {
+    await window.getByRole("button", { name: "Add Section", exact: true }).click();
+
+    await expectBackNavigationToWarn();
+  });
+
+  test("marks speaker changes as dirty", async () => {
+    await window.getByPlaceholder("Speaker").click();
+    await window.getByRole("option", { name: "Narrator", exact: true }).click();
+
+    await expectBackNavigationToWarn();
+  });
+
+  test("marks SSML changes as dirty", async () => {
+    await notesEditor().fill(`<speak>${MOCK_SLIDES[0]!.notes}</speak>`);
+
+    await expectBackNavigationToWarn();
+  });
+
+  test("retains dirty state after narration validation fails", async () => {
+    await notesEditor().fill("Failed save stays edited");
+    await setPreviewMappings({ Narrator: MOCK_VOICES.Narrator! });
+
+    await expectFailedSaveToKeepEditedNarration();
+  });
+
+  test("retains dirty state after narration synthesis fails", async () => {
+    await notesEditor().fill("Failed save stays edited");
+    await failNextNarrationSynthesis();
+
+    await expectFailedSaveToKeepEditedNarration();
+  });
+
+  test("retains the close warning after a partial narrated save failure", async () => {
+    await notesEditor().fill("Retry after partial failure");
+    await failNextAudioInsertion();
+    await window.getByRole("button", { name: "Save Slide", exact: true }).click();
+    await expect(window.getByRole("button", { name: "Save Slide", exact: true })).toBeEnabled();
+
+    await window.getByRole("button", { name: "Back", exact: false }).click();
+    await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
+    await expect(notesEditor()).toHaveValue("Retry after partial failure");
+  });
+
+  test("clears the discard warning after a complete narrated save", async () => {
+    await notesEditor().fill("Saved narration edit");
+    await window.getByRole("button", { name: "Save Slide", exact: true }).click();
+    await expect(window.getByRole("button", { name: "Save Slide", exact: true })).toBeEnabled();
+
+    await window.getByRole("button", { name: "Back", exact: false }).click();
+
+    await expect(window.getByRole("button", { name: "Select PowerPoint File" })).toBeVisible();
+    await expect.poll(getDiscardConfirmationCalls).toEqual([]);
   });
 
   test("previews edited text before textarea blur", async () => {
@@ -552,7 +784,9 @@ test.describe("PPT Viewer UI Workflows", () => {
       revokedUrls: [expect.any(String)],
     });
 
+    await setShouldDiscardNarrationChanges(true);
     await window.getByRole("button", { name: "Back", exact: false }).click();
+    await setShouldDiscardNarrationChanges(false);
     await expect.poll(getPlaybackActivity).toMatchObject({
       revokedUrls: [expect.any(String), expect.any(String)],
     });
@@ -633,6 +867,36 @@ test.describe("PPT Viewer UI Workflows", () => {
           audioData: new Uint8Array(TINY_FAKE_AUDIO_BYTES),
         })),
       },
+    ]);
+  });
+
+  test("warns window and application close while narration edits are dirty", async () => {
+    await notesEditor().fill("Unsaved close warning");
+
+    await attemptCloseAndKeepEditing(
+      () =>
+        electronApp.evaluate(({ BrowserWindow }) => {
+          BrowserWindow.getAllWindows()[0]?.close();
+        }),
+      1,
+    );
+    await attemptCloseAndKeepEditing(
+      () =>
+        electronApp.evaluate(({ app }) => {
+          app.quit();
+        }),
+      2,
+    );
+
+    await expect.poll(getDiscardConfirmationCalls).toEqual([
+      expect.objectContaining({
+        buttons: ["Keep Editing", "Discard Changes"],
+        message: "Discard unsaved narration changes?",
+      }),
+      expect.objectContaining({
+        buttons: ["Keep Editing", "Discard Changes"],
+        message: "Discard unsaved narration changes?",
+      }),
     ]);
   });
 });

@@ -79,6 +79,10 @@ const electronAPI = {
   reloadSlide: (payload: ReloadSlideRequest): Promise<SlidePptResult> =>
     ipcRenderer.invoke("reload-slide", payload),
   getVideoSavePath: (): Promise<string | null> => ipcRenderer.invoke("get-video-save-path"),
+  setHasUnsavedNarrationChanges: (hasChanges: boolean): void =>
+    ipcRenderer.sendSync("set-has-unsaved-narration-changes", hasChanges),
+  confirmDiscardNarrationChanges: (): Promise<boolean> =>
+    ipcRenderer.invoke("confirm-discard-narration-changes"),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", electronAPI);
