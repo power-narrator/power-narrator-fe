@@ -6,7 +6,7 @@ import type {
   ReloadSlideImageResult,
   SlidePptResult,
   SlideAudioEntry,
-  SlideManifestEntry,
+  SlideNotesEntry,
   SlidesPptResult,
   VideoPptResult,
 } from "./types.js";
@@ -17,7 +17,7 @@ export interface PptProvider {
   removeAudio(filePath: string, slideIndices: number[]): Promise<BasicPptResult>;
   readAllSlideNotes(filePath: string): Promise<ReadAllSlideNotesResult>;
   readSlideNotes(filePath: string, slideIndex: number): Promise<ReadSlideNotesResult>;
-  saveNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult>;
+  saveNotes(filePath: string, slides: SlideNotesEntry[]): Promise<BasicPptResult>;
   reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<SlidePptResult>;
 }
 

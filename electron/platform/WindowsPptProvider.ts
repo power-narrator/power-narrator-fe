@@ -6,7 +6,7 @@ import type {
   ReadSlideNotesResult,
   ReloadSlideImageResult,
   SlideAudioEntry,
-  SlideManifestEntry,
+  SlideNotesEntry,
   SlidePptResult,
   SlidesPptResult,
   VideoPptResult,
@@ -25,7 +25,7 @@ export class WindowsPptProvider implements PptProvider, NativePlatformProvider {
     return { success: false, message: "removeAudio not supported on Windows yet" };
   }
 
-  async saveNotes(_filePath: string, _slides: SlideManifestEntry[]): Promise<BasicPptResult> {
+  async saveNotes(_filePath: string, _slides: SlideNotesEntry[]): Promise<BasicPptResult> {
     return { success: false, message: "saveNotes not supported on Windows yet" };
   }
 

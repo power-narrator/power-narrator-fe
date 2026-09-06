@@ -1,5 +1,6 @@
 import type { Voice } from "../tts/TtsProvider.js";
 import type { PreviewNarrationRequest } from "../../shared/types/narration.js";
+import type { SlideAudioEntry } from "../platform/types.js";
 
 export interface SpeakerMappingSource {
   getSpeakerMappings(): Record<string, Voice> | Promise<Record<string, Voice>>;
@@ -14,11 +15,17 @@ const DEFAULT_SPEAKER_KEY = "_default_";
 const SECTION_DIVIDER = /^[ \t]*-{3,}[ \t]*$/m;
 const SPEAKER_TAG = /^(?:[ \t]*\n)*[ \t]*\[([^\]\n]*)\][ \t]*(?:\n|$)/;
 
-function parseSectionSpeakers(notes: string): string[] {
+function parseSections(notes: string): Array<{ speaker: string; text: string }> {
   return notes
     .replace(/\r\n|[\r\u2028\u2029]/g, "\n")
     .split(SECTION_DIVIDER)
-    .map((section) => section.match(SPEAKER_TAG)?.[1]?.trim() ?? "");
+    .map((section) => {
+      const speakerMatch = section.match(SPEAKER_TAG);
+      return {
+        speaker: speakerMatch?.[1]?.trim() ?? "",
+        text: speakerMatch ? section.slice(speakerMatch[0].length) : section,
+      };
+    });
 }
 
 function effectiveSpeaker(speakers: string[], sectionIndex: number): string {
@@ -65,7 +72,7 @@ export class NarrationPreparation {
       return null;
     }
 
-    const speakers = parseSectionSpeakers(request.notes);
+    const speakers = parseSections(request.notes).map((section) => section.speaker);
     const speaker =
       request.previewSpeaker !== undefined
         ? request.previewSpeaker || DEFAULT_SPEAKER_KEY
@@ -86,5 +93,75 @@ export class NarrationPreparation {
     }
 
     return this.synthesizer.generateSpeech(text, voice);
+  }
+
+  async prepareBatch(
+    slides: Array<{ slideIndex: number; notes: string }>,
+  ): Promise<SlideAudioEntry[]> {
+    const mappings = await this.mappingSource.getSpeakerMappings();
+    const prepared = slides.flatMap((slide) => {
+      const sections = parseSections(slide.notes);
+
+      return sections.flatMap((section, sectionIndex) => {
+        const text = section.text.trim();
+        if (!text) {
+          return [];
+        }
+
+        const speaker = effectiveSpeaker(
+          sections.map((candidate) => candidate.speaker),
+          sectionIndex,
+        );
+        const voice = mappings[speaker];
+        const validationProblem =
+          voiceValidationProblem(voice) ||
+          (voice && !this.synthesizer.supportsProvider(String(voice.provider))
+            ? `voice provider "${String(voice.provider)}" is not registered`
+            : null);
+
+        if (validationProblem || !voice) {
+          const label = speaker === DEFAULT_SPEAKER_KEY ? "Default" : speaker;
+          throw new NarrationPreparationError(
+            "validation",
+            `Narration validation failed for slide ${slide.slideIndex}, section ${sectionIndex + 1}, speaker "${label}": ${validationProblem}.`,
+          );
+        }
+
+        return [{ slideIndex: slide.slideIndex, sectionIndex, speaker, text, voice }];
+      });
+    });
+
+    return Promise.all(
+      prepared.map(async (section) => {
+        try {
+          const audio = await this.synthesizer.generateSpeech(section.text, section.voice);
+          if (!audio) {
+            throw new Error("the provider returned no audio");
+          }
+          return {
+            index: section.slideIndex,
+            sectionIndex: section.sectionIndex,
+            audioData: new Uint8Array(audio),
+          };
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : "Unknown synthesis error";
+          const label = section.speaker === DEFAULT_SPEAKER_KEY ? "Default" : section.speaker;
+          throw new NarrationPreparationError(
+            "synthesis",
+            `Narration synthesis failed for slide ${section.slideIndex}, section ${section.sectionIndex + 1}, speaker "${label}": ${message}.`,
+          );
+        }
+      }),
+    );
+  }
+}
+
+export class NarrationPreparationError extends Error {
+  constructor(
+    readonly stage: "validation" | "synthesis",
+    message: string,
+  ) {
+    super(message);
+    this.name = "NarrationPreparationError";
   }
 }

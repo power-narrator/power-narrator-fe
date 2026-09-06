@@ -1,0 +1,79 @@
+import type {
+  NarratedSlideSaveRequest,
+  NarratedSlideSaveResult,
+} from "../../shared/types/narration.js";
+import type { PptProvider } from "../platform/PptProvider.js";
+import { NarrationPreparation, NarrationPreparationError } from "./NarrationPreparation.js";
+
+type SavePowerPoint = Pick<PptProvider, "saveNotes" | "insertAudio">;
+
+export class NarratedSlideSaver {
+  constructor(
+    private readonly narrationPreparation: NarrationPreparation,
+    private readonly getPowerPoint: () => SavePowerPoint,
+  ) {}
+
+  async save(request: NarratedSlideSaveRequest): Promise<NarratedSlideSaveResult> {
+    let audio;
+    try {
+      audio = await this.narrationPreparation.prepareBatch([
+        { slideIndex: request.slideIndex, notes: request.notes },
+      ]);
+    } catch (error: unknown) {
+      if (error instanceof NarrationPreparationError) {
+        return { success: false, stage: error.stage, partial: false, message: error.message };
+      }
+      throw error;
+    }
+
+    let powerpoint: SavePowerPoint;
+    try {
+      powerpoint = this.getPowerPoint();
+    } catch (error: unknown) {
+      return this.powerPointFailure(error, false);
+    }
+
+    let notesResult;
+    try {
+      notesResult = await powerpoint.saveNotes(request.filePath, [
+        { index: request.slideIndex, notes: request.notes },
+      ]);
+    } catch (error: unknown) {
+      return this.powerPointFailure(error, false);
+    }
+    if (!notesResult.success) {
+      return {
+        success: false,
+        stage: "powerpoint",
+        partial: false,
+        message: notesResult.message,
+      };
+    }
+
+    let audioResult;
+    try {
+      audioResult = await powerpoint.insertAudio(request.filePath, audio);
+    } catch (error: unknown) {
+      return this.powerPointFailure(error, true);
+    }
+    if (!audioResult.success) {
+      return {
+        success: false,
+        stage: "powerpoint",
+        partial: true,
+        message: audioResult.message,
+      };
+    }
+
+    return { success: true };
+  }
+
+  private powerPointFailure(error: unknown, partial: boolean): NarratedSlideSaveResult {
+    return {
+      success: false,
+      stage: "powerpoint",
+      partial,
+      message: error instanceof Error ? error.message : "Unknown PowerPoint error",
+    };
+  }
+}
