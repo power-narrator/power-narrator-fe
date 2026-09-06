@@ -14,9 +14,24 @@ export interface NarratedSlideSaveRequest {
   notes: string;
 }
 
+export interface NarratedSlideInput {
+  slideIndex: number;
+  notes: string;
+}
+
+export interface NarratedPresentationSaveRequest {
+  filePath: string;
+  slides: NarratedSlideInput[];
+}
+
+export interface NarrationPreparationProgress {
+  completed: number;
+  total: number;
+}
+
 export type NarratedSlideSaveFailureStage = "validation" | "synthesis" | "powerpoint";
 
-export type NarratedSlideSaveResult =
+export type NarratedSaveResult =
   | { success: true }
   | {
       success: false;
@@ -24,3 +39,5 @@ export type NarratedSlideSaveResult =
       partial: boolean;
       message: string;
     };
+
+export type NarratedSlideSaveResult = NarratedSaveResult;

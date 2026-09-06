@@ -1,5 +1,8 @@
 import type { Voice } from "../tts/TtsProvider.js";
-import type { PreviewNarrationRequest } from "../../shared/types/narration.js";
+import type {
+  NarrationPreparationProgress,
+  PreviewNarrationRequest,
+} from "../../shared/types/narration.js";
 import type { SlideAudioEntry } from "../platform/types.js";
 
 export interface SpeakerMappingSource {
@@ -85,6 +88,7 @@ export class NarrationPreparation {
 
   async prepareBatch(
     slides: Array<{ slideIndex: number; notes: string }>,
+    onProgress?: (progress: NarrationPreparationProgress) => void,
   ): Promise<SlideAudioEntry[]> {
     const mappings = await this.mappingSource.getSpeakerMappings();
     const prepared = slides.flatMap((slide) => {
@@ -106,6 +110,9 @@ export class NarrationPreparation {
       });
     });
 
+    let completed = 0;
+    const total = prepared.length;
+
     return Promise.all(
       prepared.map(async (section) => {
         try {
@@ -113,11 +120,14 @@ export class NarrationPreparation {
           if (!audio) {
             throw new Error("the provider returned no audio");
           }
-          return {
+          const entry = {
             index: section.slideIndex,
             sectionIndex: section.sectionIndex,
             audioData: new Uint8Array(audio),
           };
+          completed += 1;
+          onProgress?.({ completed, total });
+          return entry;
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : "Unknown synthesis error";
           const label = section.speaker === DEFAULT_SPEAKER_KEY ? "Default" : section.speaker;

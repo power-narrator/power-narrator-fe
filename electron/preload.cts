@@ -14,10 +14,17 @@ import type {
 } from "./platform/types.js";
 import type { GenerateSpeechRequest, TtsProviderId, Voice } from "../shared/types/tts.js";
 import type {
+  NarratedPresentationSaveRequest,
+  NarratedSaveResult,
   NarratedSlideSaveRequest,
   NarratedSlideSaveResult,
+  NarrationPreparationProgress,
   PreviewNarrationRequest,
 } from "../shared/types/narration.js";
+import type { NarratedPresentationProgressEvent } from "./narration/registerNarratedPresentationSaveIpc.js";
+
+const NARRATED_PRESENTATION_PROGRESS_CHANNEL = "narrated-presentation-save-progress";
+let narratedPresentationRequestId = 0;
 
 const electronAPI = {
   convertPptx: (filePath: string): Promise<SlidesPptResult> =>
@@ -31,6 +38,24 @@ const electronAPI = {
     ipcRenderer.invoke("save-notes", filePath, slides),
   saveNarratedSlide: (payload: NarratedSlideSaveRequest): Promise<NarratedSlideSaveResult> =>
     ipcRenderer.invoke("save-narrated-slide", payload),
+  saveNarratedPresentation: async (
+    payload: NarratedPresentationSaveRequest,
+    onProgress: (progress: NarrationPreparationProgress) => void,
+  ): Promise<NarratedSaveResult> => {
+    narratedPresentationRequestId += 1;
+    const requestId = narratedPresentationRequestId;
+    const listener = (_event: unknown, update: NarratedPresentationProgressEvent) => {
+      if (update.requestId === requestId) {
+        onProgress({ completed: update.completed, total: update.total });
+      }
+    };
+    ipcRenderer.on(NARRATED_PRESENTATION_PROGRESS_CHANNEL, listener);
+    try {
+      return await ipcRenderer.invoke("save-narrated-presentation", { ...payload, requestId });
+    } finally {
+      ipcRenderer.removeListener(NARRATED_PRESENTATION_PROGRESS_CHANNEL, listener);
+    }
+  },
   getVoices: (): Promise<Voice[]> => ipcRenderer.invoke("get-voices"),
   generateSpeech: (payload: GenerateSpeechRequest): Promise<Uint8Array> =>
     ipcRenderer.invoke("generate-speech", payload),

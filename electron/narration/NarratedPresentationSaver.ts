@@ -1,24 +1,34 @@
 import type {
+  NarratedPresentationSaveRequest,
+  NarrationPreparationProgress,
+  NarratedSaveResult,
   NarratedSlideSaveRequest,
-  NarratedSlideSaveResult,
 } from "../../shared/types/narration.js";
 import type { PptProvider } from "../platform/PptProvider.js";
 import { NarrationPreparation, NarrationPreparationError } from "./NarrationPreparation.js";
 
 type SavePowerPoint = Pick<PptProvider, "saveNotes" | "insertAudio">;
 
-export class NarratedSlideSaver {
+export class NarratedPresentationSaver {
   constructor(
     private readonly narrationPreparation: NarrationPreparation,
     private readonly getPowerPoint: () => SavePowerPoint,
   ) {}
 
-  async save(request: NarratedSlideSaveRequest): Promise<NarratedSlideSaveResult> {
+  saveSlide(request: NarratedSlideSaveRequest): Promise<NarratedSaveResult> {
+    return this.savePresentation({
+      filePath: request.filePath,
+      slides: [{ slideIndex: request.slideIndex, notes: request.notes }],
+    });
+  }
+
+  async savePresentation(
+    request: NarratedPresentationSaveRequest,
+    onProgress?: (progress: NarrationPreparationProgress) => void,
+  ): Promise<NarratedSaveResult> {
     let audio;
     try {
-      audio = await this.narrationPreparation.prepareBatch([
-        { slideIndex: request.slideIndex, notes: request.notes },
-      ]);
+      audio = await this.narrationPreparation.prepareBatch(request.slides, onProgress);
     } catch (error: unknown) {
       if (error instanceof NarrationPreparationError) {
         return { success: false, stage: error.stage, partial: false, message: error.message };
@@ -40,9 +50,10 @@ export class NarratedSlideSaver {
 
     let notesResult;
     try {
-      notesResult = await powerpoint.saveNotes(request.filePath, [
-        { index: request.slideIndex, notes: request.notes },
-      ]);
+      notesResult = await powerpoint.saveNotes(
+        request.filePath,
+        request.slides.map((slide) => ({ index: slide.slideIndex, notes: slide.notes })),
+      );
     } catch (error: unknown) {
       return this.powerPointFailure(error, false);
     }
@@ -73,7 +84,7 @@ export class NarratedSlideSaver {
     return { success: true };
   }
 
-  private powerPointFailure(error: unknown, partial: boolean): NarratedSlideSaveResult {
+  private powerPointFailure(error: unknown, partial: boolean): NarratedSaveResult {
     return {
       success: false,
       stage: "powerpoint",
