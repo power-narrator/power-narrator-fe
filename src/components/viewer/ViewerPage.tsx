@@ -46,6 +46,10 @@ export function ViewerPage({
   const [genStatus, setGenStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
+  const fullySavedNotesRef = useRef(
+    new Map(initialSlides.map((slide) => [slide.index, slide.notes || ""])),
+  );
+  const dirtySlideIndicesRef = useRef<Set<number>>(new Set());
   const [isRemoving, setIsRemoving] = useState(false);
   const [removeStatus, setRemoveStatus] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -120,6 +124,33 @@ export function ViewerPage({
     setHistoryIndex(nextHistoryIndex);
   }
 
+  function recordDirtySlides(nextSlides: Slide[]) {
+    dirtySlideIndicesRef.current = new Set(
+      nextSlides
+        .filter((slide) => fullySavedNotesRef.current.get(slide.index) !== (slide.notes || ""))
+        .map((slide) => slide.index),
+    );
+  }
+
+  function setEditedSlides(nextSlides: Slide[]) {
+    setSlides(nextSlides);
+    recordDirtySlides(nextSlides);
+  }
+
+  function updateFullySavedNotes(savedSlides: Slide[], currentSlides: Slide[]) {
+    for (const slide of savedSlides) {
+      fullySavedNotesRef.current.set(slide.index, slide.notes || "");
+    }
+    recordDirtySlides(currentSlides);
+  }
+
+  function markSlidesFullySaved(savedSlides: Slide[]) {
+    setSlides((currentSlides) => {
+      updateFullySavedNotes(savedSlides, currentSlides);
+      return currentSlides;
+    });
+  }
+
   function updateActiveSlideSections(updater: (sections: NoteSection[]) => boolean) {
     const currentSlide = slides[activeSlideIndex];
     if (!currentSlide) {
@@ -137,11 +168,15 @@ export function ViewerPage({
       notes: formatNotes(sections),
     };
 
-    setSlides(nextSlides);
+    setEditedSlides(nextSlides);
     return nextSlides;
   }
 
-  function resetHistoryWithSlides(nextSlides: Slide[]) {
+  function resetHistoryWithSlides(nextSlides: Slide[], reloadedSlides = nextSlides) {
+    if (reloadedSlides === nextSlides) {
+      fullySavedNotesRef.current.clear();
+    }
+    updateFullySavedNotes(reloadedSlides, nextSlides);
     setSlides(nextSlides);
     setHistory([nextSlides]);
     historyIndexRef.current = 0;
@@ -162,6 +197,8 @@ export function ViewerPage({
   }
 
   useEffect(() => {
+    fullySavedNotesRef.current.clear();
+    updateFullySavedNotes(initialSlides, initialSlides);
     setSlides(initialSlides);
     setHistory([initialSlides]);
     historyIndexRef.current = 0;
@@ -206,7 +243,7 @@ export function ViewerPage({
 
     historyIndexRef.current = nextHistoryIndex;
     setHistoryIndex(nextHistoryIndex);
-    setSlides(nextSlides);
+    setEditedSlides(nextSlides);
   }, [history]);
 
   const handleRedo = useCallback(() => {
@@ -222,7 +259,7 @@ export function ViewerPage({
 
     historyIndexRef.current = nextHistoryIndex;
     setHistoryIndex(nextHistoryIndex);
-    setSlides(nextSlides);
+    setEditedSlides(nextSlides);
   }, [history]);
 
   useEffect(() => {
@@ -445,6 +482,7 @@ export function ViewerPage({
         reportNarratedSaveFailure(result);
         return;
       }
+      markSlidesFullySaved(slides);
       setSaveStatus("Saved slides!");
       scheduleStatusClear(setSaveStatus);
     } catch (error: unknown) {
@@ -472,6 +510,7 @@ export function ViewerPage({
         reportNarratedSaveFailure(result);
         return;
       }
+      markSlidesFullySaved([activeSlide]);
       setSaveStatus("Saved slides!");
       scheduleStatusClear(setSaveStatus);
     } catch (error: unknown) {
@@ -582,7 +621,7 @@ export function ViewerPage({
 
       const nextSlides = [...slides];
       nextSlides[activeSlideIndex] = result.slide;
-      resetHistoryWithSlides(nextSlides);
+      resetHistoryWithSlides(nextSlides, [result.slide]);
       setSyncStatus("Synced!");
       scheduleStatusClear(setSyncStatus);
     } catch (error: unknown) {

@@ -1,5 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
-import type { Voice } from "../tts/TtsProvider.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { TtsManager } from "../tts/TtsManager.js";
+import type { TtsProvider, Voice } from "../tts/TtsProvider.js";
 import { NarrationPreparation } from "./NarrationPreparation.js";
 import { NarratedPresentationSaver } from "./NarratedPresentationSaver.js";
 
@@ -9,6 +13,19 @@ const narratorVoice: Voice = {
   ssmlGender: "FEMALE",
   provider: "gcp",
 };
+
+const alternateNarratorVoice: Voice = {
+  ...narratorVoice,
+  name: "en-GB-narrator",
+};
+
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 function createSaver(generateSpeech = vi.fn().mockResolvedValue(new Uint8Array([1]))) {
   const preparation = new NarrationPreparation(
@@ -22,6 +39,38 @@ function createSaver(generateSpeech = vi.fn().mockResolvedValue(new Uint8Array([
 
   return {
     generateSpeech,
+    powerpoint,
+    saver: new NarratedPresentationSaver(preparation, () => powerpoint),
+  };
+}
+
+function createCachedRetrySaver(
+  getSpeakerMappings: () => Record<string, Voice> = () => ({ Narrator: narratorVoice }),
+) {
+  const cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "power-narrator-save-retry-"));
+  temporaryDirectories.push(cacheDirectory);
+  const synthesize = vi.fn().mockResolvedValue(new Uint8Array([4, 5, 6]));
+  const provider: TtsProvider = {
+    getVoices: vi.fn().mockResolvedValue([narratorVoice, alternateNarratorVoice]),
+    prepareSpeech: (text, voice) => ({
+      cacheIdentity: { text, voice: voice.name },
+      synthesize,
+    }),
+  };
+  const preparation = new NarrationPreparation(
+    { getSpeakerMappings },
+    new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory }),
+  );
+  const powerpoint = {
+    saveNotes: vi.fn().mockResolvedValue({ success: true }),
+    insertAudio: vi
+      .fn()
+      .mockResolvedValueOnce({ success: false, message: "audio automation failed" })
+      .mockResolvedValueOnce({ success: true }),
+  };
+
+  return {
+    synthesize,
     powerpoint,
     saver: new NarratedPresentationSaver(preparation, () => powerpoint),
   };
@@ -97,5 +146,55 @@ describe("NarratedPresentationSaver.savePresentation", () => {
       { index: 9, sectionIndex: 2, audioData: new Uint8Array([2]) },
       { index: 3, sectionIndex: 0, audioData: new Uint8Array([3]) },
     ]);
+  });
+
+  it("reuses prepared narration when an ordinary retry follows a partial PowerPoint failure", async () => {
+    const { powerpoint, saver, synthesize } = createCachedRetrySaver();
+    const request = {
+      filePath: "/slides/talk.pptx",
+      slides: [{ slideIndex: 2, notes: "[Narrator]\nRetry me" }],
+    };
+
+    await expect(saver.savePresentation(request)).resolves.toEqual({
+      success: false,
+      stage: "powerpoint",
+      partial: true,
+      message: "audio automation failed",
+    });
+    await expect(saver.savePresentation(request)).resolves.toEqual({ success: true });
+
+    expect(synthesize).toHaveBeenCalledTimes(1);
+    expect(powerpoint.saveNotes).toHaveBeenCalledTimes(2);
+    expect(powerpoint.insertAudio).toHaveBeenCalledTimes(2);
+  });
+
+  it("synthesizes a new cache identity when edited notes are retried", async () => {
+    const { saver, synthesize } = createCachedRetrySaver();
+
+    await saver.savePresentation({
+      filePath: "/slides/talk.pptx",
+      slides: [{ slideIndex: 2, notes: "[Narrator]\nBefore edit" }],
+    });
+    await saver.savePresentation({
+      filePath: "/slides/talk.pptx",
+      slides: [{ slideIndex: 2, notes: "[Narrator]\nAfter edit" }],
+    });
+
+    expect(synthesize).toHaveBeenCalledTimes(2);
+  });
+
+  it("synthesizes a new cache identity when speaker mappings change before retry", async () => {
+    let mappedVoice = narratorVoice;
+    const { saver, synthesize } = createCachedRetrySaver(() => ({ Narrator: mappedVoice }));
+    const request = {
+      filePath: "/slides/talk.pptx",
+      slides: [{ slideIndex: 2, notes: "[Narrator]\nSame notes" }],
+    };
+
+    await saver.savePresentation(request);
+    mappedVoice = alternateNarratorVoice;
+    await saver.savePresentation(request);
+
+    expect(synthesize).toHaveBeenCalledTimes(2);
   });
 });
