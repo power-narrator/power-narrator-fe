@@ -4,6 +4,11 @@ export interface SlideManifestEntry {
   notes: string;
 }
 
+export interface SlideNotesEntry {
+  index: number;
+  notes: string;
+}
+
 export interface SlideWithSrc extends SlideManifestEntry {
   src: string;
 }

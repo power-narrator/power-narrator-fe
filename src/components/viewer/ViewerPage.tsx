@@ -466,17 +466,6 @@ export function ViewerPage({
     }
   };
 
-  const saveCurrentSlideNotes = async () => {
-    setIsSaving(true);
-    setSaveStatus(`Saving slide ${activeSlide.index}...`);
-
-    try {
-      await saveNotesToFile([activeSlide]);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const generateAndInsertAllAudio = async () => {
     setIsInsertingAudio(true);
     setInsertStatus("Generating all audio...");
@@ -499,33 +488,6 @@ export function ViewerPage({
         alert(`Failed to insert audio: ${result.message}`);
         setInsertStatus("");
       }
-    } finally {
-      setIsInsertingAudio(false);
-    }
-  };
-
-  const generateAndInsertCurrentSlideAudio = async () => {
-    setIsInsertingAudio(true);
-    setInsertStatus(`Generating audio for slide ${activeSlide.index}...`);
-
-    try {
-      const slidesAudio = await buildSlideAudioEntries([activeSlide], setInsertStatus);
-      if (slidesAudio.length === 0) {
-        alert("No notes found to generate audio.");
-        setInsertStatus("");
-        return;
-      }
-
-      setInsertStatus("Inserting audio...");
-      const result = await electronAPI.insertAudio(filePath, slidesAudio);
-
-      if (!result.success) {
-        alert(`Failed to insert audio: ${result.message}`);
-        setInsertStatus("");
-        return;
-      }
-
-      setInsertStatus("");
     } finally {
       setIsInsertingAudio(false);
     }
@@ -559,21 +521,29 @@ export function ViewerPage({
       return;
     }
 
+    setIsSaving(true);
+    setSaveStatus(`Saving slide ${activeSlide.index}...`);
     try {
-      await saveCurrentSlideNotes();
-    } catch (error: unknown) {
-      setSaveStatus("");
-      alertError("Save error", error);
-      return;
-    }
-
-    try {
-      await generateAndInsertCurrentSlideAudio();
+      const result = await electronAPI.saveNarratedSlide({
+        filePath,
+        slideIndex: activeSlide.index,
+        notes: activeSlide.notes || "",
+      });
+      if (!result.success) {
+        const partialMessage = result.partial
+          ? "PowerPoint notes were saved, but narration audio was not committed."
+          : result.message;
+        alert(`Save error: ${partialMessage}${result.partial ? ` ${result.message}` : ""}`);
+        setSaveStatus("");
+        return;
+      }
       setSaveStatus("Saved slides!");
       scheduleStatusClear(setSaveStatus);
     } catch (error: unknown) {
-      setInsertStatus("");
-      alertError("Insert error", error);
+      setSaveStatus("");
+      alertError("Save error", error);
+    } finally {
+      setIsSaving(false);
     }
   };
 

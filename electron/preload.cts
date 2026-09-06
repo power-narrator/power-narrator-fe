@@ -13,7 +13,11 @@ import type {
   VideoPptResult,
 } from "./platform/types.js";
 import type { GenerateSpeechRequest, TtsProviderId, Voice } from "../shared/types/tts.js";
-import type { PreviewNarrationRequest } from "../shared/types/narration.js";
+import type {
+  NarratedSlideSaveRequest,
+  NarratedSlideSaveResult,
+  PreviewNarrationRequest,
+} from "../shared/types/narration.js";
 
 const electronAPI = {
   convertPptx: (filePath: string): Promise<SlidesPptResult> =>
@@ -25,6 +29,8 @@ const electronAPI = {
   selectFile: (): Promise<string | null> => ipcRenderer.invoke("select-file"),
   saveNotes: (filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult> =>
     ipcRenderer.invoke("save-notes", filePath, slides),
+  saveNarratedSlide: (payload: NarratedSlideSaveRequest): Promise<NarratedSlideSaveResult> =>
+    ipcRenderer.invoke("save-narrated-slide", payload),
   getVoices: (): Promise<Voice[]> => ipcRenderer.invoke("get-voices"),
   generateSpeech: (payload: GenerateSpeechRequest): Promise<Uint8Array> =>
     ipcRenderer.invoke("generate-speech", payload),

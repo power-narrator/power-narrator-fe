@@ -1,5 +1,10 @@
 import type { GenerateSpeechRequest, TtsProviderId, Voice } from "../shared/types/tts";
-import type { PreviewNarrationRequest, PreviewNarrationResult } from "../shared/types/narration";
+import type {
+  NarratedSlideSaveRequest,
+  NarratedSlideSaveResult,
+  PreviewNarrationRequest,
+  PreviewNarrationResult,
+} from "../shared/types/narration";
 import type {
   BasicElectronResult,
   ConvertResponse,
@@ -24,6 +29,7 @@ declare global {
       getPathForFile: (file: File) => string;
       selectFile: () => Promise<string | null>;
       saveNotes: (filePath: string, slides: SaveNotesSlide[]) => Promise<BasicElectronResult>;
+      saveNarratedSlide: (payload: NarratedSlideSaveRequest) => Promise<NarratedSlideSaveResult>;
       getVoices: () => Promise<Voice[]>;
       generateSpeech: (payload: GenerateSpeechRequest) => Promise<Uint8Array>;
       prepareNarrationPreview: (

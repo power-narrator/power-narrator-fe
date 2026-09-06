@@ -21,7 +21,7 @@ import type {
   RunXmlCliResult,
   SlideAudioEntry,
   SlidePptResult,
-  SlideManifestEntry,
+  SlideNotesEntry,
   SlidesPptResult,
   XmlCliOperation,
   XmlCliOperationResult,
@@ -349,7 +349,7 @@ export class XmlPptProvider implements PptProvider {
    * @param slides - An array of slide objects containing notes to be saved.
    * @returns A promise resolving to the result of the save operation.
    */
-  async saveNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult> {
+  async saveNotes(filePath: string, slides: SlideNotesEntry[]): Promise<BasicPptResult> {
     const ops = slides.map(
       (s): XmlCliOperation => ({
         op: "set_slide_notes",

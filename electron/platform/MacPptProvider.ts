@@ -21,6 +21,7 @@ import type {
   SlideAudioEntry,
   SlideImageMap,
   SlideManifestEntry,
+  SlideNotesEntry,
   SlideNotesMap,
   SlidePptResult,
   SlidesPptResult,
@@ -467,7 +468,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
    * @param slides - An array of slide objects containing updated notes.
    * @returns A promise resolving to the success status of the operation.
    */
-  async saveNotes(filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult> {
+  async saveNotes(filePath: string, slides: SlideNotesEntry[]): Promise<BasicPptResult> {
     const officeContainer = this.getOfficeContainerPath();
 
     let dataContent = "";

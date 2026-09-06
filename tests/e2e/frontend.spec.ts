@@ -58,7 +58,12 @@ type ConvertPptxCall = {
 
 type SaveNotesCall = {
   filePath: string;
-  slides: Slide[];
+  slides: Array<{ index: number; notes: string }>;
+};
+
+type InsertAudioCall = {
+  filePath: string;
+  slidesAudio: Array<{ index: number; sectionIndex: number; audioData: Uint8Array }>;
 };
 
 let electronApp: ElectronApplication;
@@ -183,16 +188,41 @@ async function installMockIpcHandlers(app: ElectronApplication) {
           return new Uint8Array(tinyFakeAudioBytes);
         },
       };
+      (globalThis as typeof globalThis & { __insertAudioCalls?: unknown[] }).__insertAudioCalls =
+        [];
+      const deterministicFakePowerPointAdapter = {
+        saveNotes: async (filePath: string, slides: unknown[]) => {
+          (
+            globalThis as typeof globalThis & {
+              __saveNotesCalls: unknown[];
+            }
+          ).__saveNotesCalls.push({ filePath, slides });
+          return { success: true as const };
+        },
+        insertAudio: async (filePath: string, slidesAudio: unknown[]) => {
+          (
+            globalThis as typeof globalThis & {
+              __insertAudioCalls: unknown[];
+            }
+          ).__insertAudioCalls.push({ filePath, slidesAudio });
+          return { success: true as const };
+        },
+      };
 
       const installNarrationPreviewTestAdapter = (
         globalThis as typeof globalThis & {
           __installNarrationPreviewTestAdapter: (
             mappingSource: unknown,
             synthesizer: unknown,
+            powerpoint: unknown,
           ) => void;
         }
       ).__installNarrationPreviewTestAdapter;
-      installNarrationPreviewTestAdapter(mappingSource, deterministicFakeTtsAdapter);
+      installNarrationPreviewTestAdapter(
+        mappingSource,
+        deterministicFakeTtsAdapter,
+        deterministicFakePowerPointAdapter,
+      );
     },
     {
       testFilePath: FIXTURE_TEST,
@@ -243,12 +273,23 @@ async function getGeneratedSpeechCalls(): Promise<GeneratedSpeechCall[]> {
   });
 }
 
+async function getInsertAudioCalls(): Promise<InsertAudioCall[]> {
+  return electronApp.evaluate(() => {
+    return (
+      globalThis as typeof globalThis & {
+        __insertAudioCalls: InsertAudioCall[];
+      }
+    ).__insertAudioCalls;
+  });
+}
+
 async function resetCapturedIpcCalls() {
   await electronApp.evaluate((_, mockVoices) => {
     const globals = globalThis as typeof globalThis & {
       __convertPptxCalls: unknown[];
       __saveNotesCalls: unknown[];
       __generatedSpeechCalls: unknown[];
+      __insertAudioCalls: unknown[];
       __completedPreviewSyntheses: number;
       __previewMappings: Record<string, Voice>;
     };
@@ -256,6 +297,7 @@ async function resetCapturedIpcCalls() {
     globals.__convertPptxCalls = [];
     globals.__saveNotesCalls = [];
     globals.__generatedSpeechCalls = [];
+    globals.__insertAudioCalls = [];
     globals.__completedPreviewSyntheses = 0;
     globals.__previewMappings = mockVoices;
   }, MOCK_VOICES);
@@ -494,12 +536,18 @@ test.describe("PPT Viewer UI Workflows", () => {
     await expect.poll(getSaveNotesCalls).toEqual([
       {
         filePath: FIXTURE_TEST,
-        slides: [
-          expect.objectContaining({
+        slides: [{ index: MOCK_SLIDES[0]!.index, notes: editedNotes }],
+      },
+    ]);
+    await expect.poll(getInsertAudioCalls).toEqual([
+      {
+        filePath: FIXTURE_TEST,
+        slidesAudio: [
+          {
             index: MOCK_SLIDES[0]!.index,
-            image: MOCK_SLIDES[0]!.image,
-            notes: editedNotes,
-          }),
+            sectionIndex: 0,
+            audioData: new Uint8Array(TINY_FAKE_AUDIO_BYTES),
+          },
         ],
       },
     ]);

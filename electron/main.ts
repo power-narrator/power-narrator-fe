@@ -24,6 +24,8 @@ import type {
 import type { GenerateSpeechRequest } from "../shared/types/tts.js";
 import { NarrationPreparation } from "./narration/NarrationPreparation.js";
 import { registerNarrationPreviewIpc } from "./narration/registerNarrationPreviewIpc.js";
+import { NarratedSlideSaver } from "./narration/NarratedSlideSaver.js";
+import { registerNarratedSlideSaveIpc } from "./narration/registerNarratedSlideSaveIpc.js";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -73,20 +75,6 @@ const narrationPreparation = new NarrationPreparation(
 );
 registerNarrationPreviewIpc(ipcMain, narrationPreparation);
 
-if (process.env.NODE_ENV === "test") {
-  (
-    globalThis as typeof globalThis & {
-      __installNarrationPreviewTestAdapter?: (
-        mappingSource: ConstructorParameters<typeof NarrationPreparation>[0],
-        synthesizer: ConstructorParameters<typeof NarrationPreparation>[1],
-      ) => void;
-    }
-  ).__installNarrationPreviewTestAdapter = (mappingSource, synthesizer) => {
-    ipcMain.removeHandler("prepare-narration-preview");
-    registerNarrationPreviewIpc(ipcMain, new NarrationPreparation(mappingSource, synthesizer));
-  };
-}
-
 const nativeProvider: (PptProvider & NativePlatformProvider) | null =
   process.platform === "darwin"
     ? new MacPptProvider()
@@ -106,6 +94,35 @@ function getActiveCoreProvider(): PptProvider {
   }
 
   return nativeProvider;
+}
+
+registerNarratedSlideSaveIpc(
+  ipcMain,
+  new NarratedSlideSaver(narrationPreparation, getActiveCoreProvider),
+);
+
+if (process.env.NODE_ENV === "test") {
+  (
+    globalThis as typeof globalThis & {
+      __installNarrationPreviewTestAdapter?: (
+        mappingSource: ConstructorParameters<typeof NarrationPreparation>[0],
+        synthesizer: ConstructorParameters<typeof NarrationPreparation>[1],
+        powerpoint?: Pick<PptProvider, "saveNotes" | "insertAudio">,
+      ) => void;
+    }
+  ).__installNarrationPreviewTestAdapter = (mappingSource, synthesizer, powerpoint) => {
+    const testPreparation = new NarrationPreparation(mappingSource, synthesizer);
+    ipcMain.removeHandler("prepare-narration-preview");
+    registerNarrationPreviewIpc(ipcMain, testPreparation);
+
+    if (powerpoint) {
+      ipcMain.removeHandler("save-narrated-slide");
+      registerNarratedSlideSaveIpc(
+        ipcMain,
+        new NarratedSlideSaver(testPreparation, () => powerpoint),
+      );
+    }
+  };
 }
 
 function getOutputDir(absolutePath: string): string {
