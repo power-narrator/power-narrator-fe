@@ -234,8 +234,8 @@ python-xml-main/        # XML CLI source and related docs
 ```bash
 git clone git@github.com:power-narrator/power-narrator-fe.git
 cd power-narrator-fe
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 ---

@@ -6,14 +6,15 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"pnpm run dev:electron\"",
-    "dev:electron": "pnpm run build:electron && concurrently -k \"pnpm run build:electron -- --watch\" \"electron .\"",
+    "dev:electron": "pnpm run build:electron && concurrently -k \"pnpm run build:electron --watch\" \"electron .\"",
     "build": "pnpm run typecheck && vite build && pnpm run build:electron",
     "build:electron": "tsc -p electron",
     "dist": "pnpm run build && electron-builder",
     "lint": "oxlint",
     "format": "oxfmt",
     "typecheck": "tsc -b --noEmit",
-    "test": "vitest run src electron",
+    "test": "pnpm run test:unit && pnpm run test:e2e",
+    "test:unit": "vitest run src electron",
     "test:e2e": "pnpm run build && playwright test"
   },
   "dependencies": {
