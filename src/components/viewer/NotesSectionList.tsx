@@ -28,6 +28,7 @@ interface NotesSectionListProps {
   assignTextareaRef: (index: number, element: HTMLTextAreaElement | null) => void;
   getTextarea: (index: number) => HTMLTextAreaElement | null;
   slideIndex: number;
+  slideNotes: string;
 }
 
 interface SectionTextEditorProps {
@@ -65,6 +66,7 @@ export function NotesSectionList({
   assignTextareaRef,
   getTextarea,
   slideIndex,
+  slideNotes,
 }: NotesSectionListProps) {
   const speakerOptions = getSpeakerOptions(mappings);
 
@@ -111,6 +113,9 @@ export function NotesSectionList({
                 <Divider />
                 <SectionPreviewButtons
                   id={`${slideIndex}-${index}`}
+                  slideIndex={slideIndex}
+                  sectionIndex={index}
+                  slideNotes={slideNotes}
                   section={section}
                   effectiveSpeaker={effectiveSpeaker}
                   mappings={mappings}

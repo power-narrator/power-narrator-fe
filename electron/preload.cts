@@ -13,6 +13,7 @@ import type {
   VideoPptResult,
 } from "./platform/types.js";
 import type { GenerateSpeechRequest, TtsProviderId, Voice } from "../shared/types/tts.js";
+import type { PreviewNarrationRequest } from "../shared/types/narration.js";
 
 const electronAPI = {
   convertPptx: (filePath: string): Promise<SlidesPptResult> =>
@@ -27,6 +28,8 @@ const electronAPI = {
   getVoices: (): Promise<Voice[]> => ipcRenderer.invoke("get-voices"),
   generateSpeech: (payload: GenerateSpeechRequest): Promise<Uint8Array> =>
     ipcRenderer.invoke("generate-speech", payload),
+  prepareNarrationPreview: (payload: PreviewNarrationRequest): Promise<Uint8Array | null> =>
+    ipcRenderer.invoke("prepare-narration-preview", payload),
   getGcpKeyPath: (): Promise<string | null> => ipcRenderer.invoke("get-gcp-key-path"),
   setGcpKey: (): Promise<SetGcpKeyResult> => ipcRenderer.invoke("set-gcp-key"),
   getSpeakerMappings: (): Promise<Record<string, Voice>> =>

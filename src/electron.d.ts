@@ -1,4 +1,5 @@
 import type { GenerateSpeechRequest, TtsProviderId, Voice } from "../shared/types/tts";
+import type { PreviewNarrationRequest, PreviewNarrationResult } from "../shared/types/narration";
 import type {
   BasicElectronResult,
   ConvertResponse,
@@ -25,6 +26,9 @@ declare global {
       saveNotes: (filePath: string, slides: SaveNotesSlide[]) => Promise<BasicElectronResult>;
       getVoices: () => Promise<Voice[]>;
       generateSpeech: (payload: GenerateSpeechRequest) => Promise<Uint8Array>;
+      prepareNarrationPreview: (
+        payload: PreviewNarrationRequest,
+      ) => Promise<PreviewNarrationResult>;
       getGcpKeyPath: () => Promise<string | null>;
       setGcpKey: () => Promise<SetGcpKeyResult>;
       setInsertMethod: (method: string) => Promise<void>;

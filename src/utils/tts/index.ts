@@ -1,4 +1,12 @@
 import type { Voice } from "../../../shared/types/tts";
+import type { PreviewNarrationRequest } from "../../../shared/types/narration";
+
+export const getPreviewAudioBuffer = async (
+  request: PreviewNarrationRequest,
+): Promise<ArrayBuffer | null> => {
+  const result = await window.electronAPI.prepareNarrationPreview(request);
+  return result ? Uint8Array.from(result).buffer : null;
+};
 
 function getCacheKey(text: string, voiceOption?: Voice): string {
   if (!voiceOption) {

@@ -3,13 +3,16 @@ import { IconHistory, IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react
 import { useEffect, useRef, useState } from "react";
 import type { NoteSection } from "../../types/notes";
 import { getErrorMessage } from "../../utils/errors";
-import { getSpeakerOptions, resolveSpeakerVoice } from "../../utils/viewer";
-import { generateAudio } from "../../utils/tts";
+import { getSpeakerOptions } from "../../utils/viewer";
+import { getPreviewAudioBuffer } from "../../utils/tts";
 import type { Voice } from "../../../shared/types/tts";
 import { useAudio } from "../../context/useAudio";
 
 interface SectionPreviewButtonsProps {
   id: string;
+  slideIndex: number;
+  sectionIndex: number;
+  slideNotes: string;
   section: NoteSection;
   effectiveSpeaker: string;
   mappings: Record<string, Voice>;
@@ -19,6 +22,9 @@ interface SectionPreviewButtonsProps {
 
 export function SectionPreviewButtons({
   id,
+  slideIndex,
+  sectionIndex,
+  slideNotes,
   section,
   effectiveSpeaker,
   mappings,
@@ -40,7 +46,7 @@ export function SectionPreviewButtons({
   const [lastPlayedSpeaker, setLastPlayedSpeaker] = useState<string | null>(null);
   const [isAudioGenerating, setIsAudioGenerating] = useState(false);
   const previewRequestIdRef = useRef(0);
-  const autoplayRequestIdRef = useRef<string | null>(null);
+  const ownsPreviewRef = useRef(false);
 
   const isCurrentActive = activeId === id;
   const isPlaying = globalIsPlaying && isCurrentActive;
@@ -51,22 +57,37 @@ export function SectionPreviewButtons({
   useEffect(() => {
     // Only clear if the global audio element stopped or switched to a different section entirely
     if (!globalIsPlaying && activeId === null && !isAudioGenerating) {
+      ownsPreviewRef.current = false;
       setActivePreviewTarget(null);
     }
     if (activeId !== null && !isCurrentActive) {
+      ownsPreviewRef.current = false;
       setActivePreviewTarget(null);
     }
   }, [globalIsPlaying, activeId, isCurrentActive, isAudioGenerating]);
 
+  useEffect(
+    () => () => {
+      if (!ownsPreviewRef.current) {
+        return;
+      }
+
+      previewRequestIdRef.current += 1;
+      ownsPreviewRef.current = false;
+      audioStop();
+    },
+    [audioStop],
+  );
+
   const stopPlayback = () => {
     previewRequestIdRef.current += 1;
-    autoplayRequestIdRef.current = null;
+    ownsPreviewRef.current = false;
     audioStop();
     setActivePreviewTarget(null);
     setIsAudioGenerating(false);
   };
 
-  const handlePlay = async (speakerValue: string) => {
+  const handlePlay = async (speakerValue: string, previewSpeaker?: string) => {
     if (activePreviewTarget === speakerValue) {
       stopPlayback();
       return;
@@ -91,21 +112,32 @@ export function SectionPreviewButtons({
     onFocus();
     const requestId = previewRequestIdRef.current + 1;
     previewRequestIdRef.current = requestId;
-    const autoplayId = `${id}-${requestId}`;
-    autoplayRequestIdRef.current = autoplayId;
+    ownsPreviewRef.current = true;
 
     try {
       setIsAudioGenerating(true);
       setActivePreviewTarget(speakerValue);
       setLastPlayedSpeaker(speakerValue);
-      const resolvedSpeaker = speakerValue || effectiveSpeaker;
-      const voiceOverride = resolveSpeakerVoice(mappings, resolvedSpeaker);
-      const url = await generateAudio(textToPlay, voiceOverride);
+      const buffer = await getPreviewAudioBuffer({
+        slideIndex,
+        sectionIndex,
+        notes: slideNotes,
+        text: textToPlay,
+        ...(previewSpeaker !== undefined ? { previewSpeaker } : {}),
+      });
 
       if (previewRequestIdRef.current !== requestId) {
         return;
       }
 
+      if (!buffer) {
+        ownsPreviewRef.current = false;
+        alert("No text to preview.");
+        setActivePreviewTarget(null);
+        return;
+      }
+
+      const url = URL.createObjectURL(new Blob([buffer], { type: "audio/mpeg" }));
       audioPlay(id, url);
     } catch (error: unknown) {
       if (previewRequestIdRef.current !== requestId) {
@@ -113,7 +145,7 @@ export function SectionPreviewButtons({
       }
 
       alert(`Failed to play audio: ${getErrorMessage(error)}`);
-      autoplayRequestIdRef.current = null;
+      ownsPreviewRef.current = false;
       setActivePreviewTarget(null);
     } finally {
       if (previewRequestIdRef.current === requestId) {
@@ -136,7 +168,6 @@ export function SectionPreviewButtons({
         {speakers.map((speaker) => {
           const isSelected = speaker.value === effectiveSpeaker;
           const isActive = activePreviewTarget === speaker.value;
-          const isGenerating = isAudioGenerating && isActive;
           const isAnyPlaying = activePreviewTarget !== null;
 
           return (
@@ -146,9 +177,8 @@ export function SectionPreviewButtons({
               variant={isActive || (isSelected && !isAnyPlaying) ? "filled" : "outline"}
               color="blue"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => handlePlay(speaker.value)}
-              loading={isGenerating}
-              disabled={!section.text || isGenerating}
+              onClick={() => handlePlay(speaker.value, speaker.value)}
+              disabled={!section.text || (isAudioGenerating && !isActive)}
               leftSection={
                 isActive ? (
                   <IconPlayerStop size={12} />
@@ -172,14 +202,14 @@ export function SectionPreviewButtons({
           radius="xl"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
-            if (isAnyPreviewActive) {
+            if (activePreviewTarget !== null) {
               stopPlayback();
               return;
             }
 
             handlePlay(section.speaker);
           }}
-          disabled={!section.text || isAudioGenerating}
+          disabled={!section.text}
         >
           {isAnyPreviewActive ? <IconPlayerStop size={12} /> : <IconPlayerPlay size={12} />}
         </ActionIcon>

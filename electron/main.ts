@@ -12,7 +12,7 @@ import { APP_NAME } from "./platform/helpers.js";
 import { TtsManager } from "./tts/TtsManager.js";
 import { GcpTtsProvider } from "./tts/GcpTtsProvider.js";
 import { LocalTtsProvider } from "./tts/LocalTtsProvider.js";
-import type { TtsProvider, TtsProviderId } from "./tts/TtsProvider.js";
+import type { TtsProvider, TtsProviderId, Voice } from "./tts/TtsProvider.js";
 import type {
   GenerateVideoRequest,
   PlaySlideRequest,
@@ -22,6 +22,8 @@ import type {
   SlideManifestEntry,
 } from "./platform/types.js";
 import type { GenerateSpeechRequest } from "../shared/types/tts.js";
+import { NarrationPreparation } from "./narration/NarrationPreparation.js";
+import { registerNarrationPreviewIpc } from "./narration/registerNarrationPreviewIpc.js";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -65,6 +67,25 @@ const ttsManager = new TtsManager(
   ]),
   process.env.TTS_PROVIDER ?? "gcp",
 );
+const narrationPreparation = new NarrationPreparation(
+  { getSpeakerMappings: () => (store.get("speakerMappings") as Record<string, Voice>) || {} },
+  ttsManager,
+);
+registerNarrationPreviewIpc(ipcMain, narrationPreparation);
+
+if (process.env.NODE_ENV === "test") {
+  (
+    globalThis as typeof globalThis & {
+      __installNarrationPreviewTestAdapter?: (
+        mappingSource: ConstructorParameters<typeof NarrationPreparation>[0],
+        synthesizer: ConstructorParameters<typeof NarrationPreparation>[1],
+      ) => void;
+    }
+  ).__installNarrationPreviewTestAdapter = (mappingSource, synthesizer) => {
+    ipcMain.removeHandler("prepare-narration-preview");
+    registerNarrationPreviewIpc(ipcMain, new NarrationPreparation(mappingSource, synthesizer));
+  };
+}
 
 const nativeProvider: (PptProvider & NativePlatformProvider) | null =
   process.platform === "darwin"
