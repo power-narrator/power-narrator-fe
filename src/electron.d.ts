@@ -3,7 +3,6 @@ import type {
   NarratedPresentationSaveRequest,
   NarratedSaveResult,
   NarratedSlideSaveRequest,
-  NarratedSlideSaveResult,
   NarrationPreparationProgress,
   PreviewNarrationRequest,
   PreviewNarrationResult,
@@ -32,7 +31,7 @@ declare global {
       getPathForFile: (file: File) => string;
       selectFile: () => Promise<string | null>;
       saveNotes: (filePath: string, slides: SaveNotesSlide[]) => Promise<BasicElectronResult>;
-      saveNarratedSlide: (payload: NarratedSlideSaveRequest) => Promise<NarratedSlideSaveResult>;
+      saveNarratedSlide: (payload: NarratedSlideSaveRequest) => Promise<NarratedSaveResult>;
       saveNarratedPresentation: (
         payload: NarratedPresentationSaveRequest,
         onProgress: (progress: NarrationPreparationProgress) => void,
