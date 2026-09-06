@@ -21,12 +21,29 @@ interface ViewerPageProps {
   onOpenSettings: () => void;
 }
 
+interface SlideHistoryEntry {
+  slides: Slide[];
+  changedSlidePositions: readonly number[];
+}
+
+interface SavedSlideSelection {
+  slide: Slide;
+  position: number;
+}
+
 const EMPTY_SLIDE: Slide = {
   index: 1,
   image: "",
   src: "",
   notes: "",
 };
+
+function slidesAtPositions(slides: readonly Slide[], positions: readonly number[]) {
+  return positions.flatMap((position) => {
+    const slide = slides[position];
+    return slide ? [slide] : [];
+  });
+}
 
 export function ViewerPage({
   slides: initialSlides,
@@ -35,7 +52,9 @@ export function ViewerPage({
   onOpenSettings,
 }: ViewerPageProps) {
   const [slides, setSlides] = useState<Slide[]>(initialSlides);
-  const [history, setHistory] = useState<Slide[][]>([initialSlides]);
+  const [history, setHistory] = useState<SlideHistoryEntry[]>([
+    { slides: initialSlides, changedSlidePositions: [] },
+  ]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const historyIndexRef = useRef(0);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
@@ -117,36 +136,47 @@ export function ViewerPage({
     setSaveStatus("");
   }
 
-  function pushToHistory(nextSlides: Slide[]) {
+  function pushToHistory(nextSlides: Slide[], changedSlidePositions: readonly number[]) {
     const nextHistoryIndex = historyIndexRef.current + 1;
-    setHistory((previousHistory) => [...previousHistory.slice(0, nextHistoryIndex), nextSlides]);
+    setHistory((previousHistory) => [
+      ...previousHistory.slice(0, nextHistoryIndex),
+      { slides: nextSlides, changedSlidePositions },
+    ]);
     historyIndexRef.current = nextHistoryIndex;
     setHistoryIndex(nextHistoryIndex);
   }
 
-  function recordDirtySlides(nextSlides: Slide[]) {
-    dirtySlideIndicesRef.current = new Set(
-      nextSlides
-        .filter((slide) => fullySavedNotesRef.current.get(slide.index) !== (slide.notes || ""))
-        .map((slide) => slide.index),
-    );
+  function recordDirtySlides(changedSlides: readonly Slide[]) {
+    for (const slide of changedSlides) {
+      if (fullySavedNotesRef.current.get(slide.index) === (slide.notes || "")) {
+        dirtySlideIndicesRef.current.delete(slide.index);
+      } else {
+        dirtySlideIndicesRef.current.add(slide.index);
+      }
+    }
   }
 
-  function setEditedSlides(nextSlides: Slide[]) {
+  function setEditedSlides(nextSlides: Slide[], changedSlidePositions: readonly number[]) {
     setSlides(nextSlides);
-    recordDirtySlides(nextSlides);
+    recordDirtySlides(slidesAtPositions(nextSlides, changedSlidePositions));
   }
 
-  function updateFullySavedNotes(savedSlides: Slide[], currentSlides: Slide[]) {
+  function updateFullySavedNotes(savedSlides: Slide[], currentSlides: readonly Slide[]) {
     for (const slide of savedSlides) {
       fullySavedNotesRef.current.set(slide.index, slide.notes || "");
     }
     recordDirtySlides(currentSlides);
   }
 
-  function markSlidesFullySaved(savedSlides: Slide[]) {
+  function markSlidesFullySaved(savedSelections: readonly SavedSlideSelection[]) {
     setSlides((currentSlides) => {
-      updateFullySavedNotes(savedSlides, currentSlides);
+      updateFullySavedNotes(
+        savedSelections.map(({ slide }) => slide),
+        slidesAtPositions(
+          currentSlides,
+          savedSelections.map(({ position }) => position),
+        ),
+      );
       return currentSlides;
     });
   }
@@ -168,7 +198,7 @@ export function ViewerPage({
       notes: formatNotes(sections),
     };
 
-    setEditedSlides(nextSlides);
+    setEditedSlides(nextSlides, [activeSlideIndex]);
     return nextSlides;
   }
 
@@ -178,7 +208,7 @@ export function ViewerPage({
     }
     updateFullySavedNotes(reloadedSlides, nextSlides);
     setSlides(nextSlides);
-    setHistory([nextSlides]);
+    setHistory([{ slides: nextSlides, changedSlidePositions: [] }]);
     historyIndexRef.current = 0;
     setHistoryIndex(0);
   }
@@ -200,7 +230,7 @@ export function ViewerPage({
     fullySavedNotesRef.current.clear();
     updateFullySavedNotes(initialSlides, initialSlides);
     setSlides(initialSlides);
-    setHistory([initialSlides]);
+    setHistory([{ slides: initialSlides, changedSlidePositions: [] }]);
     historyIndexRef.current = 0;
     setHistoryIndex(0);
     setActiveSlideIndex(0);
@@ -236,14 +266,15 @@ export function ViewerPage({
     }
 
     const nextHistoryIndex = historyIndexRef.current - 1;
-    const nextSlides = history[nextHistoryIndex];
-    if (!nextSlides) {
+    const currentEntry = history[historyIndexRef.current];
+    const nextEntry = history[nextHistoryIndex];
+    if (!currentEntry || !nextEntry) {
       return;
     }
 
     historyIndexRef.current = nextHistoryIndex;
     setHistoryIndex(nextHistoryIndex);
-    setEditedSlides(nextSlides);
+    setEditedSlides(nextEntry.slides, currentEntry.changedSlidePositions);
   }, [history]);
 
   const handleRedo = useCallback(() => {
@@ -252,14 +283,14 @@ export function ViewerPage({
     }
 
     const nextHistoryIndex = historyIndexRef.current + 1;
-    const nextSlides = history[nextHistoryIndex];
-    if (!nextSlides) {
+    const nextEntry = history[nextHistoryIndex];
+    if (!nextEntry) {
       return;
     }
 
     historyIndexRef.current = nextHistoryIndex;
     setHistoryIndex(nextHistoryIndex);
-    setEditedSlides(nextSlides);
+    setEditedSlides(nextEntry.slides, nextEntry.changedSlidePositions);
   }, [history]);
 
   useEffect(() => {
@@ -327,7 +358,7 @@ export function ViewerPage({
       end: selectionEnd + startTag.length,
     };
 
-    pushToHistory(nextSlides);
+    pushToHistory(nextSlides, [activeSlideIndex]);
   }
 
   function insertSelfClosingTag(tag: string) {
@@ -351,7 +382,7 @@ export function ViewerPage({
 
     clearDebounce();
     debounceRef.current = setTimeout(() => {
-      pushToHistory(nextSlides);
+      pushToHistory(nextSlides, [activeSlideIndex]);
       debounceRef.current = null;
     }, 800);
   };
@@ -371,7 +402,7 @@ export function ViewerPage({
       return;
     }
 
-    pushToHistory(nextSlides);
+    pushToHistory(nextSlides, [activeSlideIndex]);
   };
 
   const handleAddSection = () => {
@@ -385,7 +416,7 @@ export function ViewerPage({
       return;
     }
 
-    pushToHistory(nextSlides);
+    pushToHistory(nextSlides, [activeSlideIndex]);
     setActiveSectionIndex(newSectionIndex);
   };
 
@@ -404,7 +435,7 @@ export function ViewerPage({
       return;
     }
 
-    pushToHistory(nextSlides);
+    pushToHistory(nextSlides, [activeSlideIndex]);
 
     if (activeSectionIndex >= nextSectionCount) {
       setActiveSectionIndex(Math.max(0, nextSectionCount - 1));
@@ -482,7 +513,7 @@ export function ViewerPage({
         reportNarratedSaveFailure(result);
         return;
       }
-      markSlidesFullySaved(slides);
+      markSlidesFullySaved(slides.map((slide, position) => ({ slide, position })));
       setSaveStatus("Saved slides!");
       scheduleStatusClear(setSaveStatus);
     } catch (error: unknown) {
@@ -510,7 +541,7 @@ export function ViewerPage({
         reportNarratedSaveFailure(result);
         return;
       }
-      markSlidesFullySaved([activeSlide]);
+      markSlidesFullySaved([{ slide: activeSlide, position: activeSlideIndex }]);
       setSaveStatus("Saved slides!");
       scheduleStatusClear(setSaveStatus);
     } catch (error: unknown) {

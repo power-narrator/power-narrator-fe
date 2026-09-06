@@ -451,6 +451,26 @@ test.describe("PPT Viewer UI Workflows", () => {
     await expect(notesEditor()).toHaveValue(MOCK_SLIDES[0]!.notes);
   });
 
+  test("undoes and redoes only the slide affected by each history transition", async () => {
+    const firstSlideEdit = "Edited notes on slide 1";
+    const secondSlideEdit = "Edited notes on slide 2";
+    await notesEditor().fill(firstSlideEdit);
+    await window.waitForTimeout(900);
+
+    await window.getByRole("img", { name: "Slide 2 thumbnail" }).click();
+    const secondSlideNotes = window.getByRole("textbox", { name: "Slide 2 section 1 notes" });
+    await secondSlideNotes.fill(secondSlideEdit);
+    await window.waitForTimeout(900);
+
+    await window.keyboard.press("Control+z");
+    await expect(secondSlideNotes).toHaveValue(MOCK_SLIDES[1]!.notes);
+    await window.keyboard.press("Control+y");
+    await expect(secondSlideNotes).toHaveValue(secondSlideEdit);
+
+    await window.getByRole("img", { name: "Slide 1 thumbnail" }).click();
+    await expect(notesEditor()).toHaveValue(firstSlideEdit);
+  });
+
   test("previews edited text before textarea blur", async () => {
     await resetGeneratedSpeechCalls();
 
