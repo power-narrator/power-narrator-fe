@@ -5,16 +5,16 @@
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "concurrently -k \"vite\" \"npm run dev:electron\"",
-    "dev:electron": "npm run build:electron && concurrently -k \"npm run build:electron -- --watch\" \"electron .\"",
-    "build": "npm run typecheck && vite build && npm run build:electron",
+    "dev": "concurrently -k \"vite\" \"pnpm run dev:electron\"",
+    "dev:electron": "pnpm run build:electron && concurrently -k \"pnpm run build:electron -- --watch\" \"electron .\"",
+    "build": "pnpm run typecheck && vite build && pnpm run build:electron",
     "build:electron": "tsc -p electron",
-    "dist": "npm run build && electron-builder",
+    "dist": "pnpm run build && electron-builder",
     "lint": "oxlint",
     "format": "oxfmt",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run src electron",
-    "test:e2e": "npm run build && playwright test"
+    "test:e2e": "pnpm run build && playwright test"
   },
   "dependencies": {
     "@gfazioli/mantine-split-pane": "^4.1.5",
@@ -41,8 +41,8 @@
     "oxfmt": "^0.53.0",
     "oxlint": "^1.68.0",
     "playwright": "^1.60.0",
-    "pptxgenjs": "^4.0.1",
-    "typescript": "~6.0.3",
+    "pptxgenjs": "^1.1.5",
+    "typescript": "^6.0.3",
     "vite": "^8.0.16",
     "vitest": "^4.1.11"
   }
