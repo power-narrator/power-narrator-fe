@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TtsProvider, TtsProviderRegistry, Voice } from "./TtsProvider.js";
-import { TtsManager } from "./TtsManager.js";
+import { getNarrationCacheDirectory, TtsManager } from "./TtsManager.js";
 
 const { getUserDataPath } = vi.hoisted(() => ({
   getUserDataPath: vi.fn<() => string>(),
@@ -25,10 +25,17 @@ afterEach(() => {
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-function createProvider(voices: Voice[] = []): TtsProvider {
+function createProvider(
+  voices: Voice[] = [],
+): TtsProvider & { generateSpeech: ReturnType<typeof vi.fn> } {
+  const generateSpeech = vi.fn().mockResolvedValue(null);
   return {
     getVoices: vi.fn().mockResolvedValue(voices),
-    generateSpeech: vi.fn().mockResolvedValue(null),
+    prepareSpeech: (text, voice) => ({
+      cacheIdentity: { text, voice: voice?.name ?? null },
+      synthesize: () => generateSpeech(text, voice),
+    }),
+    generateSpeech,
   };
 }
 
@@ -47,6 +54,52 @@ const localVoice: Voice = {
 };
 
 describe("TtsManager", () => {
+  it.each([
+    ["darwin", {}, path.join("/users/example", "Library", "Caches", "power-narrator", "narration")],
+    ["linux", {}, path.join("/users/example", ".cache", "power-narrator", "narration")],
+    [
+      "linux",
+      { XDG_CACHE_HOME: "/var/cache/example" },
+      path.join("/var/cache/example", "power-narrator", "narration"),
+    ],
+    [
+      "win32",
+      { LOCALAPPDATA: "C:\\Users\\example\\AppData\\Local" },
+      path.join("C:\\Users\\example\\AppData\\Local", "power-narrator", "narration"),
+    ],
+  ] as const)(
+    "uses the conventional %s application cache location",
+    (platform, environment, expected) => {
+      expect(
+        getNarrationCacheDirectory("/users/example", platform, environment as NodeJS.ProcessEnv),
+      ).toBe(expected);
+    },
+  );
+
+  it("removes the obsolete configuration cache without migrating it", () => {
+    const obsoleteCacheDirectory = path.join(tempDir, "user-data", "tts_cache");
+    fs.mkdirSync(obsoleteCacheDirectory, { recursive: true });
+    fs.writeFileSync(path.join(obsoleteCacheDirectory, "legacy.mp3"), "legacy audio");
+
+    new TtsManager(new Map([["gcp", createProvider()]]), "gcp", {
+      cacheDirectory: path.join(tempDir, "cache", "power-narrator", "narration"),
+      obsoleteCacheDirectory,
+    });
+
+    expect(fs.existsSync(obsoleteCacheDirectory)).toBe(false);
+  });
+
+  it("writes cache entries with hashed safe filenames", async () => {
+    const provider = createProvider();
+    provider.generateSpeech.mockResolvedValue(new Uint8Array([1, 2, 3]));
+    const cacheDirectory = path.join(tempDir, "narration");
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+
+    await manager.generateSpeech("../../unsafe / narration\0", gcpVoice);
+
+    expect(fs.readdirSync(cacheDirectory)).toEqual([expect.stringMatching(/^[a-f0-9]{64}\.mp3$/)]);
+  });
+
   it.each([
     {
       name: "routes a supplied voice to its provider",

@@ -132,7 +132,7 @@ To ensure reliable cross-platform compatibility and prevent formatting loss duri
   - **Recently Played Indicator**: The play button icon changes to a history icon (`IconHistory`) for the most recently tested voice in each section.
 - **Selection Playback** — highlight any subset of text in the editor before clicking a preview button to narrate only that specific selection
 - **Audio Orchestration** — maintains a global audio context; starting a new preview or slide-playback automatically stops any existing audio to prevent overlapping
-- Persistent audio cache (SHA-256 keyed, stored in Electron `userData`)
+- Persistent disposable audio cache (SHA-256 keyed, stored in the operating system's application-cache location)
 
 ### Multi-Speaker Mapping
 
