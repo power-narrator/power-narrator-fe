@@ -209,16 +209,16 @@ async function installMockIpcHandlers(app: ElectronApplication) {
         },
       };
 
-      const installNarrationPreviewTestAdapter = (
+      const installNarrationTestAdapters = (
         globalThis as typeof globalThis & {
-          __installNarrationPreviewTestAdapter: (
+          __installNarrationTestAdapters: (
             mappingSource: unknown,
             synthesizer: unknown,
             powerpoint: unknown,
           ) => void;
         }
-      ).__installNarrationPreviewTestAdapter;
-      installNarrationPreviewTestAdapter(
+      ).__installNarrationTestAdapters;
+      installNarrationTestAdapters(
         mappingSource,
         deterministicFakeTtsAdapter,
         deterministicFakePowerPointAdapter,

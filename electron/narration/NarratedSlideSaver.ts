@@ -23,7 +23,12 @@ export class NarratedSlideSaver {
       if (error instanceof NarrationPreparationError) {
         return { success: false, stage: error.stage, partial: false, message: error.message };
       }
-      throw error;
+      return {
+        success: false,
+        stage: "validation",
+        partial: false,
+        message: error instanceof Error ? error.message : "Unknown narration preparation error",
+      };
     }
 
     let powerpoint: SavePowerPoint;

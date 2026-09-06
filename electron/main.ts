@@ -104,13 +104,13 @@ registerNarratedSlideSaveIpc(
 if (process.env.NODE_ENV === "test") {
   (
     globalThis as typeof globalThis & {
-      __installNarrationPreviewTestAdapter?: (
+      __installNarrationTestAdapters?: (
         mappingSource: ConstructorParameters<typeof NarrationPreparation>[0],
         synthesizer: ConstructorParameters<typeof NarrationPreparation>[1],
         powerpoint?: Pick<PptProvider, "saveNotes" | "insertAudio">,
       ) => void;
     }
-  ).__installNarrationPreviewTestAdapter = (mappingSource, synthesizer, powerpoint) => {
+  ).__installNarrationTestAdapters = (mappingSource, synthesizer, powerpoint) => {
     const testPreparation = new NarrationPreparation(mappingSource, synthesizer);
     ipcMain.removeHandler("prepare-narration-preview");
     registerNarrationPreviewIpc(ipcMain, testPreparation);

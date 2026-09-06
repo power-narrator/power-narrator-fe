@@ -134,6 +134,37 @@ describe("NarratedSlideSaver.save", () => {
     expect(powerpoint.insertAudio).not.toHaveBeenCalled();
   });
 
+  it("returns a structured preparation failure when speaker mappings cannot be read", async () => {
+    const preparation = new NarrationPreparation(
+      {
+        getSpeakerMappings: () => {
+          throw new Error("settings unavailable");
+        },
+      },
+      { supportsProvider: () => true, generateSpeech: vi.fn() },
+    );
+    const powerpoint = {
+      saveNotes: vi.fn(),
+      insertAudio: vi.fn(),
+    };
+    const saver = new NarratedSlideSaver(preparation, () => powerpoint);
+
+    await expect(
+      saver.save({
+        filePath: "/slides/talk.pptx",
+        slideIndex: 5,
+        notes: "[Narrator]\nHello",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      stage: "validation",
+      partial: false,
+      message: "settings unavailable",
+    });
+    expect(powerpoint.saveNotes).not.toHaveBeenCalled();
+    expect(powerpoint.insertAudio).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["notes", { success: false, message: "notes failed" }, { success: true }, false],
     ["audio", { success: true }, { success: false, message: "audio failed" }, true],
