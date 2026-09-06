@@ -12,7 +12,8 @@ interface RawNoteSection {
   text: string;
 }
 
-export const normalizeNotes = (text: string): string => text.replace(/\r\n|\r/g, "\n");
+export const normalizeNotes = (text: string): string =>
+  text.replace(/\r\n|[\r\u2028\u2029]/g, "\n");
 
 function splitRawSections(text: string): RawNoteSection[] {
   const sections: RawNoteSection[] = [];

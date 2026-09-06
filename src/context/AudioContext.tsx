@@ -8,7 +8,15 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const currentUrlRef = useRef<string | null>(null);
   const isSeekingRef = useRef(false);
+
+  const revokeCurrentUrl = useCallback(() => {
+    if (currentUrlRef.current) {
+      URL.revokeObjectURL(currentUrlRef.current);
+      currentUrlRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     const audio = new Audio();
@@ -25,6 +33,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     const handleEnded = () => {
+      revokeCurrentUrl();
       setIsPlaying(false);
       setActiveId(null);
       setCurrentUrl(null);
@@ -46,18 +55,20 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       audio.removeEventListener("play", handlePlay);
       audio.removeEventListener("pause", handlePause);
       audio.pause();
+      revokeCurrentUrl();
       audioRef.current = null;
     };
-  }, []);
+  }, [revokeCurrentUrl]);
 
   const stop = useCallback(() => {
     if (!audioRef.current) return;
     audioRef.current.pause();
     audioRef.current.currentTime = 0;
+    revokeCurrentUrl();
     setActiveId(null);
     setCurrentUrl(null);
     setIsPlaying(false);
-  }, []);
+  }, [revokeCurrentUrl]);
 
   const play = useCallback(
     (id: string, url: string) => {
@@ -73,7 +84,9 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (!isSameId || !isSameUrl) {
         audioRef.current.pause();
+        revokeCurrentUrl();
         audioRef.current.src = url;
+        currentUrlRef.current = url;
         audioRef.current.currentTime = 0;
         setActiveId(id);
         setCurrentUrl(url);
@@ -81,12 +94,17 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       audioRef.current.play().catch((error) => {
         console.error("Playback failed:", error);
+        if (currentUrlRef.current !== url) {
+          return;
+        }
+
+        revokeCurrentUrl();
         setActiveId(null);
         setCurrentUrl(null);
         setIsPlaying(false);
       });
     },
-    [activeId, currentUrl, isPlaying, stop],
+    [activeId, currentUrl, isPlaying, revokeCurrentUrl, stop],
   );
 
   const seek = useCallback((time: number) => {

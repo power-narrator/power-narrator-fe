@@ -77,7 +77,7 @@ async function launchTestApp() {
 
 async function installMockIpcHandlers(app: ElectronApplication) {
   await app.evaluate(
-    ({ ipcMain }, { testFilePath, mockSlides, mockVoices, tinyFakeAudioBytes }) => {
+    async ({ ipcMain }, { testFilePath, mockSlides, mockVoices, tinyFakeAudioBytes }) => {
       ipcMain.removeHandler("select-file");
       ipcMain.handle("select-file", async () => testFilePath);
 
@@ -134,6 +134,65 @@ async function installMockIpcHandlers(app: ElectronApplication) {
 
         return new Uint8Array(tinyFakeAudioBytes);
       });
+
+      (
+        globalThis as typeof globalThis & {
+          __previewMappings?: Record<string, Voice>;
+          __completedPreviewSyntheses?: number;
+        }
+      ).__previewMappings = mockVoices;
+      (
+        globalThis as typeof globalThis & {
+          __completedPreviewSyntheses: number;
+        }
+      ).__completedPreviewSyntheses = 0;
+      const mappingSource = {
+        getSpeakerMappings: () =>
+          (
+            globalThis as typeof globalThis & {
+              __previewMappings: Record<string, Voice>;
+            }
+          ).__previewMappings,
+      };
+      const deterministicFakeTtsAdapter = {
+        supportsProvider: () => true,
+        generateSpeech: async (text: string, voiceOption: Voice) => {
+          (
+            globalThis as typeof globalThis & {
+              __generatedSpeechCalls: unknown[];
+            }
+          ).__generatedSpeechCalls.push({ text, voiceOption });
+
+          if (text === "Delayed preview") {
+            return new Promise<Uint8Array>((resolve) => {
+              (
+                globalThis as typeof globalThis & {
+                  __resolveDelayedPreview?: () => void;
+                }
+              ).__resolveDelayedPreview = () => {
+                (
+                  globalThis as typeof globalThis & {
+                    __completedPreviewSyntheses: number;
+                  }
+                ).__completedPreviewSyntheses += 1;
+                resolve(new Uint8Array(tinyFakeAudioBytes));
+              };
+            });
+          }
+
+          return new Uint8Array(tinyFakeAudioBytes);
+        },
+      };
+
+      const installNarrationPreviewTestAdapter = (
+        globalThis as typeof globalThis & {
+          __installNarrationPreviewTestAdapter: (
+            mappingSource: unknown,
+            synthesizer: unknown,
+          ) => void;
+        }
+      ).__installNarrationPreviewTestAdapter;
+      installNarrationPreviewTestAdapter(mappingSource, deterministicFakeTtsAdapter);
     },
     {
       testFilePath: FIXTURE_TEST,
@@ -185,17 +244,21 @@ async function getGeneratedSpeechCalls(): Promise<GeneratedSpeechCall[]> {
 }
 
 async function resetCapturedIpcCalls() {
-  await electronApp.evaluate(() => {
+  await electronApp.evaluate((_, mockVoices) => {
     const globals = globalThis as typeof globalThis & {
       __convertPptxCalls: unknown[];
       __saveNotesCalls: unknown[];
       __generatedSpeechCalls: unknown[];
+      __completedPreviewSyntheses: number;
+      __previewMappings: Record<string, Voice>;
     };
 
     globals.__convertPptxCalls = [];
     globals.__saveNotesCalls = [];
     globals.__generatedSpeechCalls = [];
-  });
+    globals.__completedPreviewSyntheses = 0;
+    globals.__previewMappings = mockVoices;
+  }, MOCK_VOICES);
 }
 
 async function resetGeneratedSpeechCalls() {
@@ -206,6 +269,53 @@ async function resetGeneratedSpeechCalls() {
       }
     ).__generatedSpeechCalls = [];
   });
+}
+
+async function releaseDelayedPreview() {
+  await electronApp.evaluate(() => {
+    const globals = globalThis as typeof globalThis & {
+      __resolveDelayedPreview?: () => void;
+    };
+    globals.__resolveDelayedPreview?.();
+    globals.__resolveDelayedPreview = undefined;
+  });
+}
+
+async function getPlaybackActivity() {
+  return window.evaluate(() => {
+    const globals = globalThis as typeof globalThis & {
+      __audioPlayUrls: string[];
+      __createdBlobUrls: string[];
+      __revokedBlobUrls: string[];
+    };
+
+    return {
+      playUrls: globals.__audioPlayUrls,
+      createdUrls: globals.__createdBlobUrls,
+      revokedUrls: globals.__revokedBlobUrls,
+    };
+  });
+}
+
+async function getCompletedPreviewSyntheses() {
+  return electronApp.evaluate(
+    () =>
+      (
+        globalThis as typeof globalThis & {
+          __completedPreviewSyntheses: number;
+        }
+      ).__completedPreviewSyntheses,
+  );
+}
+
+async function setPreviewMappings(mappings: Record<string, Voice>) {
+  await electronApp.evaluate((_, nextMappings) => {
+    (
+      globalThis as typeof globalThis & {
+        __previewMappings: Record<string, Voice>;
+      }
+    ).__previewMappings = nextMappings;
+  }, mappings);
 }
 
 test.beforeAll(async () => {
@@ -221,6 +331,43 @@ test.beforeAll(async () => {
   }
 
   window = appWindow;
+  await window.addInitScript(() => {
+    const globals = globalThis as typeof globalThis & {
+      __audioPlayUrls: string[];
+      __createdBlobUrls: string[];
+      __revokedBlobUrls: string[];
+    };
+    globals.__audioPlayUrls = [];
+    globals.__createdBlobUrls = [];
+    globals.__revokedBlobUrls = [];
+
+    const originalCreateObjectUrl = URL.createObjectURL.bind(URL);
+    const originalRevokeObjectUrl = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = (object) => {
+      const url = originalCreateObjectUrl(object);
+      globals.__createdBlobUrls.push(url);
+      return url;
+    };
+    URL.revokeObjectURL = (url) => {
+      globals.__revokedBlobUrls.push(url);
+      originalRevokeObjectUrl(url);
+    };
+    const mediaPrototype = (
+      globalThis as typeof globalThis & {
+        HTMLMediaElement: {
+          prototype: {
+            play: () => Promise<void>;
+            pause: () => void;
+          };
+        };
+      }
+    ).HTMLMediaElement.prototype;
+    mediaPrototype.play = function (this: { src: string }) {
+      globals.__audioPlayUrls.push(this.src);
+      return Promise.resolve();
+    };
+    mediaPrototype.pause = () => {};
+  });
 });
 
 test.afterAll(async () => {
@@ -262,6 +409,76 @@ test.describe("PPT Viewer UI Workflows", () => {
     await expect.poll(getGeneratedSpeechCalls).toContainEqual({
       text: "Preview text edited before blur",
       voiceOption: MOCK_VOICES.Narrator,
+    });
+  });
+
+  test("previews only the live selected text", async () => {
+    await resetGeneratedSpeechCalls();
+    const notesTextarea = notesEditor();
+    await notesTextarea.fill("Read only this phrase please");
+    await notesTextarea.evaluate(
+      (element: { focus(): void; setSelectionRange(a: number, b: number): void }) => {
+        element.focus();
+        element.setSelectionRange(5, 21);
+      },
+    );
+
+    await window.getByRole("button", { name: "Narrator", exact: true }).click();
+
+    await expect.poll(getGeneratedSpeechCalls).toContainEqual({
+      text: "only this phrase",
+      voiceOption: MOCK_VOICES.Narrator,
+    });
+  });
+
+  test("stopping a pending preview prevents late playback without cancelling synthesis", async () => {
+    await resetGeneratedSpeechCalls();
+    await notesEditor().fill("Delayed preview");
+    const narratorPreview = window.getByRole("button", { name: "Narrator", exact: true });
+
+    await narratorPreview.click();
+    await expect.poll(getGeneratedSpeechCalls).toContainEqual({
+      text: "Delayed preview",
+      voiceOption: MOCK_VOICES.Narrator,
+    });
+    await narratorPreview.click();
+    await releaseDelayedPreview();
+
+    await expect.poll(getPlaybackActivity).toMatchObject({ playUrls: [] });
+    await expect.poll(getCompletedPreviewSyntheses).toBe(1);
+  });
+
+  test("surfaces contextual narration validation errors", async () => {
+    await setPreviewMappings({ Narrator: MOCK_VOICES.Narrator! });
+    const dialogMessage = new Promise<string>((resolve) => {
+      window.once("dialog", async (dialog) => {
+        resolve(dialog.message());
+        await dialog.dismiss();
+      });
+    });
+
+    await window.getByRole("button", { name: "Default", exact: true }).click();
+
+    await expect(dialogMessage).resolves.toMatch(
+      /slide 1, section 1, speaker "Default": no voice mapping is configured/,
+    );
+  });
+
+  test("revokes obsolete Blob URLs when preview playback is replaced and disposed", async () => {
+    await notesEditor().fill("First preview");
+    await window.getByRole("button", { name: "Narrator", exact: true }).click();
+    await expect.poll(getPlaybackActivity).toMatchObject({ playUrls: [expect.any(String)] });
+
+    await notesEditor().fill("Replacement preview");
+    await window.getByRole("button", { name: "Default", exact: true }).click();
+    await expect.poll(getPlaybackActivity).toMatchObject({
+      playUrls: [expect.any(String), expect.any(String)],
+      revokedUrls: [expect.any(String)],
+    });
+
+    await window.getByRole("button", { name: "Back", exact: false }).click();
+    await expect.poll(getPlaybackActivity).toMatchObject({
+      revokedUrls: [expect.any(String), expect.any(String)],
     });
   });
 

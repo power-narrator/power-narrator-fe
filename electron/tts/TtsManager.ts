@@ -35,6 +35,10 @@ export class TtsManager {
     return voiceLists.flat();
   }
 
+  supportsProvider(providerId: string): providerId is TtsProviderId {
+    return this.providers.has(providerId as TtsProviderId);
+  }
+
   async generateSpeech(text: string, voiceOption?: Voice): Promise<Uint8Array | null> {
     const providerId = voiceOption === undefined ? this.defaultProviderId : voiceOption.provider;
     const provider = this.providers.get(providerId);
