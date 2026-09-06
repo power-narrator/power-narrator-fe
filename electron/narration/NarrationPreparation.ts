@@ -78,19 +78,7 @@ export class NarrationPreparation {
         ? request.previewSpeaker || DEFAULT_SPEAKER_KEY
         : effectiveSpeaker(speakers, request.sectionIndex);
     const mappings = await this.mappingSource.getSpeakerMappings();
-    const voice = mappings[speaker];
-    const validationProblem =
-      voiceValidationProblem(voice) ||
-      (voice && !this.synthesizer.supportsProvider(String(voice.provider))
-        ? `voice provider "${String(voice.provider)}" is not registered`
-        : null);
-
-    if (validationProblem || !voice) {
-      const label = speaker === DEFAULT_SPEAKER_KEY ? "Default" : speaker;
-      throw new Error(
-        `Narration validation failed for slide ${request.slideIndex}, section ${request.sectionIndex + 1}, speaker "${label}": ${validationProblem}.`,
-      );
-    }
+    const voice = this.resolveVoice(mappings, speaker, request.slideIndex, request.sectionIndex);
 
     return this.synthesizer.generateSpeech(text, voice);
   }
@@ -112,20 +100,7 @@ export class NarrationPreparation {
           sections.map((candidate) => candidate.speaker),
           sectionIndex,
         );
-        const voice = mappings[speaker];
-        const validationProblem =
-          voiceValidationProblem(voice) ||
-          (voice && !this.synthesizer.supportsProvider(String(voice.provider))
-            ? `voice provider "${String(voice.provider)}" is not registered`
-            : null);
-
-        if (validationProblem || !voice) {
-          const label = speaker === DEFAULT_SPEAKER_KEY ? "Default" : speaker;
-          throw new NarrationPreparationError(
-            "validation",
-            `Narration validation failed for slide ${slide.slideIndex}, section ${sectionIndex + 1}, speaker "${label}": ${validationProblem}.`,
-          );
-        }
+        const voice = this.resolveVoice(mappings, speaker, slide.slideIndex, sectionIndex);
 
         return [{ slideIndex: slide.slideIndex, sectionIndex, speaker, text, voice }];
       });
@@ -153,6 +128,30 @@ export class NarrationPreparation {
         }
       }),
     );
+  }
+
+  private resolveVoice(
+    mappings: Record<string, Voice>,
+    speaker: string,
+    slideIndex: number,
+    sectionIndex: number,
+  ): Voice {
+    const voice = mappings[speaker];
+    const validationProblem =
+      voiceValidationProblem(voice) ||
+      (voice && !this.synthesizer.supportsProvider(String(voice.provider))
+        ? `voice provider "${String(voice.provider)}" is not registered`
+        : null);
+
+    if (validationProblem || !voice) {
+      const label = speaker === DEFAULT_SPEAKER_KEY ? "Default" : speaker;
+      throw new NarrationPreparationError(
+        "validation",
+        `Narration validation failed for slide ${slideIndex}, section ${sectionIndex + 1}, speaker "${label}": ${validationProblem}.`,
+      );
+    }
+
+    return voice;
   }
 }
 
