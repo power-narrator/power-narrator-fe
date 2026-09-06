@@ -24,8 +24,9 @@ import type {
 import type { GenerateSpeechRequest } from "../shared/types/tts.js";
 import { NarrationPreparation } from "./narration/NarrationPreparation.js";
 import { registerNarrationPreviewIpc } from "./narration/registerNarrationPreviewIpc.js";
-import { NarratedSlideSaver } from "./narration/NarratedSlideSaver.js";
+import { NarratedPresentationSaver } from "./narration/NarratedPresentationSaver.js";
 import { registerNarratedSlideSaveIpc } from "./narration/registerNarratedSlideSaveIpc.js";
+import { registerNarratedPresentationSaveIpc } from "./narration/registerNarratedPresentationSaveIpc.js";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -96,10 +97,12 @@ function getActiveCoreProvider(): PptProvider {
   return nativeProvider;
 }
 
-registerNarratedSlideSaveIpc(
-  ipcMain,
-  new NarratedSlideSaver(narrationPreparation, getActiveCoreProvider),
+const narratedPresentationSaver = new NarratedPresentationSaver(
+  narrationPreparation,
+  getActiveCoreProvider,
 );
+registerNarratedSlideSaveIpc(ipcMain, narratedPresentationSaver);
+registerNarratedPresentationSaveIpc(ipcMain, narratedPresentationSaver);
 
 if (process.env.NODE_ENV === "test") {
   (
@@ -116,11 +119,11 @@ if (process.env.NODE_ENV === "test") {
     registerNarrationPreviewIpc(ipcMain, testPreparation);
 
     if (powerpoint) {
+      const testSaver = new NarratedPresentationSaver(testPreparation, () => powerpoint);
       ipcMain.removeHandler("save-narrated-slide");
-      registerNarratedSlideSaveIpc(
-        ipcMain,
-        new NarratedSlideSaver(testPreparation, () => powerpoint),
-      );
+      registerNarratedSlideSaveIpc(ipcMain, testSaver);
+      ipcMain.removeHandler("save-narrated-presentation");
+      registerNarratedPresentationSaveIpc(ipcMain, testSaver);
     }
   };
 }

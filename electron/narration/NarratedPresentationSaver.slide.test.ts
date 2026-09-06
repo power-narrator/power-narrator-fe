@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Voice } from "../tts/TtsProvider.js";
 import { NarrationPreparation } from "./NarrationPreparation.js";
-import { NarratedSlideSaver } from "./NarratedSlideSaver.js";
+import { NarratedPresentationSaver } from "./NarratedPresentationSaver.js";
 
 const narratorVoice: Voice = {
   name: "en-US-narrator",
@@ -33,12 +33,12 @@ function createHarness(mappings: Record<string, Voice>) {
     saveNotes: vi.fn().mockResolvedValue({ success: true }),
     insertAudio: vi.fn().mockResolvedValue({ success: true }),
   };
-  const saver = new NarratedSlideSaver(preparation, () => powerpoint);
+  const saver = new NarratedPresentationSaver(preparation, () => powerpoint);
 
   return { generateSpeech, pending, powerpoint, saver };
 }
 
-describe("NarratedSlideSaver.save", () => {
+describe("NarratedPresentationSaver current-slide save", () => {
   it("prepares every section before committing notes and ordered audio", async () => {
     const { pending, powerpoint, saver } = createHarness({
       Narrator: narratorVoice,
@@ -50,7 +50,7 @@ describe("NarratedSlideSaver.save", () => {
       notes: "[Narrator]\nFirst\n---\nSecond\n---\n[Guest]\nThird",
     };
 
-    const saving = saver.save(request);
+    const saving = saver.saveSlide(request);
     await vi.waitFor(() => expect(pending.size).toBe(3));
     expect(powerpoint.saveNotes).not.toHaveBeenCalled();
     expect(powerpoint.insertAudio).not.toHaveBeenCalled();
@@ -87,7 +87,7 @@ describe("NarratedSlideSaver.save", () => {
       const { generateSpeech, powerpoint, saver } = createHarness(mappings);
 
       await expect(
-        saver.save({
+        saver.saveSlide({
           filePath: "/slides/talk.pptx",
           slideIndex: 4,
           notes,
@@ -114,10 +114,10 @@ describe("NarratedSlideSaver.save", () => {
       saveNotes: vi.fn(),
       insertAudio: vi.fn(),
     };
-    const saver = new NarratedSlideSaver(preparation, () => powerpoint);
+    const saver = new NarratedPresentationSaver(preparation, () => powerpoint);
 
     await expect(
-      saver.save({
+      saver.saveSlide({
         filePath: "/slides/talk.pptx",
         slideIndex: 5,
         notes: "[Narrator]\nHello",
@@ -147,10 +147,10 @@ describe("NarratedSlideSaver.save", () => {
       saveNotes: vi.fn(),
       insertAudio: vi.fn(),
     };
-    const saver = new NarratedSlideSaver(preparation, () => powerpoint);
+    const saver = new NarratedPresentationSaver(preparation, () => powerpoint);
 
     await expect(
-      saver.save({
+      saver.saveSlide({
         filePath: "/slides/talk.pptx",
         slideIndex: 5,
         notes: "[Narrator]\nHello",
@@ -180,10 +180,10 @@ describe("NarratedSlideSaver.save", () => {
         saveNotes: vi.fn().mockResolvedValue(notesResult),
         insertAudio: vi.fn().mockResolvedValue(audioResult),
       };
-      const saver = new NarratedSlideSaver(preparation, () => powerpoint);
+      const saver = new NarratedPresentationSaver(preparation, () => powerpoint);
 
       await expect(
-        saver.save({
+        saver.saveSlide({
           filePath: "/slides/talk.pptx",
           slideIndex: 2,
           notes: "[Narrator]\nHello",

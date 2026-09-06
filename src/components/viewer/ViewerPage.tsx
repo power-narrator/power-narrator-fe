@@ -5,9 +5,7 @@ import type { Slide, SlideElectronResult, SlidesElectronResult } from "../../typ
 import { useSettings } from "../../context/useSettings";
 import { getErrorMessage } from "../../utils/errors";
 import type { NoteSection } from "../../types/notes";
-import { formatNotes, getEffectiveSpeaker, parseNotes } from "../../utils/notes";
-import { getAudioBuffer } from "../../utils/tts";
-import { resolveSpeakerVoice } from "../../utils/viewer";
+import { formatNotes, parseNotes } from "../../utils/notes";
 import { NotesSectionList } from "./NotesSectionList";
 import { SlideActionsBar, type SlideActionBarKey } from "./SlideActionsBar";
 import { SlidePreviewPane } from "./SlidePreviewPane";
@@ -48,8 +46,6 @@ export function ViewerPage({
   const [genStatus, setGenStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
-  const [isInsertingAudio, setIsInsertingAudio] = useState(false);
-  const [insertStatus, setInsertStatus] = useState("");
   const [isRemoving, setIsRemoving] = useState(false);
   const [removeStatus, setRemoveStatus] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -63,14 +59,14 @@ export function ViewerPage({
   const statusTimeoutsRef = useRef<number[]>([]);
   const { mappings } = useSettings();
   const electronAPI = window.electronAPI;
-  const busy = isGenerating || isSaving || isSyncing || isInsertingAudio || isRemoving || isPlaying;
+  const busy = isGenerating || isSaving || isSyncing || isRemoving || isPlaying;
 
   const headerActionStates: Record<ViewerHeaderActionKey, ActionButtonState> = {
     reloadAllSlides: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
     saveAllSlides: {
-      loading: isSaving || isInsertingAudio,
-      busy: busy && !(isSaving || isInsertingAudio),
-      status: saveStatus || insertStatus,
+      loading: isSaving,
+      busy: busy && !isSaving,
+      status: saveStatus,
     },
     removeAllAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
     generateVideo: { loading: isGenerating, busy: busy && !isGenerating, status: genStatus },
@@ -79,9 +75,9 @@ export function ViewerPage({
   const slideActionStates: Record<SlideActionBarKey, ActionButtonState> = {
     reloadSlide: { loading: isSyncing, busy: busy && !isSyncing, status: syncStatus },
     saveSlide: {
-      loading: isSaving || isInsertingAudio,
-      busy: busy && !(isSaving || isInsertingAudio),
-      status: saveStatus || insertStatus,
+      loading: isSaving,
+      busy: busy && !isSaving,
+      status: saveStatus,
     },
     playSlide: { loading: isPlaying, busy: busy && !isPlaying, status: playStatus },
     removeAudio: { loading: isRemoving, busy: busy && !isRemoving, status: removeStatus },
@@ -107,6 +103,14 @@ export function ViewerPage({
     const message = getErrorMessage(error);
     console.error(`${label}:`, error);
     alert(`${label}: ${message}`);
+  }
+
+  function reportNarratedSaveFailure(result: { partial: boolean; message: string }) {
+    const partialMessage = result.partial
+      ? "PowerPoint notes were saved, but narration audio was not committed."
+      : result.message;
+    alert(`Save error: ${partialMessage}${result.partial ? ` ${result.message}` : ""}`);
+    setSaveStatus("");
   }
 
   function pushToHistory(nextSlides: Slide[]) {
@@ -151,44 +155,6 @@ export function ViewerPage({
     }
 
     return result;
-  }
-
-  async function buildSlideAudioEntries(
-    slidesToProcess: Slide[],
-    onProgress: (message: string) => void,
-  ) {
-    const slideAudioGroups = await Promise.all(
-      slidesToProcess.map(async (slide) => {
-        if (!slide.notes?.trim()) {
-          return [];
-        }
-
-        onProgress(`Generating audio for slide ${slide.index}...`);
-        const sections = parseNotes(slide.notes);
-        const sectionAudioEntries = await Promise.all(
-          sections.map(async (section, sectionIndex) => {
-            if (!section.text.trim()) {
-              return null;
-            }
-
-            const effectiveSpeaker = getEffectiveSpeaker(sections, sectionIndex);
-            const voice = resolveSpeakerVoice(mappings, effectiveSpeaker);
-
-            const buffer = await getAudioBuffer(section.text.trim(), voice);
-
-            return {
-              index: slide.index,
-              sectionIndex,
-              audioData: new Uint8Array(buffer),
-            };
-          }),
-        );
-
-        return sectionAudioEntries.filter((entry) => entry !== null);
-      }),
-    );
-
-    return slideAudioGroups.flat();
   }
 
   function runRemoveAudio(slideIndices: number[]) {
@@ -455,64 +421,37 @@ export function ViewerPage({
     }
   };
 
-  const saveAllNotes = async () => {
-    setIsSaving(true);
-    setSaveStatus("Saving all notes...");
-
-    try {
-      await saveNotesToFile(slides);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const generateAndInsertAllAudio = async () => {
-    setIsInsertingAudio(true);
-    setInsertStatus("Generating all audio...");
-
-    try {
-      const slidesAudio = await buildSlideAudioEntries(slides, setInsertStatus);
-      if (slidesAudio.length === 0) {
-        alert("No notes found to generate audio.");
-        setInsertStatus("");
-        return;
-      }
-
-      setInsertStatus("Inserting all audio...");
-      const result = await electronAPI.insertAudio(filePath, slidesAudio);
-
-      if (result.success) {
-        alert("All slides saved and audio inserted successfully!");
-        setInsertStatus("");
-      } else {
-        alert(`Failed to insert audio: ${result.message}`);
-        setInsertStatus("");
-      }
-    } finally {
-      setIsInsertingAudio(false);
-    }
-  };
-
   const handleSaveAllSlides = async () => {
     if (busy) {
       return;
     }
 
+    setIsSaving(true);
+    setSaveStatus("Preparing narration...");
     try {
-      await saveAllNotes();
-    } catch (error: unknown) {
-      setSaveStatus("");
-      alertError("Save error", error);
-      return;
-    }
-
-    try {
-      await generateAndInsertAllAudio();
+      const result = await electronAPI.saveNarratedPresentation(
+        {
+          filePath,
+          slides: slides.map((slide) => ({
+            slideIndex: slide.index,
+            notes: slide.notes || "",
+          })),
+        },
+        ({ completed, total }) => {
+          setSaveStatus(`Preparing narration ${completed}/${total}...`);
+        },
+      );
+      if (!result.success) {
+        reportNarratedSaveFailure(result);
+        return;
+      }
       setSaveStatus("Saved slides!");
       scheduleStatusClear(setSaveStatus);
     } catch (error: unknown) {
-      setInsertStatus("");
-      alertError("Insert error", error);
+      setSaveStatus("");
+      alertError("Save error", error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -530,11 +469,7 @@ export function ViewerPage({
         notes: activeSlide.notes || "",
       });
       if (!result.success) {
-        const partialMessage = result.partial
-          ? "PowerPoint notes were saved, but narration audio was not committed."
-          : result.message;
-        alert(`Save error: ${partialMessage}${result.partial ? ` ${result.message}` : ""}`);
-        setSaveStatus("");
+        reportNarratedSaveFailure(result);
         return;
       }
       setSaveStatus("Saved slides!");

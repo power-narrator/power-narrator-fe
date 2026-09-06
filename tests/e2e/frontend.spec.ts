@@ -552,4 +552,28 @@ test.describe("PPT Viewer UI Workflows", () => {
       },
     ]);
   });
+
+  test("saves the full presentation through Electron narration preparation", async () => {
+    await window.getByRole("button", { name: "Save All Slides", exact: true }).click();
+
+    await expect(
+      window.getByRole("button", { name: "Save All Slides", exact: true }),
+    ).toBeEnabled();
+    await expect.poll(getSaveNotesCalls).toEqual([
+      {
+        filePath: FIXTURE_TEST,
+        slides: MOCK_SLIDES.map((slide) => ({ index: slide.index, notes: slide.notes })),
+      },
+    ]);
+    await expect.poll(getInsertAudioCalls).toEqual([
+      {
+        filePath: FIXTURE_TEST,
+        slidesAudio: MOCK_SLIDES.map((slide) => ({
+          index: slide.index,
+          sectionIndex: 0,
+          audioData: new Uint8Array(TINY_FAKE_AUDIO_BYTES),
+        })),
+      },
+    ]);
+  });
 });
