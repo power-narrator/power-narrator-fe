@@ -9,7 +9,7 @@ import { MacPptProvider } from "./platform/MacPptProvider.js";
 import { WindowsPptProvider } from "./platform/WindowsPptProvider.js";
 import { XmlPptProvider } from "./platform/XmlPptProvider.js";
 import { APP_NAME } from "./platform/helpers.js";
-import { TtsManager } from "./tts/TtsManager.js";
+import { getNarrationCacheDirectory, TtsManager } from "./tts/TtsManager.js";
 import { GcpTtsProvider } from "./tts/GcpTtsProvider.js";
 import { LocalTtsProvider } from "./tts/LocalTtsProvider.js";
 import type { TtsProvider, TtsProviderId, Voice } from "./tts/TtsProvider.js";
@@ -69,6 +69,10 @@ const ttsManager = new TtsManager(
     ["local", new LocalTtsProvider()],
   ]),
   process.env.TTS_PROVIDER ?? "gcp",
+  {
+    cacheDirectory: getNarrationCacheDirectory(app.getPath("home")),
+    obsoleteCacheDirectory: path.join(app.getPath("userData"), "tts_cache"),
+  },
 );
 const narrationPreparation = new NarrationPreparation(
   { getSpeakerMappings: () => (store.get("speakerMappings") as Record<string, Voice>) || {} },

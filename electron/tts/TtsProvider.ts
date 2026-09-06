@@ -2,9 +2,22 @@ import type { TtsProviderId, Voice } from "../../shared/types/tts.js";
 
 export type { TtsProviderId, Voice } from "../../shared/types/tts.js";
 
+export type CacheIdentityValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly CacheIdentityValue[]
+  | { readonly [key: string]: CacheIdentityValue };
+
+export interface PreparedSpeechRequest {
+  cacheIdentity: CacheIdentityValue;
+  synthesize(): Promise<Uint8Array | Buffer | null>;
+}
+
 export interface TtsProvider {
   getVoices(): Promise<Voice[]>;
-  generateSpeech(text: string, voiceOption?: Voice): Promise<Uint8Array | Buffer | null>;
+  prepareSpeech(text: string, voiceOption?: Voice): PreparedSpeechRequest;
 }
 
 export type TtsProviderRegistry = ReadonlyMap<TtsProviderId, TtsProvider>;

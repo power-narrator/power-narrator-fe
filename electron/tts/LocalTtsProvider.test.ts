@@ -54,7 +54,7 @@ describe("LocalTtsProvider", () => {
   ])("resolves $name", async ({ voice, expectedVoice, localUrl }) => {
     vi.stubEnv("LOCAL_TTS_URL", localUrl);
 
-    await new LocalTtsProvider().generateSpeech("Hello", voice);
+    await new LocalTtsProvider().prepareSpeech("Hello", voice).synthesize();
 
     const [requestUrl, requestInit] = fetchMock.mock.calls[0] ?? [];
     const url = new URL(String(requestUrl));
@@ -87,7 +87,7 @@ describe("LocalTtsProvider", () => {
       body: "<speak>A\tB\nC\rD</speak>",
     },
   ])("formats $name in the request body", async ({ text, body }) => {
-    await new LocalTtsProvider().generateSpeech(text);
+    await new LocalTtsProvider().prepareSpeech(text).synthesize();
 
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(body);
   });
@@ -95,7 +95,7 @@ describe("LocalTtsProvider", () => {
   it("throws a status-bearing error for a non-success response", async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 503, statusText: "Unavailable" }));
 
-    await expect(new LocalTtsProvider().generateSpeech("Hello")).rejects.toThrow(
+    await expect(new LocalTtsProvider().prepareSpeech("Hello").synthesize()).rejects.toThrow(
       "Local TTS failed: 503 Unavailable",
     );
   });

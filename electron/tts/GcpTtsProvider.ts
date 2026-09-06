@@ -1,5 +1,5 @@
 import { TextToSpeechClient } from "@google-cloud/text-to-speech";
-import type { TtsProvider, Voice } from "./TtsProvider.js";
+import type { PreparedSpeechRequest, TtsProvider, Voice } from "./TtsProvider.js";
 import { SsmlUtil } from "./SsmlUtil.js";
 
 type GcpVoice = {
@@ -55,27 +55,34 @@ export class GcpTtsProvider implements TtsProvider {
     return voices;
   }
 
-  async generateSpeech(text: string, voiceOption?: Voice): Promise<Uint8Array | null> {
-    const keyPath = this.keyPathProvider();
-    if (!keyPath) {
-      throw new Error("GCP TTS requested but GOOGLE_APPLICATION_CREDENTIALS is not set");
-    }
-
-    const client = new TextToSpeechClient({ keyFilename: keyPath });
-    const [response] = await client.synthesizeSpeech({
+  prepareSpeech(text: string, voiceOption?: Voice): PreparedSpeechRequest {
+    const request = {
       input: this.formatInput(text),
       voice: voiceOption
-        ? { languageCode: voiceOption.languageCodes[0], name: voiceOption.name }
+        ? { languageCode: voiceOption.languageCodes[0] ?? "", name: voiceOption.name }
         : { languageCode: "en-US", name: "en-US-Journey-F" },
       audioConfig: { audioEncoding: "MP3" },
-    });
-    if (!response.audioContent) {
-      return null;
-    }
+    } as const;
 
-    return typeof response.audioContent === "string"
-      ? Buffer.from(response.audioContent, "base64")
-      : response.audioContent;
+    return {
+      cacheIdentity: request,
+      synthesize: async () => {
+        const keyPath = this.keyPathProvider();
+        if (!keyPath) {
+          throw new Error("GCP TTS requested but GOOGLE_APPLICATION_CREDENTIALS is not set");
+        }
+
+        const client = new TextToSpeechClient({ keyFilename: keyPath });
+        const [response] = await client.synthesizeSpeech(request);
+        if (!response.audioContent) {
+          return null;
+        }
+
+        return typeof response.audioContent === "string"
+          ? Buffer.from(response.audioContent, "base64")
+          : response.audioContent;
+      },
+    };
   }
 
   private formatInput(text: string): { text: string } | { ssml: string } {

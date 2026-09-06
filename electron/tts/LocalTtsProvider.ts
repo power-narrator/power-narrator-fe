@@ -1,4 +1,4 @@
-import type { TtsProvider, Voice } from "./TtsProvider.js";
+import type { PreparedSpeechRequest, TtsProvider, Voice } from "./TtsProvider.js";
 import { SsmlUtil } from "./SsmlUtil.js";
 
 export class LocalTtsProvider implements TtsProvider {
@@ -15,7 +15,7 @@ export class LocalTtsProvider implements TtsProvider {
     ];
   }
 
-  async generateSpeech(text: string, voiceOption?: Voice): Promise<Uint8Array | null> {
+  prepareSpeech(text: string, voiceOption?: Voice): PreparedSpeechRequest {
     const localUrl = process.env.LOCAL_TTS_URL || "http://localhost:59125/api/tts";
     const defaultVoice = process.env.LOCAL_TTS_VOICE || "en_UK/apope_low";
     const voiceName = voiceOption?.name;
@@ -25,18 +25,25 @@ export class LocalTtsProvider implements TtsProvider {
     url.searchParams.set("voice", voice);
     url.searchParams.set("ssml", "true");
 
-    const resp = await fetch(url.toString(), {
+    const body = this.formatBody(text);
+    const requestInit = {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
-      body: this.formatBody(text),
-    });
+      body,
+    } as const;
 
-    if (!resp.ok) {
-      throw new Error(`Local TTS failed: ${resp.status} ${resp.statusText}`);
-    }
+    return {
+      cacheIdentity: { url: url.toString(), body },
+      synthesize: async () => {
+        const resp = await fetch(url.toString(), requestInit);
+        if (!resp.ok) {
+          throw new Error(`Local TTS failed: ${resp.status} ${resp.statusText}`);
+        }
 
-    const arrayBuffer = await resp.arrayBuffer();
-    return new Uint8Array(arrayBuffer);
+        const arrayBuffer = await resp.arrayBuffer();
+        return new Uint8Array(arrayBuffer);
+      },
+    };
   }
 
   private formatBody(text: string): string {

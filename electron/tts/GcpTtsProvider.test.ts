@@ -109,7 +109,7 @@ describe("GcpTtsProvider", () => {
       input: { ssml: "<speak>Hello <emphasis>world</emphasis></speak>" },
     },
   ])("formats $name for the SDK input", async ({ text, input }) => {
-    await new GcpTtsProvider(() => "/keys/gcp.json").generateSpeech(text);
+    await new GcpTtsProvider(() => "/keys/gcp.json").prepareSpeech(text).synthesize();
 
     expect(synthesizeSpeech.mock.calls[0]?.[0].input).toEqual(input);
   });
@@ -126,7 +126,7 @@ describe("GcpTtsProvider", () => {
       expected: { languageCode: "en-US", name: "en-US-Journey-F" },
     },
   ])("$name", async ({ voice, expected }) => {
-    await new GcpTtsProvider(() => "/keys/gcp.json").generateSpeech("Hello", voice);
+    await new GcpTtsProvider(() => "/keys/gcp.json").prepareSpeech("Hello", voice).synthesize();
 
     expect(synthesizeSpeech.mock.calls[0]?.[0].voice).toEqual(expected);
   });
