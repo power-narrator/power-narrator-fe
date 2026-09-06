@@ -8,12 +8,8 @@ export const getPreviewAudioBuffer = async (
   return result ? Uint8Array.from(result).buffer : null;
 };
 
-function getCacheKey(text: string, voiceOption?: Voice): string {
-  if (!voiceOption) {
-    return `${text}_default`;
-  }
-
-  return `${text}_${voiceOption.provider}_${voiceOption.name}`;
+function getCacheKey(text: string, voice: Voice): string {
+  return `${text}_${voice.provider}_${voice.name}`;
 }
 
 /**
@@ -21,18 +17,18 @@ function getCacheKey(text: string, voiceOption?: Voice): string {
  * Extensively caches requests to prevent redundant API calls for identical phrases.
  *
  * @param text - The text to be synthesized into speech.
- * @param voiceOption - The voice indicating the desired speaker characteristics.
+ * @param voice - The concrete voice selected for synthesis.
  * @returns A promise resolving to a local blob URL of the audio file.
  */
-export const generateAudio = async (text: string, voiceOption?: Voice): Promise<string> => {
-  const key = getCacheKey(text, voiceOption);
+export const generateAudio = async (text: string, voice: Voice): Promise<string> => {
+  const key = getCacheKey(text, voice);
 
   if (generateAudio.cache.has(key)) {
     return generateAudio.cache.get(key)!;
   }
 
   try {
-    const buffer = await getAudioBuffer(text, voiceOption);
+    const buffer = await getAudioBuffer(text, voice);
     const blob = new Blob([buffer]);
     const url = URL.createObjectURL(blob);
     generateAudio.cache.set(key, url);
@@ -47,11 +43,11 @@ export const generateAudio = async (text: string, voiceOption?: Voice): Promise<
  * Generates one audio file for the complete section text.
  *
  * @param text - The full section text to synthesize.
- * @param voiceOption - The voice selected for the section.
+ * @param voice - The concrete voice selected for the section.
  * @returns A promise resolving to the generated audio bytes.
  */
-export const getAudioBuffer = async (text: string, voiceOption?: Voice): Promise<ArrayBuffer> => {
-  const result = await window.electronAPI.generateSpeech({ text, voiceOption });
+export const getAudioBuffer = async (text: string, voice: Voice): Promise<ArrayBuffer> => {
+  const result = await window.electronAPI.generateSpeech({ text, voice });
   return Uint8Array.from(result).buffer;
 };
 

@@ -28,11 +28,11 @@ afterEach(() => {
 function createProvider(
   voices: Voice[] = [],
 ): TtsProvider & { generateSpeech: ReturnType<typeof vi.fn> } {
-  const generateSpeech = vi.fn().mockResolvedValue(null);
+  const generateSpeech = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]));
   return {
     getVoices: vi.fn().mockResolvedValue(voices),
     prepareSpeech: (text, voice) => ({
-      cacheIdentity: { text, voice: voice?.name ?? null },
+      cacheIdentity: { text, voice: voice.name },
       synthesize: () => generateSpeech(text, voice),
     }),
     generateSpeech,
@@ -92,20 +92,7 @@ describe("TtsManager", () => {
     expect(fs.readdirSync(cacheDirectory)).toEqual([expect.stringMatching(/^[a-f0-9]{64}\.mp3$/)]);
   });
 
-  it.each([
-    {
-      name: "routes a supplied voice to its provider",
-      defaultProvider: "local",
-      voice: gcpVoice,
-      selectedProvider: "gcp",
-    },
-    {
-      name: "routes an omitted voice to the configured default",
-      defaultProvider: "gcp",
-      voice: undefined,
-      selectedProvider: "gcp",
-    },
-  ] as const)("$name", async ({ defaultProvider, voice, selectedProvider }) => {
+  it("routes a concrete voice to its provider regardless of the configured preference", async () => {
     const gcp = createProvider();
     const local = createProvider();
     const manager = new TtsManager(
@@ -113,15 +100,13 @@ describe("TtsManager", () => {
         ["gcp", gcp],
         ["local", local],
       ]),
-      defaultProvider,
+      "local",
     );
 
-    await manager.generateSpeech("A unique routing request", voice);
+    await manager.generateSpeech("A unique routing request", gcpVoice);
 
-    const selected = selectedProvider === "gcp" ? gcp : local;
-    const unselected = selectedProvider === "gcp" ? local : gcp;
-    expect(selected.generateSpeech).toHaveBeenCalledWith("A unique routing request", voice);
-    expect(unselected.generateSpeech).not.toHaveBeenCalled();
+    expect(gcp.generateSpeech).toHaveBeenCalledWith("A unique routing request", gcpVoice);
+    expect(local.generateSpeech).not.toHaveBeenCalled();
   });
 
   it("rejects an unregistered configured default", () => {

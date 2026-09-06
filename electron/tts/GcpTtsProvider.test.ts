@@ -109,25 +109,55 @@ describe("GcpTtsProvider", () => {
       input: { ssml: "<speak>Hello <emphasis>world</emphasis></speak>" },
     },
   ])("formats $name for the SDK input", async ({ text, input }) => {
-    await new GcpTtsProvider(() => "/keys/gcp.json").prepareSpeech(text).synthesize();
+    await new GcpTtsProvider(() => "/keys/gcp.json")
+      .prepareSpeech(text, selectedVoice)
+      .synthesize();
 
     expect(synthesizeSpeech.mock.calls[0]?.[0].input).toEqual(input);
   });
 
-  it.each([
-    {
-      name: "uses a supplied voice",
-      voice: selectedVoice,
-      expected: { languageCode: "en-GB", name: "en-GB-Chirp3-HD-Aoede" },
-    },
-    {
-      name: "uses the GCP default when the voice is omitted",
-      voice: undefined,
-      expected: { languageCode: "en-US", name: "en-US-Journey-F" },
-    },
-  ])("$name", async ({ voice, expected }) => {
-    await new GcpTtsProvider(() => "/keys/gcp.json").prepareSpeech("Hello", voice).synthesize();
+  it("uses the supplied concrete voice", async () => {
+    await new GcpTtsProvider(() => "/keys/gcp.json")
+      .prepareSpeech("Hello", selectedVoice)
+      .synthesize();
 
-    expect(synthesizeSpeech.mock.calls[0]?.[0].voice).toEqual(expected);
+    expect(synthesizeSpeech.mock.calls[0]?.[0].voice).toEqual({
+      languageCode: "en-GB",
+      name: "en-GB-Chirp3-HD-Aoede",
+    });
+  });
+
+  it.each([
+    ["base64 strings", "AQID", [1, 2, 3]],
+    ["byte arrays", new Uint8Array([4, 5, 6]), [4, 5, 6]],
+  ])("converts %s to audio bytes", async (_, audioContent, expected) => {
+    synthesizeSpeech.mockResolvedValue([{ audioContent }]);
+
+    const audio = await new GcpTtsProvider(() => "/keys/gcp.json")
+      .prepareSpeech("Hello", selectedVoice)
+      .synthesize();
+
+    expect(Array.from(audio)).toEqual(expected);
+  });
+
+  it.each([undefined, "", new Uint8Array()])(
+    "rejects a successful response with no audio content (%j)",
+    async (audioContent) => {
+      synthesizeSpeech.mockResolvedValue([{ audioContent }]);
+
+      await expect(
+        new GcpTtsProvider(() => "/keys/gcp.json")
+          .prepareSpeech("Hello", selectedVoice)
+          .synthesize(),
+      ).rejects.toThrow("GCP TTS returned no audio content");
+    },
+  );
+
+  it("translates synthesis failures with provider context", async () => {
+    synthesizeSpeech.mockRejectedValue(new Error("quota exhausted"));
+
+    await expect(
+      new GcpTtsProvider(() => "/keys/gcp.json").prepareSpeech("Hello", selectedVoice).synthesize(),
+    ).rejects.toThrow("GCP TTS failed: quota exhausted");
   });
 });

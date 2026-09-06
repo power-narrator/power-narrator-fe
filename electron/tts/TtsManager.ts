@@ -46,7 +46,7 @@ function deterministicJson(value: unknown): string {
 export class TtsManager {
   private readonly providers: TtsProviderRegistry;
   private readonly cacheDirectory: string;
-  private readonly pending = new Map<string, Promise<Uint8Array | null>>();
+  private readonly pending = new Map<string, Promise<Uint8Array>>();
   readonly defaultProviderId: TtsProviderId;
 
   constructor(
@@ -86,8 +86,8 @@ export class TtsManager {
     return this.providers.has(providerId as TtsProviderId);
   }
 
-  async generateSpeech(text: string, voiceOption?: Voice): Promise<Uint8Array | null> {
-    const providerId = voiceOption === undefined ? this.defaultProviderId : voiceOption.provider;
+  async generateSpeech(text: string, voice: Voice): Promise<Uint8Array> {
+    const providerId = voice.provider;
     const provider = this.providers.get(providerId);
 
     if (!provider) {
@@ -99,7 +99,7 @@ export class TtsManager {
       fs.mkdirSync(cacheDir, { recursive: true });
     }
 
-    const preparedRequest = provider.prepareSpeech(text, voiceOption);
+    const preparedRequest = provider.prepareSpeech(text, voice);
     const hash = crypto
       .createHash("sha256")
       .update(
@@ -125,10 +125,6 @@ export class TtsManager {
     const pendingRequest = Promise.resolve()
       .then(() => preparedRequest.synthesize())
       .then((audioData) => {
-        if (!audioData) {
-          return null;
-        }
-
         try {
           fs.writeFileSync(cachePath, Buffer.from(audioData));
         } catch (error) {

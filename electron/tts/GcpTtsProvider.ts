@@ -55,12 +55,10 @@ export class GcpTtsProvider implements TtsProvider {
     return voices;
   }
 
-  prepareSpeech(text: string, voiceOption?: Voice): PreparedSpeechRequest {
+  prepareSpeech(text: string, voice: Voice): PreparedSpeechRequest {
     const request = {
       input: this.formatInput(text),
-      voice: voiceOption
-        ? { languageCode: voiceOption.languageCodes[0] ?? "", name: voiceOption.name }
-        : { languageCode: "en-US", name: "en-US-Journey-F" },
+      voice: { languageCode: voice.languageCodes[0] ?? "", name: voice.name },
       audioConfig: { audioEncoding: "MP3" },
     } as const;
 
@@ -73,9 +71,16 @@ export class GcpTtsProvider implements TtsProvider {
         }
 
         const client = new TextToSpeechClient({ keyFilename: keyPath });
-        const [response] = await client.synthesizeSpeech(request);
-        if (!response.audioContent) {
-          return null;
+        let response;
+        try {
+          [response] = await client.synthesizeSpeech(request);
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : "Unknown synthesis error";
+          throw new Error(`GCP TTS failed: ${message}`);
+        }
+
+        if (!response.audioContent || response.audioContent.length === 0) {
+          throw new Error("GCP TTS returned no audio content");
         }
 
         return typeof response.audioContent === "string"

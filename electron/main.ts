@@ -350,6 +350,6 @@ ipcMain.handle("get-voices", async () => {
   return ttsManager.getVoices();
 });
 
-ipcMain.handle("generate-speech", async (_, { text, voiceOption }: GenerateSpeechRequest) => {
-  return ttsManager.generateSpeech(text, voiceOption);
+ipcMain.handle("generate-speech", async (_, { text, voice }: GenerateSpeechRequest) => {
+  return ttsManager.generateSpeech(text, voice);
 });

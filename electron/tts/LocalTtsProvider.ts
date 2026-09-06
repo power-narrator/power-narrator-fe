@@ -3,7 +3,7 @@ import { SsmlUtil } from "./SsmlUtil.js";
 
 export class LocalTtsProvider implements TtsProvider {
   async getVoices(): Promise<Voice[]> {
-    return [
+    const knownVoices: Voice[] = [
       { name: "en_UK/apope_low", ssmlGender: "MALE", languageCodes: ["en-GB"], provider: "local" },
       {
         name: "en_US/cmu-arctic_low",
@@ -11,18 +11,26 @@ export class LocalTtsProvider implements TtsProvider {
         languageCodes: ["en-US"],
         provider: "local",
       },
-      { name: "default", ssmlGender: "NEUTRAL", languageCodes: ["en-US"], provider: "local" },
     ];
+    const configuredVoiceName = process.env.LOCAL_TTS_VOICE || "en_UK/apope_low";
+
+    if (!knownVoices.some((voice) => voice.name === configuredVoiceName)) {
+      knownVoices.push({
+        name: configuredVoiceName,
+        ssmlGender: "NEUTRAL",
+        languageCodes: ["en-US"],
+        provider: "local",
+      });
+    }
+
+    return knownVoices;
   }
 
-  prepareSpeech(text: string, voiceOption?: Voice): PreparedSpeechRequest {
+  prepareSpeech(text: string, voice: Voice): PreparedSpeechRequest {
     const localUrl = process.env.LOCAL_TTS_URL || "http://localhost:59125/api/tts";
-    const defaultVoice = process.env.LOCAL_TTS_VOICE || "en_UK/apope_low";
-    const voiceName = voiceOption?.name;
-    const voice = voiceName && voiceName !== "default" ? voiceName : defaultVoice;
 
     const url = new URL(localUrl);
-    url.searchParams.set("voice", voice);
+    url.searchParams.set("voice", voice.name);
     url.searchParams.set("ssml", "true");
 
     const body = this.formatBody(text);
@@ -41,6 +49,10 @@ export class LocalTtsProvider implements TtsProvider {
         }
 
         const arrayBuffer = await resp.arrayBuffer();
+        if (arrayBuffer.byteLength === 0) {
+          throw new Error("Local TTS returned no audio content");
+        }
+
         return new Uint8Array(arrayBuffer);
       },
     };

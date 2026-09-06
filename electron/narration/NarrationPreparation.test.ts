@@ -4,7 +4,7 @@ import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TtsProvider, Voice } from "../tts/TtsProvider.js";
 import { TtsManager } from "../tts/TtsManager.js";
-import { NarrationPreparation } from "./NarrationPreparation.js";
+import { NarrationPreparation, NarrationPreparationError } from "./NarrationPreparation.js";
 
 const narratorVoice: Voice = {
   name: "en-US-narrator",
@@ -296,6 +296,25 @@ describe("NarrationPreparation.preparePreview", () => {
       }),
     ).resolves.toEqual(new Uint8Array([1, 2, 3]));
     expect(generateSpeech).toHaveBeenCalledWith("Live renderer text", narratorVoice);
+  });
+
+  it("adds section context when preview synthesis returns no audio", async () => {
+    const { preparation, generateSpeech } = createPreparation();
+    generateSpeech.mockRejectedValue(new Error("GCP TTS returned no audio content"));
+
+    const preview = preparation.preparePreview({
+      slideIndex: 4,
+      sectionIndex: 1,
+      notes: "[Narrator]\nFirst\n---\nSecond",
+      text: "Second",
+    });
+
+    await expect(preview).rejects.toEqual(
+      new NarrationPreparationError(
+        "synthesis",
+        'Narration synthesis failed for slide 4, section 2, speaker "Narrator": GCP TTS returned no audio content.',
+      ),
+    );
   });
 
   it.each(["\u2028", "\u2029"])(
