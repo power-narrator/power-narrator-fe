@@ -17,13 +17,9 @@ import type {
   NarratedPresentationSaveRequest,
   NarratedSaveResult,
   NarratedSlideSaveRequest,
-  NarratedSlideSaveResult,
   NarrationPreparationProgress,
   PreviewNarrationRequest,
 } from "../shared/types/narration.js";
-import type { NarratedPresentationProgressEvent } from "./narration/registerNarratedPresentationSaveIpc.js";
-
-const NARRATED_PRESENTATION_PROGRESS_CHANNEL = "narrated-presentation-save-progress";
 let narratedPresentationRequestId = 0;
 
 const electronAPI = {
@@ -36,24 +32,25 @@ const electronAPI = {
   selectFile: (): Promise<string | null> => ipcRenderer.invoke("select-file"),
   saveNotes: (filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult> =>
     ipcRenderer.invoke("save-notes", filePath, slides),
-  saveNarratedSlide: (payload: NarratedSlideSaveRequest): Promise<NarratedSlideSaveResult> =>
+  saveNarratedSlide: (payload: NarratedSlideSaveRequest): Promise<NarratedSaveResult> =>
     ipcRenderer.invoke("save-narrated-slide", payload),
   saveNarratedPresentation: async (
     payload: NarratedPresentationSaveRequest,
     onProgress: (progress: NarrationPreparationProgress) => void,
   ): Promise<NarratedSaveResult> => {
     narratedPresentationRequestId += 1;
-    const requestId = narratedPresentationRequestId;
-    const listener = (_event: unknown, update: NarratedPresentationProgressEvent) => {
-      if (update.requestId === requestId) {
-        onProgress({ completed: update.completed, total: update.total });
-      }
+    const progressChannel = `narrated-presentation-save-progress:${narratedPresentationRequestId}`;
+    const listener = (_event: unknown, progress: NarrationPreparationProgress) => {
+      onProgress(progress);
     };
-    ipcRenderer.on(NARRATED_PRESENTATION_PROGRESS_CHANNEL, listener);
+    ipcRenderer.on(progressChannel, listener);
     try {
-      return await ipcRenderer.invoke("save-narrated-presentation", { ...payload, requestId });
+      return await ipcRenderer.invoke("save-narrated-presentation", {
+        ...payload,
+        progressChannel,
+      });
     } finally {
-      ipcRenderer.removeListener(NARRATED_PRESENTATION_PROGRESS_CHANNEL, listener);
+      ipcRenderer.removeListener(progressChannel, listener);
     }
   },
   getVoices: (): Promise<Voice[]> => ipcRenderer.invoke("get-voices"),

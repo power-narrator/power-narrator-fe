@@ -29,15 +29,13 @@ export interface NarrationPreparationProgress {
   total: number;
 }
 
-export type NarratedSlideSaveFailureStage = "validation" | "synthesis" | "powerpoint";
+export type NarratedSaveFailureStage = "validation" | "synthesis" | "powerpoint";
 
 export type NarratedSaveResult =
   | { success: true }
   | {
       success: false;
-      stage: NarratedSlideSaveFailureStage;
+      stage: NarratedSaveFailureStage;
       partial: boolean;
       message: string;
     };
-
-export type NarratedSlideSaveResult = NarratedSaveResult;
