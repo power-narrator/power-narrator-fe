@@ -52,7 +52,7 @@ export class TtsManager {
   constructor(
     providers: TtsProviderRegistry,
     configuredDefaultProvider: string,
-    cacheLocations: { cacheDirectory?: string; obsoleteCacheDirectory?: string } = {},
+    cacheLocations: { cacheDirectory?: string } = {},
   ) {
     const defaultProviderId = Array.from(providers.keys()).find(
       (providerId) => providerId === configuredDefaultProvider,
@@ -65,17 +65,6 @@ export class TtsManager {
     this.cacheDirectory =
       cacheLocations.cacheDirectory ?? getNarrationCacheDirectory(app.getPath("home"));
     this.defaultProviderId = defaultProviderId;
-
-    const obsoleteCacheDirectory =
-      cacheLocations.obsoleteCacheDirectory ??
-      (cacheLocations.cacheDirectory ? undefined : path.join(app.getPath("userData"), "tts_cache"));
-    if (obsoleteCacheDirectory) {
-      try {
-        fs.rmSync(obsoleteCacheDirectory, { recursive: true, force: true });
-      } catch (error) {
-        console.warn("Failed to remove obsolete TTS cache:", error);
-      }
-    }
   }
 
   async getVoices(): Promise<Voice[]> {

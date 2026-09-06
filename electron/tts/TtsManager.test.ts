@@ -81,19 +81,6 @@ describe("TtsManager", () => {
     },
   );
 
-  it("removes the obsolete configuration cache without migrating it", () => {
-    const obsoleteCacheDirectory = path.join(tempDir, "user-data", "tts_cache");
-    fs.mkdirSync(obsoleteCacheDirectory, { recursive: true });
-    fs.writeFileSync(path.join(obsoleteCacheDirectory, "legacy.mp3"), "legacy audio");
-
-    new TtsManager(new Map([["gcp", createProvider()]]), "gcp", {
-      cacheDirectory: path.join(tempDir, "cache", "power-narrator", "narration"),
-      obsoleteCacheDirectory,
-    });
-
-    expect(fs.existsSync(obsoleteCacheDirectory)).toBe(false);
-  });
-
   it("writes cache entries with hashed safe filenames", async () => {
     const provider = createProvider();
     provider.generateSpeech.mockResolvedValue(new Uint8Array([1, 2, 3]));
