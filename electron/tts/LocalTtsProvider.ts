@@ -33,7 +33,7 @@ export class LocalTtsProvider implements TtsProvider {
     } as const;
 
     return {
-      cacheIdentity: { url: url.toString(), body },
+      cacheIdentity: { url: url.toString(), body, audioEncoding: "WAV" },
       synthesize: async () => {
         const resp = await fetch(url.toString(), requestInit);
         if (!resp.ok) {
