@@ -63,9 +63,14 @@ describe("TtsManager", () => {
       path.join("/var/cache/example", "power-narrator", "narration"),
     ],
     [
+      "linux",
+      { XDG_CACHE_HOME: "relative-cache" },
+      path.join("/users/example", ".cache", "power-narrator", "narration"),
+    ],
+    [
       "win32",
       { LOCALAPPDATA: "C:\\Users\\example\\AppData\\Local" },
-      path.join("C:\\Users\\example\\AppData\\Local", "power-narrator", "narration"),
+      path.win32.join("C:\\Users\\example\\AppData\\Local", "power-narrator", "Cache", "narration"),
     ],
   ] as const)(
     "uses the conventional %s application cache location",

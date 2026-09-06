@@ -32,6 +32,14 @@ afterEach(() => {
 });
 
 describe("LocalTtsProvider", () => {
+  it("records Mimic3's fixed WAV response encoding in the prepared request identity", () => {
+    expect(
+      new LocalTtsProvider().prepareSpeech("Hello", concreteVoice).cacheIdentity,
+    ).toMatchObject({
+      audioEncoding: "WAV",
+    });
+  });
+
   it.each([
     {
       name: "a concrete selected voice wins",

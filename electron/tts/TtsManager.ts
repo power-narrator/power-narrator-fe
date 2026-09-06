@@ -5,19 +5,25 @@ import { app } from "electron";
 import { APP_NAME } from "../platform/helpers.js";
 import type { TtsProviderId, TtsProviderRegistry, Voice } from "./TtsProvider.js";
 
-const CACHE_REPRESENTATION_VERSION = 1;
-
 export function getNarrationCacheDirectory(
   homeDirectory: string,
   platform: NodeJS.Platform = process.platform,
   environment: NodeJS.ProcessEnv = process.env,
 ): string {
+  if (platform === "win32") {
+    const cacheRoot =
+      environment.LOCALAPPDATA && path.win32.isAbsolute(environment.LOCALAPPDATA)
+        ? environment.LOCALAPPDATA
+        : path.win32.join(homeDirectory, "AppData", "Local");
+    return path.win32.join(cacheRoot, APP_NAME, "Cache", "narration");
+  }
+
   const cacheRoot =
     platform === "darwin"
       ? path.join(homeDirectory, "Library", "Caches")
-      : platform === "win32"
-        ? environment.LOCALAPPDATA || path.join(homeDirectory, "AppData", "Local")
-        : environment.XDG_CACHE_HOME || path.join(homeDirectory, ".cache");
+      : environment.XDG_CACHE_HOME && path.isAbsolute(environment.XDG_CACHE_HOME)
+        ? environment.XDG_CACHE_HOME
+        : path.join(homeDirectory, ".cache");
 
   return path.join(cacheRoot, APP_NAME, "narration");
 }
@@ -29,7 +35,7 @@ function deterministicJson(value: unknown): string {
 
   if (value !== null && typeof value === "object") {
     return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([key, entry]) => `${JSON.stringify(key)}:${deterministicJson(entry)}`)
       .join(",")}}`;
   }
@@ -109,7 +115,6 @@ export class TtsManager {
       .createHash("sha256")
       .update(
         deterministicJson({
-          representationVersion: CACHE_REPRESENTATION_VERSION,
           provider: providerId,
           request: preparedRequest.cacheIdentity,
         }),
