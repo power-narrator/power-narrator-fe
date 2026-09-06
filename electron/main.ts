@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, protocol, net } from "electron";
+import type { MessageBoxOptions } from "electron";
 import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
@@ -47,6 +48,49 @@ dotenv.config();
 
 app.setName(APP_NAME);
 const store = new Store();
+const windowsWithUnsavedNarrationChanges = new Set<number>();
+let applicationQuitRequested = false;
+const DISCARD_CHANGES_RESPONSE = 1;
+
+const discardNarrationChangesDialog: MessageBoxOptions = {
+  type: "warning",
+  buttons: ["Keep Editing", "Discard Changes"],
+  defaultId: 0,
+  cancelId: 0,
+  message: "Discard unsaved narration changes?",
+  detail: "Continuing will discard your session-only narration edits.",
+};
+let discardNarrationChangesTestAdapter:
+  | ((options: MessageBoxOptions) => Promise<boolean>)
+  | undefined;
+
+async function confirmDiscardNarrationChanges(window?: BrowserWindow) {
+  if (discardNarrationChangesTestAdapter) {
+    return discardNarrationChangesTestAdapter(discardNarrationChangesDialog);
+  }
+
+  const result = window
+    ? await dialog.showMessageBox(window, discardNarrationChangesDialog)
+    : await dialog.showMessageBox(discardNarrationChangesDialog);
+  return result.response === DISCARD_CHANGES_RESPONSE;
+}
+
+ipcMain.on("set-has-unsaved-narration-changes", (event, hasChanges: boolean) => {
+  if (hasChanges) {
+    windowsWithUnsavedNarrationChanges.add(event.sender.id);
+  } else {
+    windowsWithUnsavedNarrationChanges.delete(event.sender.id);
+  }
+  event.returnValue = undefined;
+});
+
+ipcMain.handle("confirm-discard-narration-changes", (event) =>
+  confirmDiscardNarrationChanges(BrowserWindow.fromWebContents(event.sender) ?? undefined),
+);
+
+app.on("before-quit", () => {
+  applicationQuitRequested = true;
+});
 
 function getGcpKeyPath(): string | undefined {
   const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
@@ -126,6 +170,15 @@ if (process.env.NODE_ENV === "test") {
       registerNarratedPresentationSaveIpc(ipcMain, testSaver);
     }
   };
+  (
+    globalThis as typeof globalThis & {
+      __installDiscardNarrationChangesTestAdapter?: (
+        adapter: (options: MessageBoxOptions) => Promise<boolean>,
+      ) => void;
+    }
+  ).__installDiscardNarrationChangesTestAdapter = (adapter) => {
+    discardNarrationChangesTestAdapter = adapter;
+  };
 }
 
 function getOutputDir(absolutePath: string): string {
@@ -143,6 +196,40 @@ const createWindow = () => {
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
     },
+  });
+  const webContentsId = mainWindow.webContents.id;
+  let allowClose = false;
+  let closeConfirmationOpen = false;
+
+  mainWindow.on("close", (event) => {
+    if (allowClose || !windowsWithUnsavedNarrationChanges.has(mainWindow.webContents.id)) {
+      return;
+    }
+
+    event.preventDefault();
+    if (closeConfirmationOpen) {
+      return;
+    }
+
+    closeConfirmationOpen = true;
+    void confirmDiscardNarrationChanges(mainWindow).then((discardChanges) => {
+      closeConfirmationOpen = false;
+      if (!discardChanges) {
+        applicationQuitRequested = false;
+        return;
+      }
+
+      allowClose = true;
+      if (applicationQuitRequested) {
+        app.quit();
+      } else {
+        mainWindow.close();
+      }
+    });
+  });
+
+  mainWindow.on("closed", () => {
+    windowsWithUnsavedNarrationChanges.delete(webContentsId);
   });
 
   if (!app.isPackaged && !(process.env.NODE_ENV === "test")) {

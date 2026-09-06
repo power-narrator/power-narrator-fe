@@ -154,6 +154,15 @@ export function ViewerPage({
         dirtySlideIndicesRef.current.add(slide.index);
       }
     }
+    electronAPI.setHasUnsavedNarrationChanges(dirtySlideIndicesRef.current.size > 0);
+  }
+
+  async function confirmDiscardChanges(slideIndices?: readonly number[]) {
+    const wouldDiscardChanges = slideIndices
+      ? slideIndices.some((slideIndex) => dirtySlideIndicesRef.current.has(slideIndex))
+      : dirtySlideIndicesRef.current.size > 0;
+
+    return !wouldDiscardChanges || electronAPI.confirmDiscardNarrationChanges();
   }
 
   function setEditedSlides(nextSlides: Slide[], changedSlidePositions: readonly number[]) {
@@ -205,6 +214,8 @@ export function ViewerPage({
   function resetHistoryWithSlides(nextSlides: Slide[], reloadedSlides = nextSlides) {
     if (reloadedSlides === nextSlides) {
       fullySavedNotesRef.current.clear();
+      dirtySlideIndicesRef.current.clear();
+      electronAPI.setHasUnsavedNarrationChanges(false);
     }
     updateFullySavedNotes(reloadedSlides, nextSlides);
     setSlides(nextSlides);
@@ -228,6 +239,7 @@ export function ViewerPage({
 
   useEffect(() => {
     fullySavedNotesRef.current.clear();
+    dirtySlideIndicesRef.current.clear();
     updateFullySavedNotes(initialSlides, initialSlides);
     setSlides(initialSlides);
     setHistory([{ slides: initialSlides, changedSlidePositions: [] }]);
@@ -236,6 +248,13 @@ export function ViewerPage({
     setActiveSlideIndex(0);
     setActiveSectionIndex(0);
   }, [initialSlides]);
+
+  useEffect(
+    () => () => {
+      electronAPI.setHasUnsavedNarrationChanges(false);
+    },
+    [electronAPI],
+  );
 
   useEffect(() => {
     historyIndexRef.current = historyIndex;
@@ -580,17 +599,12 @@ export function ViewerPage({
     }
   };
 
-  const confirmSync = () =>
-    window.confirm(
-      "Syncing will override any unsaved changes in your notes. Do you want to proceed?",
-    );
-
   const syncSlides = async (
-    request: Promise<SlidesElectronResult>,
+    request: () => Promise<SlidesElectronResult>,
     failureMessage: string,
     progressMessage: string,
   ) => {
-    if (!confirmSync()) {
+    if (!(await confirmDiscardChanges())) {
       return;
     }
 
@@ -598,7 +612,7 @@ export function ViewerPage({
     setSyncStatus(progressMessage);
 
     try {
-      const result = await request;
+      const result = await request();
       if (!result.success) {
         alert(`${failureMessage}: ${result.message}`);
         setSyncStatus("");
@@ -624,7 +638,11 @@ export function ViewerPage({
       return;
     }
 
-    await syncSlides(electronAPI.convertPptx(filePath), "Sync error", "Syncing all slides...");
+    await syncSlides(
+      () => electronAPI.convertPptx(filePath),
+      "Sync error",
+      "Syncing all slides...",
+    );
   };
 
   const handleReloadSlide = async () => {
@@ -632,7 +650,7 @@ export function ViewerPage({
       return;
     }
 
-    if (!confirmSync()) {
+    if (!(await confirmDiscardChanges([activeSlideNumber]))) {
       return;
     }
 
@@ -718,7 +736,11 @@ export function ViewerPage({
   return (
     <Stack gap="0" h="100%" mih={0}>
       <ViewerHeader
-        onBack={onBack}
+        onBack={async () => {
+          if (await confirmDiscardChanges()) {
+            onBack();
+          }
+        }}
         onOpenSettings={onOpenSettings}
         actionStates={headerActionStates}
         handlers={{
