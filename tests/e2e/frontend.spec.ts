@@ -200,11 +200,15 @@ async function installMockIpcHandlers(app: ElectronApplication) {
           return { success: true as const };
         },
         insertAudio: async (filePath: string, slidesAudio: unknown[]) => {
-          (
-            globalThis as typeof globalThis & {
-              __insertAudioCalls: unknown[];
-            }
-          ).__insertAudioCalls.push({ filePath, slidesAudio });
+          const globals = globalThis as typeof globalThis & {
+            __insertAudioCalls: unknown[];
+            __failNextAudioInsertion?: boolean;
+          };
+          globals.__insertAudioCalls.push({ filePath, slidesAudio });
+          if (globals.__failNextAudioInsertion) {
+            globals.__failNextAudioInsertion = false;
+            return { success: false as const, message: "audio automation failed" };
+          }
           return { success: true as const };
         },
       };
@@ -358,6 +362,16 @@ async function setPreviewMappings(mappings: Record<string, Voice>) {
       }
     ).__previewMappings = nextMappings;
   }, mappings);
+}
+
+async function failNextAudioInsertion() {
+  await electronApp.evaluate(() => {
+    (
+      globalThis as typeof globalThis & {
+        __failNextAudioInsertion?: boolean;
+      }
+    ).__failNextAudioInsertion = true;
+  });
 }
 
 test.beforeAll(async () => {
@@ -551,6 +565,31 @@ test.describe("PPT Viewer UI Workflows", () => {
         ],
       },
     ]);
+  });
+
+  test("retains edited notes and reports a partial failure when audio insertion fails", async () => {
+    const editedNotes = "Keep this edit for retry";
+    await notesEditor().fill(editedNotes);
+    await failNextAudioInsertion();
+    const dialogMessage = new Promise<string>((resolve) => {
+      window.once("dialog", async (dialog) => {
+        resolve(dialog.message());
+        await dialog.dismiss();
+      });
+    });
+
+    await window.getByRole("button", { name: "Save Slide", exact: true }).click();
+
+    await expect(dialogMessage).resolves.toBe(
+      "Save error: PowerPoint notes were saved, but narration audio was not committed. audio automation failed",
+    );
+    await expect(notesEditor()).toHaveValue(editedNotes);
+    await expect(window.getByRole("button", { name: "Save Slide", exact: true })).toBeEnabled();
+
+    await window.getByRole("button", { name: "Save Slide", exact: true }).click();
+    await expect.poll(getSaveNotesCalls).toHaveLength(2);
+    await expect.poll(getInsertAudioCalls).toHaveLength(2);
+    await expect(notesEditor()).toHaveValue(editedNotes);
   });
 
   test("saves the full presentation through Electron narration preparation", async () => {
