@@ -9,5 +9,5 @@ export interface Voice {
 
 export type GenerateSpeechRequest = {
   text: string;
-  voiceOption?: Voice;
+  voice: Voice;
 };

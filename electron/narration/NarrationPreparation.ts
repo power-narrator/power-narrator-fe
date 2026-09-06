@@ -11,12 +11,20 @@ export interface SpeakerMappingSource {
 
 export interface NarrationSynthesizer {
   supportsProvider(providerId: string): boolean;
-  generateSpeech(text: string, voice: Voice): Promise<Uint8Array | Buffer | null>;
+  generateSpeech(text: string, voice: Voice): Promise<Uint8Array | Buffer>;
 }
 
 const DEFAULT_SPEAKER_KEY = "_default_";
 const SECTION_DIVIDER = /^[ \t]*-{3,}[ \t]*$/m;
 const SPEAKER_TAG = /^(?:[ \t]*\n)*[ \t]*\[([^\]\n]*)\][ \t]*(?:\n|$)/;
+
+type PreparedNarrationSection = {
+  slideIndex: number;
+  sectionIndex: number;
+  speaker: string;
+  text: string;
+  voice: Voice;
+};
 
 function parseSections(notes: string): Array<{ speaker: string; text: string }> {
   return notes
@@ -83,7 +91,13 @@ export class NarrationPreparation {
     const mappings = await this.mappingSource.getSpeakerMappings();
     const voice = this.resolveVoice(mappings, speaker, request.slideIndex, request.sectionIndex);
 
-    return this.synthesizer.generateSpeech(text, voice);
+    return this.synthesizeSection({
+      slideIndex: request.slideIndex,
+      sectionIndex: request.sectionIndex,
+      speaker,
+      text,
+      voice,
+    });
   }
 
   async prepareBatch(
@@ -115,29 +129,30 @@ export class NarrationPreparation {
 
     return Promise.all(
       prepared.map(async (section) => {
-        try {
-          const audio = await this.synthesizer.generateSpeech(section.text, section.voice);
-          if (!audio) {
-            throw new Error("the provider returned no audio");
-          }
-          const entry = {
-            index: section.slideIndex,
-            sectionIndex: section.sectionIndex,
-            audioData: new Uint8Array(audio),
-          };
-          completed += 1;
-          onProgress?.({ completed, total });
-          return entry;
-        } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : "Unknown synthesis error";
-          const label = section.speaker === DEFAULT_SPEAKER_KEY ? "Default" : section.speaker;
-          throw new NarrationPreparationError(
-            "synthesis",
-            `Narration synthesis failed for slide ${section.slideIndex}, section ${section.sectionIndex + 1}, speaker "${label}": ${message}.`,
-          );
-        }
+        const audio = await this.synthesizeSection(section);
+        const entry = {
+          index: section.slideIndex,
+          sectionIndex: section.sectionIndex,
+          audioData: new Uint8Array(audio),
+        };
+        completed += 1;
+        onProgress?.({ completed, total });
+        return entry;
       }),
     );
+  }
+
+  private async synthesizeSection(section: PreparedNarrationSection): Promise<Uint8Array | Buffer> {
+    try {
+      return await this.synthesizer.generateSpeech(section.text, section.voice);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown synthesis error";
+      const label = section.speaker === DEFAULT_SPEAKER_KEY ? "Default" : section.speaker;
+      throw new NarrationPreparationError(
+        "synthesis",
+        `Narration synthesis failed for slide ${section.slideIndex}, section ${section.sectionIndex + 1}, speaker "${label}": ${message}.`,
+      );
+    }
   }
 
   private resolveVoice(

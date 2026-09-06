@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getAudioBuffer } from ".";
+import type { Voice } from "../../../shared/types/tts";
+
+const voice: Voice = {
+  name: "en-US-Chirp3-HD-Aoede",
+  languageCodes: ["en-US"],
+  ssmlGender: "FEMALE",
+  provider: "gcp",
+};
 
 describe("getAudioBuffer", () => {
   afterEach(() => {
@@ -12,10 +20,10 @@ describe("getAudioBuffer", () => {
     const generateSpeech = vi.fn().mockResolvedValue(audioBytes);
     vi.stubGlobal("window", { electronAPI: { generateSpeech } });
 
-    const result = await getAudioBuffer(text);
+    const result = await getAudioBuffer(text, voice);
 
     expect(generateSpeech).toHaveBeenCalledOnce();
-    expect(generateSpeech).toHaveBeenCalledWith({ text, voiceOption: undefined });
+    expect(generateSpeech).toHaveBeenCalledWith({ text, voice });
     expect(new Uint8Array(result)).toEqual(audioBytes);
   });
 });

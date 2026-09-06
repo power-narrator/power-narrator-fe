@@ -12,12 +12,12 @@ export type CacheIdentityValue =
 
 export interface PreparedSpeechRequest {
   cacheIdentity: CacheIdentityValue;
-  synthesize(): Promise<Uint8Array | Buffer | null>;
+  synthesize(): Promise<Uint8Array | Buffer>;
 }
 
 export interface TtsProvider {
   getVoices(): Promise<Voice[]>;
-  prepareSpeech(text: string, voiceOption?: Voice): PreparedSpeechRequest;
+  prepareSpeech(text: string, voice: Voice): PreparedSpeechRequest;
 }
 
 export type TtsProviderRegistry = ReadonlyMap<TtsProviderId, TtsProvider>;
