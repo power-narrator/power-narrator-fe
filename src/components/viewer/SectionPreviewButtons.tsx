@@ -1,7 +1,7 @@
 import { ActionIcon, Box, Button, Center, Group, Loader, Slider, Stack, Text } from "@mantine/core";
 import { IconHistory, IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
-import type { NoteSection } from "../../types/notes";
+import type { NarrationSection } from "../../../electron/narration/NarrationSections";
 import { getErrorMessage } from "../../utils/errors";
 import { getSpeakerOptions } from "../../utils/viewer";
 import type { Voice } from "../../../shared/types/tts";
@@ -12,7 +12,7 @@ interface SectionPreviewButtonsProps {
   slideIndex: number;
   sectionIndex: number;
   slideNotes: string;
-  section: NoteSection;
+  section: NarrationSection;
   effectiveSpeaker: string;
   mappings: Record<string, Voice>;
   onFocus: () => void;
@@ -92,16 +92,12 @@ export function SectionPreviewButtons({
       return;
     }
 
-    let textToPlay = section.text;
-    if (getTextarea) {
-      const textarea = getTextarea();
-      if (textarea) {
-        textToPlay =
-          textarea.selectionStart !== textarea.selectionEnd
-            ? textarea.value.substring(textarea.selectionStart, textarea.selectionEnd)
-            : textarea.value;
-      }
-    }
+    const textarea = getTextarea?.();
+    const textToPlay = textarea
+      ? textarea.selectionStart === textarea.selectionEnd
+        ? textarea.value
+        : textarea.value.substring(textarea.selectionStart, textarea.selectionEnd)
+      : section.text;
 
     if (!textToPlay.trim()) {
       alert("No text to preview.");

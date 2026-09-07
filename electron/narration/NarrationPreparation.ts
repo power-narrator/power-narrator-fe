@@ -4,6 +4,7 @@ import type {
   PreviewNarrationRequest,
 } from "../../shared/types/narration.js";
 import type { SlideAudioEntry } from "../platform/types.js";
+import { getEffectiveSpeaker, parseNarrationSections } from "./NarrationSections.js";
 
 export interface SpeakerMappingSource {
   getSpeakerMappings(): Record<string, Voice> | Promise<Record<string, Voice>>;
@@ -15,8 +16,6 @@ export interface NarrationSynthesizer {
 }
 
 const DEFAULT_SPEAKER_KEY = "_default_";
-const SECTION_DIVIDER = /^[ \t]*-{3,}[ \t]*$/m;
-const SPEAKER_TAG = /^(?:[ \t]*\n)*[ \t]*\[([^\]\n]*)\][ \t]*(?:\n|$)/;
 
 type PreparedNarrationSection = {
   slideIndex: number;
@@ -25,30 +24,6 @@ type PreparedNarrationSection = {
   text: string;
   voice: Voice;
 };
-
-function parseSections(notes: string): Array<{ speaker: string; text: string }> {
-  return notes
-    .replace(/\r\n|[\r\u2028\u2029]/g, "\n")
-    .split(SECTION_DIVIDER)
-    .map((section) => {
-      const speakerMatch = section.match(SPEAKER_TAG);
-      return {
-        speaker: speakerMatch?.[1]?.trim() ?? "",
-        text: speakerMatch ? section.slice(speakerMatch[0].length) : section,
-      };
-    });
-}
-
-function effectiveSpeaker(speakers: string[], sectionIndex: number): string {
-  for (let index = sectionIndex; index >= 0; index -= 1) {
-    const speaker = speakers[index];
-    if (speaker) {
-      return speaker;
-    }
-  }
-
-  return DEFAULT_SPEAKER_KEY;
-}
 
 function voiceValidationProblem(voice: Voice | undefined): string | null {
   if (!voice) {
@@ -86,11 +61,11 @@ export class NarrationPreparation {
       );
     }
 
-    const speakers = parseSections(request.notes).map((section) => section.speaker);
+    const sections = parseNarrationSections(request.notes);
     const speaker =
       request.previewSpeaker !== undefined
         ? request.previewSpeaker || DEFAULT_SPEAKER_KEY
-        : effectiveSpeaker(speakers, request.sectionIndex);
+        : getEffectiveSpeaker(sections, request.sectionIndex) || DEFAULT_SPEAKER_KEY;
     const mappings = await this.mappingSource.getSpeakerMappings();
     const voice = this.resolveVoice(mappings, speaker, request.slideIndex, request.sectionIndex);
 
@@ -109,7 +84,7 @@ export class NarrationPreparation {
   ): Promise<SlideAudioEntry[]> {
     const mappings = await this.mappingSource.getSpeakerMappings();
     const prepared = slides.flatMap((slide) => {
-      const sections = parseSections(slide.notes);
+      const sections = parseNarrationSections(slide.notes);
 
       return sections.flatMap((section, sectionIndex) => {
         const text = section.text.trim();
@@ -117,10 +92,7 @@ export class NarrationPreparation {
           return [];
         }
 
-        const speaker = effectiveSpeaker(
-          sections.map((candidate) => candidate.speaker),
-          sectionIndex,
-        );
+        const speaker = getEffectiveSpeaker(sections, sectionIndex) || DEFAULT_SPEAKER_KEY;
         const voice = this.resolveVoice(mappings, speaker, slide.slideIndex, sectionIndex);
 
         return [{ slideIndex: slide.slideIndex, sectionIndex, speaker, text, voice }];

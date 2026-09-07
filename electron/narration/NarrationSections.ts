@@ -1,13 +1,20 @@
-import { DEFAULT_SPEAKER_VALUE } from "../constants/speaker";
-import type { NoteSection } from "../types/notes";
-
 const DEFAULT_SECTION_SEPARATOR = "\n---\n";
 const SECTION_DIVIDER_PATTERN = /^[ \t]*-{3,}[ \t]*(?:\n)?$/;
 const SPEAKER_TAG_PATTERN = /^((?:[ \t]*\n)*[ \t]*)\[([^\]\n]*)\]([ \t]*)(?:\n|$)/;
 const LEADING_WHITESPACE_PATTERN = /^[ \t]*/;
 const TRAILING_WHITESPACE_PATTERN = /[ \t]*$/;
 
-interface RawNoteSection {
+export interface NarrationSection {
+  speaker: string;
+  text: string;
+  format?: {
+    separatorBefore?: string;
+    speakerPrefix?: string;
+    speakerSuffix?: string;
+  };
+}
+
+interface RawNarrationSection {
   separatorBefore?: string;
   text: string;
 }
@@ -15,8 +22,8 @@ interface RawNoteSection {
 export const normalizeNotes = (text: string): string =>
   text.replace(/\r\n|[\r\u2028\u2029]/g, "\n");
 
-function splitRawSections(text: string): RawNoteSection[] {
-  const sections: RawNoteSection[] = [];
+function splitRawSections(text: string): RawNarrationSection[] {
+  const sections: RawNarrationSection[] = [];
   let currentText = "";
   let separatorBefore: string | undefined;
   let lineStart = 0;
@@ -33,10 +40,7 @@ function splitRawSections(text: string): RawNoteSection[] {
         separator = `\n${separator}`;
       }
 
-      sections.push({
-        separatorBefore,
-        text: currentText,
-      });
+      sections.push({ separatorBefore, text: currentText });
       separatorBefore = separator;
       currentText = "";
     } else {
@@ -46,21 +50,17 @@ function splitRawSections(text: string): RawNoteSection[] {
     lineStart = lineEnd;
   }
 
-  sections.push({
-    separatorBefore,
-    text: currentText,
-  });
-
+  sections.push({ separatorBefore, text: currentText });
   return sections;
 }
 
-function parseSection(rawSection: RawNoteSection): NoteSection {
+function parseSection(rawSection: RawNarrationSection): NarrationSection {
   const speakerMatch = rawSection.text.match(SPEAKER_TAG_PATTERN);
   const format = rawSection.separatorBefore ? { separatorBefore: rawSection.separatorBefore } : {};
 
   if (!speakerMatch) {
     return {
-      speaker: DEFAULT_SPEAKER_VALUE,
+      speaker: "",
       text: rawSection.text,
       ...(Object.keys(format).length ? { format } : {}),
     };
@@ -71,7 +71,7 @@ function parseSection(rawSection: RawNoteSection): NoteSection {
   const trailingSpeakerWhitespace = speakerText.match(TRAILING_WHITESPACE_PATTERN)?.[0] || "";
 
   return {
-    speaker: speakerText.trim() || DEFAULT_SPEAKER_VALUE,
+    speaker: speakerText.trim(),
     text: rawSection.text.slice(speakerMatch[0].length),
     format: {
       ...format,
@@ -81,40 +81,34 @@ function parseSection(rawSection: RawNoteSection): NoteSection {
   };
 }
 
-export const parseNotes = (text: string): NoteSection[] => {
-  return splitRawSections(normalizeNotes(text)).map(parseSection);
-};
+export const parseNarrationSections = (text: string): NarrationSection[] =>
+  splitRawSections(normalizeNotes(text)).map(parseSection);
 
-export const getEffectiveSpeaker = (sections: NoteSection[], index: number): string => {
-  const current = sections[index]?.speaker;
-  if (current && current !== DEFAULT_SPEAKER_VALUE) {
-    return current;
-  }
-
-  // Look backwards for the most recent specified speaker
-  for (let i = index - 1; i >= 0; i--) {
-    const prev = sections[i]?.speaker;
-    if (prev && prev !== DEFAULT_SPEAKER_VALUE) {
-      return prev;
+export const getEffectiveSpeaker = (
+  sections: readonly Pick<NarrationSection, "speaker">[],
+  index: number,
+): string => {
+  for (let candidateIndex = index; candidateIndex >= 0; candidateIndex -= 1) {
+    const speaker = sections[candidateIndex]?.speaker;
+    if (speaker) {
+      return speaker;
     }
   }
 
-  return DEFAULT_SPEAKER_VALUE;
+  return "";
 };
 
-export const formatNotes = (sections: NoteSection[]): string => {
-  return sections.reduce((notes, section, index) => {
+export const formatNarrationSections = (sections: NarrationSection[]): string =>
+  sections.reduce((notes, section, index) => {
     const separator = index > 0 ? section.format?.separatorBefore || DEFAULT_SECTION_SEPARATOR : "";
 
-    if (section.speaker !== DEFAULT_SPEAKER_VALUE) {
+    if (section.speaker) {
       const speakerPrefix = section.format?.speakerPrefix || "[";
       const speakerSuffix = section.format?.speakerSuffix || "]";
       const speakerTag = `${speakerPrefix}${section.speaker}${speakerSuffix}`;
       const sectionText = section.text ? `${speakerTag}\n${section.text}` : speakerTag;
-
       return `${notes}${separator}${sectionText}`;
     }
 
     return `${notes}${separator}${section.text}`;
   }, "");
-};

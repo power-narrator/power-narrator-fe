@@ -152,7 +152,7 @@ if (process.env.NODE_ENV === "test") {
       __installNarrationTestAdapters?: (
         mappingSource: ConstructorParameters<typeof NarrationPreparation>[0],
         synthesizer: ConstructorParameters<typeof NarrationPreparation>[1],
-        powerpoint?: Pick<PptProvider, "saveNotes" | "insertAudio">,
+        powerpoint?: Pick<PptProvider, "saveNotes" | "insertAudio" | "removeAudio">,
       ) => void;
     }
   ).__installNarrationTestAdapters = (mappingSource, synthesizer, powerpoint) => {

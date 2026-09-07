@@ -1,12 +1,15 @@
 import { Stack } from "@mantine/core";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ActionButtonState } from "../../types/viewer";
 import type { Slide, SlideElectronResult, SlidesElectronResult } from "../../types/electron";
 import { useSettings } from "../../context/useSettings";
 import { getErrorMessage } from "../../utils/errors";
-import type { NoteSection } from "../../types/notes";
-import { formatNotes, parseNotes } from "../../utils/notes";
+import {
+  formatNarrationSections,
+  parseNarrationSections,
+  type NarrationSection,
+} from "../../../electron/narration/NarrationSections";
 import { NotesSectionList } from "./NotesSectionList";
 import { SlideActionsBar, type SlideActionBarKey } from "./SlideActionsBar";
 import { SlidePreviewPane } from "./SlidePreviewPane";
@@ -14,22 +17,14 @@ import { SlideThumbnailList } from "./SlideThumbnailList";
 import { SsmlToolbar } from "./SsmlToolbar";
 import { ViewerHeader, type ViewerHeaderActionKey } from "./ViewerHeader";
 import { Split } from "@gfazioli/mantine-split-pane";
+import { useViewerSession } from "./useViewerSession";
+import type { SavedSlideSelection } from "./ViewerSession";
 
 interface ViewerPageProps {
   slides: Slide[];
   filePath: string;
   onBack: () => void;
   onOpenSettings: () => void;
-}
-
-interface SlideHistoryEntry {
-  slides: Slide[];
-  changedSlidePositions: readonly number[];
-}
-
-interface SavedSlideSelection {
-  slide: Slide;
-  position: number;
 }
 
 const EMPTY_SLIDE: Slide = {
@@ -39,25 +34,19 @@ const EMPTY_SLIDE: Slide = {
   notes: "",
 };
 
-function slidesAtPositions(slides: readonly Slide[], positions: readonly number[]) {
-  return positions.flatMap((position) => {
-    const slide = slides[position];
-    return slide ? [slide] : [];
-  });
-}
-
 export function ViewerPage({
   slides: initialSlides,
   filePath,
   onBack,
   onOpenSettings,
 }: ViewerPageProps) {
-  const [slides, setSlides] = useState<Slide[]>(initialSlides);
-  const [history, setHistory] = useState<SlideHistoryEntry[]>([
-    { slides: initialSlides, changedSlidePositions: [] },
-  ]);
-  const [historyIndex, setHistoryIndex] = useState(0);
-  const historyIndexRef = useRef(0);
+  const electronAPI = window.electronAPI;
+  const reportUnsavedChanges = useCallback(
+    (hasUnsavedChanges: boolean) => electronAPI.setHasUnsavedNarrationChanges(hasUnsavedChanges),
+    [electronAPI],
+  );
+  const viewerSession = useViewerSession(initialSlides, reportUnsavedChanges);
+  const slides = viewerSession.slides;
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -66,10 +55,6 @@ export function ViewerPage({
   const [genStatus, setGenStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
-  const fullySavedNotesRef = useRef(
-    new Map(initialSlides.map((slide) => [slide.index, slide.notes || ""])),
-  );
-  const dirtySlideIndicesRef = useRef<Set<number>>(new Set());
   const [isRemoving, setIsRemoving] = useState(false);
   const [removeStatus, setRemoveStatus] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -82,7 +67,6 @@ export function ViewerPage({
   );
   const statusTimeoutsRef = useRef<number[]>([]);
   const { mappings } = useSettings();
-  const electronAPI = window.electronAPI;
   const busy = isGenerating || isSaving || isSyncing || isRemoving || isPlaying;
 
   const headerActionStates: Record<ViewerHeaderActionKey, ActionButtonState> = {
@@ -109,7 +93,7 @@ export function ViewerPage({
 
   const activeSlide = slides[activeSlideIndex] ?? { ...EMPTY_SLIDE, index: activeSlideIndex + 1 };
   const activeSlideNumber = activeSlide.index || activeSlideIndex + 1;
-  const activeSections = parseNotes(activeSlide.notes || "");
+  const activeSections = parseNarrationSections(activeSlide.notes || "");
 
   function clearDebounce() {
     if (debounceRef.current) {
@@ -138,66 +122,30 @@ export function ViewerPage({
   }
 
   function pushToHistory(nextSlides: Slide[], changedSlidePositions: readonly number[]) {
-    const nextHistoryIndex = historyIndexRef.current + 1;
-    setHistory((previousHistory) => [
-      ...previousHistory.slice(0, nextHistoryIndex),
-      { slides: nextSlides, changedSlidePositions },
-    ]);
-    historyIndexRef.current = nextHistoryIndex;
-    setHistoryIndex(nextHistoryIndex);
-  }
-
-  function recordDirtySlides(changedSlides: readonly Slide[]) {
-    for (const slide of changedSlides) {
-      if (fullySavedNotesRef.current.get(slide.index) === (slide.notes || "")) {
-        dirtySlideIndicesRef.current.delete(slide.index);
-      } else {
-        dirtySlideIndicesRef.current.add(slide.index);
-      }
-    }
-    electronAPI.setHasUnsavedNarrationChanges(dirtySlideIndicesRef.current.size > 0);
+    viewerSession.checkpoint(nextSlides, changedSlidePositions);
   }
 
   async function confirmDiscardChanges(slideIndices?: readonly number[]) {
-    const wouldDiscardChanges = slideIndices
-      ? slideIndices.some((slideIndex) => dirtySlideIndicesRef.current.has(slideIndex))
-      : dirtySlideIndicesRef.current.size > 0;
-
-    return !wouldDiscardChanges || electronAPI.confirmDiscardNarrationChanges();
+    return (
+      !viewerSession.wouldDiscard(slideIndices) || electronAPI.confirmDiscardNarrationChanges()
+    );
   }
 
   function setEditedSlides(nextSlides: Slide[], changedSlidePositions: readonly number[]) {
-    setSlides(nextSlides);
-    recordDirtySlides(slidesAtPositions(nextSlides, changedSlidePositions));
+    viewerSession.edit(nextSlides, changedSlidePositions);
   }
 
-  function updateFullySavedNotes(savedSlides: Slide[], currentSlides: readonly Slide[]) {
-    for (const slide of savedSlides) {
-      fullySavedNotesRef.current.set(slide.index, slide.notes || "");
-    }
-    recordDirtySlides(currentSlides);
+  function markSlidesFullySaved(savedSlides: SavedSlideSelection[]) {
+    viewerSession.markSaved(savedSlides);
   }
 
-  function markSlidesFullySaved(savedSelections: readonly SavedSlideSelection[]) {
-    setSlides((currentSlides) => {
-      updateFullySavedNotes(
-        savedSelections.map(({ slide }) => slide),
-        slidesAtPositions(
-          currentSlides,
-          savedSelections.map(({ position }) => position),
-        ),
-      );
-      return currentSlides;
-    });
-  }
-
-  function updateActiveSlideSections(updater: (sections: NoteSection[]) => boolean) {
+  function updateActiveSlideSections(updater: (sections: NarrationSection[]) => boolean) {
     const currentSlide = slides[activeSlideIndex];
     if (!currentSlide) {
       return undefined;
     }
 
-    const sections = parseNotes(currentSlide.notes || "");
+    const sections = parseNarrationSections(currentSlide.notes || "");
     if (!updater(sections)) {
       return undefined;
     }
@@ -205,7 +153,7 @@ export function ViewerPage({
     const nextSlides = [...slides];
     nextSlides[activeSlideIndex] = {
       ...currentSlide,
-      notes: formatNotes(sections),
+      notes: formatNarrationSections(sections),
     };
 
     setEditedSlides(nextSlides, [activeSlideIndex]);
@@ -213,16 +161,14 @@ export function ViewerPage({
   }
 
   function resetHistoryWithSlides(nextSlides: Slide[], reloadedSlides = nextSlides) {
-    if (reloadedSlides === nextSlides) {
-      fullySavedNotesRef.current.clear();
-      dirtySlideIndicesRef.current.clear();
-      electronAPI.setHasUnsavedNarrationChanges(false);
-    }
-    updateFullySavedNotes(reloadedSlides, nextSlides);
-    setSlides(nextSlides);
-    setHistory([{ slides: nextSlides, changedSlidePositions: [] }]);
-    historyIndexRef.current = 0;
-    setHistoryIndex(0);
+    const reloadedPositions =
+      reloadedSlides === nextSlides
+        ? undefined
+        : reloadedSlides.flatMap((reloadedSlide) => {
+            const position = nextSlides.findIndex((slide) => slide.index === reloadedSlide.index);
+            return position === -1 ? [] : [position];
+          });
+    viewerSession.reload(nextSlides, reloadedPositions);
   }
 
   async function saveNotesToFile(slidesToSave: Slide[]) {
@@ -239,30 +185,9 @@ export function ViewerPage({
   }
 
   useEffect(() => {
-    fullySavedNotesRef.current.clear();
-    dirtySlideIndicesRef.current.clear();
-    for (const slide of initialSlides) {
-      fullySavedNotesRef.current.set(slide.index, slide.notes || "");
-    }
-    electronAPI.setHasUnsavedNarrationChanges(false);
-    setSlides(initialSlides);
-    setHistory([{ slides: initialSlides, changedSlidePositions: [] }]);
-    historyIndexRef.current = 0;
-    setHistoryIndex(0);
     setActiveSlideIndex(0);
     setActiveSectionIndex(0);
-  }, [electronAPI, initialSlides]);
-
-  useEffect(
-    () => () => {
-      electronAPI.setHasUnsavedNarrationChanges(false);
-    },
-    [electronAPI],
-  );
-
-  useEffect(() => {
-    historyIndexRef.current = historyIndex;
-  }, [historyIndex]);
+  }, [initialSlides]);
 
   useEffect(() => {
     setActiveSectionIndex(0);
@@ -284,36 +209,11 @@ export function ViewerPage({
   );
 
   const handleUndo = () => {
-    if (historyIndexRef.current === 0) {
-      return;
-    }
-
-    const nextHistoryIndex = historyIndexRef.current - 1;
-    const currentEntry = history[historyIndexRef.current];
-    const nextEntry = history[nextHistoryIndex];
-    if (!currentEntry || !nextEntry) {
-      return;
-    }
-
-    historyIndexRef.current = nextHistoryIndex;
-    setHistoryIndex(nextHistoryIndex);
-    setEditedSlides(nextEntry.slides, currentEntry.changedSlidePositions);
+    viewerSession.undo();
   };
 
   const handleRedo = () => {
-    if (historyIndexRef.current >= history.length - 1) {
-      return;
-    }
-
-    const nextHistoryIndex = historyIndexRef.current + 1;
-    const nextEntry = history[nextHistoryIndex];
-    if (!nextEntry) {
-      return;
-    }
-
-    historyIndexRef.current = nextHistoryIndex;
-    setHistoryIndex(nextHistoryIndex);
-    setEditedSlides(nextEntry.slides, nextEntry.changedSlidePositions);
+    viewerSession.redo();
   };
 
   function handleHistoryKeyDown(event: ReactKeyboardEvent) {
@@ -782,8 +682,8 @@ export function ViewerPage({
                 />
 
                 <SsmlToolbar
-                  historyIndex={historyIndex}
-                  historyLength={history.length}
+                  canUndo={viewerSession.canUndo}
+                  canRedo={viewerSession.canRedo}
                   onUndo={handleUndo}
                   onRedo={handleRedo}
                   onInsertSelfClosingTag={insertSelfClosingTag}

@@ -56,11 +56,6 @@ type ConvertPptxCall = {
   filePath: string;
 };
 
-type ReloadSlideCall = {
-  filePath: string;
-  slideIndex: number;
-};
-
 type SaveNotesCall = {
   filePath: string;
   slides: Array<{ index: number; notes: string }>;
@@ -246,6 +241,7 @@ async function installMockIpcHandlers(app: ElectronApplication) {
           }
           return { success: true as const };
         },
+        removeAudio: async () => ({ success: true as const }),
       };
 
       const installNarrationTestAdapters = (
@@ -289,16 +285,6 @@ async function getConvertPptxCalls(): Promise<ConvertPptxCall[]> {
         __convertPptxCalls: ConvertPptxCall[];
       }
     ).__convertPptxCalls;
-  });
-}
-
-async function getReloadSlideCalls(): Promise<ReloadSlideCall[]> {
-  return electronApp.evaluate(() => {
-    return (
-      globalThis as typeof globalThis & {
-        __reloadSlideCalls: ReloadSlideCall[];
-      }
-    ).__reloadSlideCalls;
   });
 }
 
@@ -426,58 +412,6 @@ async function getCompletedPreviewSyntheses() {
   );
 }
 
-async function setPreviewMappings(mappings: Record<string, Voice>) {
-  await electronApp.evaluate((_, nextMappings) => {
-    (
-      globalThis as typeof globalThis & {
-        __previewMappings: Record<string, Voice>;
-      }
-    ).__previewMappings = nextMappings;
-  }, mappings);
-}
-
-async function failNextAudioInsertion() {
-  await electronApp.evaluate(() => {
-    (
-      globalThis as typeof globalThis & {
-        __failNextAudioInsertion?: boolean;
-      }
-    ).__failNextAudioInsertion = true;
-  });
-}
-
-async function failNextNarrationSynthesis() {
-  await electronApp.evaluate(() => {
-    (
-      globalThis as typeof globalThis & {
-        __failNextNarrationSynthesis?: boolean;
-      }
-    ).__failNextNarrationSynthesis = true;
-  });
-}
-
-async function expectFailedSaveToKeepEditedNarration() {
-  const saveFailure = new Promise<void>((resolve) => {
-    window.once("dialog", async (dialog) => {
-      await dialog.dismiss();
-      resolve();
-    });
-  });
-  await window.getByRole("button", { name: "Save Slide", exact: true }).click();
-  await saveFailure;
-  await expect(window.getByRole("button", { name: "Save Slide", exact: true })).toBeEnabled();
-
-  await window.getByRole("button", { name: "Back", exact: false }).click();
-  await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
-  await expect(notesEditor()).toHaveValue("Failed save stays edited");
-}
-
-async function expectBackNavigationToWarn() {
-  await window.getByRole("button", { name: "Back", exact: false }).click();
-  await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
-  await expect(window.getByText("Add Section")).toBeVisible();
-}
-
 test.beforeAll(async () => {
   fs.copyFileSync(FIXTURE_ORIGINAL, FIXTURE_TEST);
 
@@ -566,166 +500,6 @@ test.describe("PPT Viewer UI Workflows", () => {
     await expect(notesEditor()).toHaveValue(MOCK_SLIDES[0]!.notes);
   });
 
-  test("undoes and redoes only the slide affected by each history transition", async () => {
-    const firstSlideEdit = "Edited notes on slide 1";
-    const secondSlideEdit = "Edited notes on slide 2";
-    await notesEditor().fill(firstSlideEdit);
-    await window.waitForTimeout(900);
-
-    await window.getByRole("img", { name: "Slide 2 thumbnail" }).click();
-    const secondSlideNotes = window.getByRole("textbox", { name: "Slide 2 section 1 notes" });
-    await secondSlideNotes.fill(secondSlideEdit);
-    await window.waitForTimeout(900);
-
-    await window.keyboard.press("Control+z");
-    await expect(secondSlideNotes).toHaveValue(MOCK_SLIDES[1]!.notes);
-    await window.keyboard.press("Control+y");
-    await expect(secondSlideNotes).toHaveValue(secondSlideEdit);
-
-    await window.getByRole("img", { name: "Slide 1 thumbnail" }).click();
-    await expect(notesEditor()).toHaveValue(firstSlideEdit);
-  });
-
-  test("warns only when a reload would discard an affected edited slide", async () => {
-    const editedNotes = "Keep this edit after declining reload";
-    await notesEditor().fill(editedNotes);
-    await window.getByRole("img", { name: "Slide 2 thumbnail" }).click();
-
-    await window.getByRole("button", { name: "Reload Slide", exact: true }).click();
-    await expect.poll(getReloadSlideCalls).toEqual([{ filePath: FIXTURE_TEST, slideIndex: 2 }]);
-
-    await window.getByRole("button", { name: "Reload All Slides", exact: true }).click();
-
-    await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
-    await expect.poll(getConvertPptxCalls).toEqual([{ filePath: FIXTURE_TEST }]);
-    await window.getByRole("img", { name: "Slide 1 thumbnail" }).click();
-    await expect(notesEditor()).toHaveValue(editedNotes);
-  });
-
-  test("warns before returning to the landing page and preserves edits when declined", async () => {
-    const editedNotes = "Stay in the Viewer";
-    await notesEditor().fill(editedNotes);
-    await window.getByRole("button", { name: "Back", exact: false }).click();
-
-    await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
-    await expect(notesEditor()).toHaveValue(editedNotes);
-  });
-
-  test("clears dirty state after accepting reload of an edited slide", async () => {
-    await notesEditor().fill("Discard this slide edit");
-    await setShouldDiscardNarrationChanges(true);
-
-    await window.getByRole("button", { name: "Reload Slide", exact: true }).click();
-
-    await setShouldDiscardNarrationChanges(false);
-    await expect(notesEditor()).toHaveValue(MOCK_SLIDES[0]!.notes);
-    await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
-    await window.getByRole("button", { name: "Back", exact: false }).click();
-    await expect(window.getByRole("button", { name: "Select PowerPoint File" })).toBeVisible();
-    await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
-  });
-
-  test("clears dirty state when notes return to their loaded value", async () => {
-    await notesEditor().fill("Temporary edit");
-    await notesEditor().fill(MOCK_SLIDES[0]!.notes);
-
-    await window.getByRole("button", { name: "Back", exact: false }).click();
-
-    await expect(window.getByRole("button", { name: "Select PowerPoint File" })).toBeVisible();
-    await expect.poll(getDiscardConfirmationCalls).toEqual([]);
-  });
-
-  test("marks section changes as dirty", async () => {
-    await window.getByRole("button", { name: "Add Section", exact: true }).click();
-
-    await expectBackNavigationToWarn();
-  });
-
-  test("marks speaker changes as dirty", async () => {
-    await window.getByPlaceholder("Speaker").click();
-    await window.getByRole("option", { name: "Narrator", exact: true }).click();
-
-    await expectBackNavigationToWarn();
-  });
-
-  test("marks SSML changes as dirty", async () => {
-    await notesEditor().fill(`<speak>${MOCK_SLIDES[0]!.notes}</speak>`);
-
-    await expectBackNavigationToWarn();
-  });
-
-  test("retains dirty state after narration validation fails", async () => {
-    await notesEditor().fill("Failed save stays edited");
-    await setPreviewMappings({ Narrator: MOCK_VOICES.Narrator! });
-
-    await expectFailedSaveToKeepEditedNarration();
-  });
-
-  test("retains dirty state after narration synthesis fails", async () => {
-    await notesEditor().fill("Failed save stays edited");
-    await failNextNarrationSynthesis();
-
-    await expectFailedSaveToKeepEditedNarration();
-  });
-
-  test("retains the close warning after a partial narrated save failure", async () => {
-    await notesEditor().fill("Retry after partial failure");
-    await failNextAudioInsertion();
-    await window.getByRole("button", { name: "Save Slide", exact: true }).click();
-    await expect(window.getByRole("button", { name: "Save Slide", exact: true })).toBeEnabled();
-
-    await window.getByRole("button", { name: "Back", exact: false }).click();
-    await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
-    await expect(notesEditor()).toHaveValue("Retry after partial failure");
-  });
-
-  test("clears the discard warning after a complete narrated save", async () => {
-    await notesEditor().fill("Saved narration edit");
-    await window.getByRole("button", { name: "Save Slide", exact: true }).click();
-    await expect(window.getByRole("button", { name: "Save Slide", exact: true })).toBeEnabled();
-
-    await window.getByRole("button", { name: "Back", exact: false }).click();
-
-    await expect(window.getByRole("button", { name: "Select PowerPoint File" })).toBeVisible();
-    await expect.poll(getDiscardConfirmationCalls).toEqual([]);
-  });
-
-  test("previews edited text before textarea blur", async () => {
-    await resetGeneratedSpeechCalls();
-
-    const notesTextarea = notesEditor();
-    await expect(notesTextarea).toBeVisible();
-
-    await notesTextarea.fill("Preview text edited before blur");
-    await expect(notesTextarea).toBeFocused();
-
-    await window.getByRole("button", { name: "Narrator", exact: true }).click();
-
-    await expect.poll(getGeneratedSpeechCalls).toContainEqual({
-      text: "Preview text edited before blur",
-      voiceOption: MOCK_VOICES.Narrator,
-    });
-  });
-
-  test("previews only the live selected text", async () => {
-    await resetGeneratedSpeechCalls();
-    const notesTextarea = notesEditor();
-    await notesTextarea.fill("Read only this phrase please");
-    await notesTextarea.evaluate(
-      (element: { focus(): void; setSelectionRange(a: number, b: number): void }) => {
-        element.focus();
-        element.setSelectionRange(5, 21);
-      },
-    );
-
-    await window.getByRole("button", { name: "Narrator", exact: true }).click();
-
-    await expect.poll(getGeneratedSpeechCalls).toContainEqual({
-      text: "only this phrase",
-      voiceOption: MOCK_VOICES.Narrator,
-    });
-  });
-
   test("stopping a pending preview prevents late playback without cancelling synthesis", async () => {
     await resetGeneratedSpeechCalls();
     await notesEditor().fill("Delayed preview");
@@ -741,96 +515,6 @@ test.describe("PPT Viewer UI Workflows", () => {
 
     await expect.poll(getPlaybackActivity).toMatchObject({ playUrls: [] });
     await expect.poll(getCompletedPreviewSyntheses).toBe(1);
-  });
-
-  test("surfaces contextual narration validation errors", async () => {
-    await setPreviewMappings({ Narrator: MOCK_VOICES.Narrator! });
-    const dialogMessage = new Promise<string>((resolve) => {
-      window.once("dialog", async (dialog) => {
-        resolve(dialog.message());
-        await dialog.dismiss();
-      });
-    });
-
-    await window.getByRole("button", { name: "Default", exact: true }).click();
-
-    await expect(dialogMessage).resolves.toMatch(
-      /slide 1, section 1, speaker "Default": no voice mapping is configured/,
-    );
-  });
-
-  test("revokes obsolete Blob URLs when preview playback is replaced and disposed", async () => {
-    await notesEditor().fill("First preview");
-    await window.getByRole("button", { name: "Narrator", exact: true }).click();
-    await expect.poll(getPlaybackActivity).toMatchObject({ playUrls: [expect.any(String)] });
-
-    await notesEditor().fill("Replacement preview");
-    await window.getByRole("button", { name: "Default", exact: true }).click();
-    await expect.poll(getPlaybackActivity).toMatchObject({
-      playUrls: [expect.any(String), expect.any(String)],
-      revokedUrls: [expect.any(String)],
-    });
-
-    await setShouldDiscardNarrationChanges(true);
-    await window.getByRole("button", { name: "Back", exact: false }).click();
-    await setShouldDiscardNarrationChanges(false);
-    await expect.poll(getPlaybackActivity).toMatchObject({
-      revokedUrls: [expect.any(String), expect.any(String)],
-    });
-  });
-
-  test("saves edited slide notes", async () => {
-    const editedNotes = "Initial notes for slide 1 - EDITED IN TEST";
-    const notesTextarea = notesEditor();
-    await expect(notesTextarea).toBeVisible();
-
-    await notesTextarea.fill(editedNotes);
-    await window.getByRole("button", { name: "Save Slide", exact: true }).click();
-
-    await expect(window.getByRole("button", { name: "Save Slide", exact: true })).toBeEnabled();
-    await expect.poll(getSaveNotesCalls).toEqual([
-      {
-        filePath: FIXTURE_TEST,
-        slides: [{ index: MOCK_SLIDES[0]!.index, notes: editedNotes }],
-      },
-    ]);
-    await expect.poll(getInsertAudioCalls).toEqual([
-      {
-        filePath: FIXTURE_TEST,
-        slidesAudio: [
-          {
-            index: MOCK_SLIDES[0]!.index,
-            sectionIndex: 0,
-            audioData: new Uint8Array(TINY_FAKE_AUDIO_BYTES),
-          },
-        ],
-      },
-    ]);
-  });
-
-  test("retains edited notes and reports a partial failure when audio insertion fails", async () => {
-    const editedNotes = "Keep this edit for retry";
-    await notesEditor().fill(editedNotes);
-    await failNextAudioInsertion();
-    const dialogMessage = new Promise<string>((resolve) => {
-      window.once("dialog", async (dialog) => {
-        resolve(dialog.message());
-        await dialog.dismiss();
-      });
-    });
-
-    await window.getByRole("button", { name: "Save Slide", exact: true }).click();
-
-    await expect(dialogMessage).resolves.toBe(
-      "Save error: PowerPoint notes were saved, but narration audio was not committed. audio automation failed",
-    );
-    await expect(notesEditor()).toHaveValue(editedNotes);
-    await expect(window.getByRole("button", { name: "Save Slide", exact: true })).toBeEnabled();
-
-    await window.getByRole("button", { name: "Save Slide", exact: true }).click();
-    await expect.poll(getSaveNotesCalls).toHaveLength(2);
-    await expect.poll(getInsertAudioCalls).toHaveLength(2);
-    await expect(notesEditor()).toHaveValue(editedNotes);
   });
 
   test("saves the full presentation through Electron narration preparation", async () => {

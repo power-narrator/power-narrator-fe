@@ -9,16 +9,16 @@ import {
   Text,
   Textarea,
 } from "@mantine/core";
-import type { NoteSection } from "../../types/notes";
+import type { NarrationSection } from "../../../electron/narration/NarrationSections";
 import { getSpeakerOptions } from "../../utils/viewer";
 import type { Voice } from "../../../shared/types/tts";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
 import { IconPlus } from "@tabler/icons-react";
-import { getEffectiveSpeaker } from "../../utils/notes";
+import { getEffectiveSpeaker } from "../../../electron/narration/NarrationSections";
 import { DEFAULT_SPEAKER_VALUE } from "../../constants/speaker";
 
 interface NotesSectionListProps {
-  sections: NoteSection[];
+  sections: NarrationSection[];
   mappings: Record<string, Voice>;
   onFocusSection: (index: number) => void;
   onSpeakerChange: (index: number, speaker: string | null) => void;

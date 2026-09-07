@@ -7,7 +7,7 @@ import type {
 import type { PptProvider } from "../platform/PptProvider.js";
 import { NarrationPreparation, NarrationPreparationError } from "./NarrationPreparation.js";
 
-type SavePowerPoint = Pick<PptProvider, "saveNotes" | "insertAudio">;
+type SavePowerPoint = Pick<PptProvider, "saveNotes" | "insertAudio" | "removeAudio">;
 
 export class NarratedPresentationSaver {
   constructor(
@@ -66,13 +66,32 @@ export class NarratedPresentationSaver {
       };
     }
 
+    const slidesWithAudio = new Set(audio.map((entry) => entry.index));
+    const slidesWithoutAudio = request.slides
+      .map((slide) => slide.slideIndex)
+      .filter((slideIndex) => !slidesWithAudio.has(slideIndex));
+
     let audioResult;
     try {
-      audioResult = await powerpoint.insertAudio(request.filePath, audio);
+      if (slidesWithoutAudio.length > 0) {
+        audioResult = await powerpoint.removeAudio(request.filePath, slidesWithoutAudio);
+        if (!audioResult.success) {
+          return {
+            success: false,
+            stage: "powerpoint",
+            partial: true,
+            message: audioResult.message,
+          };
+        }
+      }
+
+      if (audio.length > 0) {
+        audioResult = await powerpoint.insertAudio(request.filePath, audio);
+      }
     } catch (error: unknown) {
       return this.powerPointFailure(error, true);
     }
-    if (!audioResult.success) {
+    if (audioResult && !audioResult.success) {
       return {
         success: false,
         stage: "powerpoint",

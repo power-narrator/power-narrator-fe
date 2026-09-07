@@ -32,6 +32,7 @@ function createHarness(mappings: Record<string, Voice>) {
   const powerpoint = {
     saveNotes: vi.fn().mockResolvedValue({ success: true }),
     insertAudio: vi.fn().mockResolvedValue({ success: true }),
+    removeAudio: vi.fn().mockResolvedValue({ success: true }),
   };
   const saver = new NarratedPresentationSaver(preparation, () => powerpoint);
 
@@ -113,6 +114,7 @@ describe("NarratedPresentationSaver current-slide save", () => {
     const powerpoint = {
       saveNotes: vi.fn(),
       insertAudio: vi.fn(),
+      removeAudio: vi.fn(),
     };
     const saver = new NarratedPresentationSaver(preparation, () => powerpoint);
 
@@ -146,6 +148,7 @@ describe("NarratedPresentationSaver current-slide save", () => {
     const powerpoint = {
       saveNotes: vi.fn(),
       insertAudio: vi.fn(),
+      removeAudio: vi.fn(),
     };
     const saver = new NarratedPresentationSaver(preparation, () => powerpoint);
 
@@ -179,6 +182,7 @@ describe("NarratedPresentationSaver current-slide save", () => {
       const powerpoint = {
         saveNotes: vi.fn().mockResolvedValue(notesResult),
         insertAudio: vi.fn().mockResolvedValue(audioResult),
+        removeAudio: vi.fn().mockResolvedValue({ success: true }),
       };
       const saver = new NarratedPresentationSaver(preparation, () => powerpoint);
 

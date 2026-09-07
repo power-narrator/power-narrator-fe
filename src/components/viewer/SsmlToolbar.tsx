@@ -39,8 +39,8 @@ const formatBreakLabel = (value: (typeof BREAK_OPTIONS)[number]) => {
 };
 
 interface SsmlToolbarProps {
-  historyIndex: number;
-  historyLength: number;
+  canUndo: boolean;
+  canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
   onInsertSelfClosingTag: (tag: string) => void;
@@ -48,8 +48,8 @@ interface SsmlToolbarProps {
 }
 
 export function SsmlToolbar({
-  historyIndex,
-  historyLength,
+  canUndo,
+  canRedo,
   onUndo,
   onRedo,
   onInsertSelfClosingTag,
@@ -73,13 +73,13 @@ export function SsmlToolbar({
         label="Undo"
         icon={<IconArrowBackUp size={18} />}
         onClick={onUndo}
-        disabled={historyIndex === 0}
+        disabled={!canUndo}
       />
       <SsmlToolbarButton
         label="Redo"
         icon={<IconArrowForwardUp size={18} />}
         onClick={onRedo}
-        disabled={historyIndex === historyLength - 1}
+        disabled={!canRedo}
       />
 
       <Divider orientation="vertical" />

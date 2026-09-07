@@ -35,6 +35,7 @@ function createSaver(generateSpeech = vi.fn().mockResolvedValue(new Uint8Array([
   const powerpoint = {
     saveNotes: vi.fn().mockResolvedValue({ success: true }),
     insertAudio: vi.fn().mockResolvedValue({ success: true }),
+    removeAudio: vi.fn().mockResolvedValue({ success: true }),
   };
 
   return {
@@ -67,6 +68,7 @@ function createCachedRetrySaver(
       .fn()
       .mockResolvedValueOnce({ success: false, message: "audio automation failed" })
       .mockResolvedValueOnce({ success: true }),
+    removeAudio: vi.fn().mockResolvedValue({ success: true }),
   };
 
   return {
@@ -77,6 +79,47 @@ function createCachedRetrySaver(
 }
 
 describe("NarratedPresentationSaver.savePresentation", () => {
+  it("removes stale narration before succeeding when a slide has no narratable text", async () => {
+    const { generateSpeech, powerpoint, saver } = createSaver();
+
+    await expect(
+      saver.savePresentation({
+        filePath: "/slides/talk.pptx",
+        slides: [{ slideIndex: 4, notes: "[Narrator]\n  \n---\n\t" }],
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(generateSpeech).not.toHaveBeenCalled();
+    expect(powerpoint.saveNotes).toHaveBeenCalledWith("/slides/talk.pptx", [
+      { index: 4, notes: "[Narrator]\n  \n---\n\t" },
+    ]);
+    expect(powerpoint.removeAudio).toHaveBeenCalledWith("/slides/talk.pptx", [4]);
+    expect(powerpoint.insertAudio).not.toHaveBeenCalled();
+    expect(powerpoint.saveNotes.mock.invocationCallOrder[0]).toBeLessThan(
+      powerpoint.removeAudio.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("reports a partial PowerPoint failure when stale narration cannot be removed", async () => {
+    const { powerpoint, saver } = createSaver();
+    powerpoint.removeAudio.mockResolvedValue({ success: false, message: "remove failed" });
+
+    await expect(
+      saver.savePresentation({
+        filePath: "/slides/talk.pptx",
+        slides: [{ slideIndex: 4, notes: "  " }],
+      }),
+    ).resolves.toEqual({
+      success: false,
+      stage: "powerpoint",
+      partial: true,
+      message: "remove failed",
+    });
+
+    expect(powerpoint.saveNotes).toHaveBeenCalledOnce();
+    expect(powerpoint.insertAudio).not.toHaveBeenCalled();
+  });
+
   it("preflights every requested slide before synthesis or PowerPoint mutation", async () => {
     const { generateSpeech, powerpoint, saver } = createSaver();
 
