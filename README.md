@@ -40,7 +40,7 @@ The application is split into three layers:
 - **Provider Pattern** — `PptProvider` is an interface with two implementations:
   - `MacPptProvider` — drives PowerPoint directly via AppleScript (`osascript`) and VBA macros (`.ppam` add-in).
   - `XmlPptProvider` — a **Decorator** that wraps any `PptProvider`. Instead of VBA macros, it calls a bundled Python CLI (`slide-voice-pptx`) that directly manipulates the `.pptx` XML. It closes and reopens the presentation around each CLI invocation.
-- **Strategy Pattern** — `TtsProvider` is an interface with `GcpTtsProvider` and `LocalTtsProvider` implementations. `TtsManager` selects the active provider at startup and handles persistent audio caching.
+- **Strategy Pattern** — `TtsProvider` is an interface with `GcpTtsProvider` and `LocalTtsProvider` implementations. `NarrationPreparation` resolves each section to a concrete mapped voice, and `TtsManager` routes that voice to its provider while handling persistent audio caching.
 
 ---
 
@@ -57,29 +57,30 @@ User selects .pptx
     → Returns: slides[] with { index, src (image path), notes }
 ```
 
-### Generate & Insert Audio (per slide or all)
+### Preview & Save Narration
 
 ```
-User clicks "Insert Audio"
-  → Frontend: getAudioBuffer(notes text)
-    → tts.ts: splits text on [speaker] tags into segments
-      → IPC: generate-speech { text, voiceOption }
-        → TtsManager → GcpTtsProvider or LocalTtsProvider
-        → TTS audio cached to disk (SHA-256 hash key)
-    → Segments concatenated into final MP3 buffer
-  → IPC: insert-audio { filePath, slidesAudio[] }
-    → MacPptProvider: writes MP3 to Office temp dir → VBA macro InsertAudio
-    → XmlPptProvider: writes MP3 to temp dir → slide-voice-pptx CLI (save_audio_for_slide op)
+User previews a section or selection
+  → IPC: prepare-narration-preview { slide context, live text, optional speaker }
+    → NarrationPreparation resolves mappings and prepares one section
+      → TtsManager → mapped GcpTtsProvider or LocalTtsProvider
+      → Returns audio bytes to the browser for playback
+
+User saves the current slide or full presentation
+  → IPC: save-narrated-slide / save-narrated-presentation { serialized notes }
+    → NarrationPreparation parses, validates, and synthesizes every eligible section
+      → TtsManager → mapped providers; audio is cached by prepared request identity
+    → NarratedPresentationSaver commits notes, then passes audio directly to PptProvider
+      → MacPptProvider: writes audio to Office temp storage → VBA macro InsertAudio
+      → XmlPptProvider: writes audio to temp storage → slide-voice-pptx CLI
 ```
 
 ### Generate Video
 
 ```
 User clicks "Generate Video"
-  → Auto-save notes to .pptx (save-all-notes)
-  → Generate audio for all slides (same as above)
+  → Auto-save notes to .pptx
   → IPC: generate-video
-    → insert-audio (all slides)
     → export-to-video.applescript → PowerPoint exports MP4
 ```
 
@@ -97,7 +98,7 @@ To ensure reliable cross-platform compatibility and prevent formatting loss duri
 1. **Line Break Unification**: PowerPoint on macOS can inject various line-ending characters (e.g., `\r`, `\r\n`, `\u2028`, `\u2029`). The parser first normalizes all variations into standard `\n` to ensure regex consistency.
 2. **Whitespace Preservation**: The parser avoids aggressive trimming. It only strips horizontal whitespace around tags (`[Speaker]`) and dividers (`---`), preserving all intentional vertical spacing and indentation within the content.
 3. **Robust Section Splitting**: Uses advanced regex to identify section dividers regardless of surrounding whitespace or newline variations, preventing issues where sections might fail to split due to hidden PowerPoint formatting.
-4. **Speaker Inheritance**: Implements a "sticky" fallback logic (`getEffectiveSpeaker`) that resolves the active voice for sections without explicit tags by searching backwards through the slide's history.
+4. **Speaker Inheritance**: Narration preparation resolves an unspecified section to the nearest earlier explicit speaker on the same slide, or to the configured default voice when none exists.
 
 ---
 
@@ -125,8 +126,8 @@ To ensure reliable cross-platform compatibility and prevent formatting loss duri
 
 ### Text-to-Speech (TTS)
 
-- **Google Cloud TTS** (default) — uses Chirp 3 HD voices for high-quality narration
-- **Local TTS** (offline fallback) — uses a self-hosted [Mycroft Mimic 3](https://github.com/MycroftAI/mimic3) server
+- **Google Cloud TTS** — uses Chirp 3 HD voices for high-quality narration
+- **Local TTS** — uses a mapped voice from a self-hosted [Mycroft Mimic 3](https://github.com/MycroftAI/mimic3) server
 - **Enhanced Preview Buttons** — per-section voice preview with smart highlighting:
   - **Smart Highlighting**: Only the active/effective voice button is highlighted (even when inherited).
   - **Recently Played Indicator**: The play button icon changes to a history icon (`IconHistory`) for the most recently tested voice in each section.

@@ -8,11 +8,10 @@ import type {
   SlidePptResult,
   SetGcpKeyResult,
   SlideManifestEntry,
-  SlideAudioEntry,
   SlidesPptResult,
   VideoPptResult,
 } from "./platform/types.js";
-import type { GenerateSpeechRequest, TtsProviderId, Voice } from "../shared/types/tts.js";
+import type { TtsProviderId, Voice } from "../shared/types/tts.js";
 import type {
   NarratedPresentationSaveRequest,
   NarratedSaveResult,
@@ -54,9 +53,7 @@ const electronAPI = {
     }
   },
   getVoices: (): Promise<Voice[]> => ipcRenderer.invoke("get-voices"),
-  generateSpeech: (payload: GenerateSpeechRequest): Promise<Uint8Array> =>
-    ipcRenderer.invoke("generate-speech", payload),
-  prepareNarrationPreview: (payload: PreviewNarrationRequest): Promise<Uint8Array | null> =>
+  prepareNarrationPreview: (payload: PreviewNarrationRequest): Promise<Uint8Array> =>
     ipcRenderer.invoke("prepare-narration-preview", payload),
   getGcpKeyPath: (): Promise<string | null> => ipcRenderer.invoke("get-gcp-key-path"),
   setGcpKey: (): Promise<SetGcpKeyResult> => ipcRenderer.invoke("set-gcp-key"),
@@ -68,8 +65,6 @@ const electronAPI = {
   getXmlCliEnabled: (): Promise<boolean> => ipcRenderer.invoke("get-xml-cli-enabled"),
   setXmlCliEnabled: (enabled: boolean): Promise<BasicPptResult> =>
     ipcRenderer.invoke("set-xml-cli-enabled", enabled),
-  insertAudio: (filePath: string, slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult> =>
-    ipcRenderer.invoke("insert-audio", filePath, slidesAudio),
   generateVideo: (payload: GenerateVideoRequest): Promise<VideoPptResult> =>
     ipcRenderer.invoke("generate-video", payload),
   removeAudio: (payload: RemoveAudioRequest): Promise<BasicPptResult> =>

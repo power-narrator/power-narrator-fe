@@ -49,7 +49,7 @@ const TINY_FAKE_AUDIO_BYTES = [1, 2, 3, 4];
 
 type GeneratedSpeechCall = {
   text: string;
-  voiceOption?: Voice;
+  voiceOption: Voice;
 };
 
 type ConvertPptxCall = {
@@ -157,28 +157,15 @@ async function installMockIpcHandlers(app: ElectronApplication) {
         return { success: true };
       });
 
-      ipcMain.removeHandler("insert-audio");
-      ipcMain.handle("insert-audio", async () => ({ success: true }));
-
       ipcMain.removeHandler("get-speaker-mappings");
       ipcMain.handle("get-speaker-mappings", async () => mockVoices);
 
       ipcMain.removeHandler("set-speaker-mappings");
       ipcMain.handle("set-speaker-mappings", async () => ({ success: true }));
 
-      ipcMain.removeHandler("generate-speech");
       (
         globalThis as typeof globalThis & { __generatedSpeechCalls?: unknown[] }
       ).__generatedSpeechCalls = [];
-      ipcMain.handle("generate-speech", async (_, payload) => {
-        (
-          globalThis as typeof globalThis & {
-            __generatedSpeechCalls: unknown[];
-          }
-        ).__generatedSpeechCalls.push(payload);
-
-        return new Uint8Array(tinyFakeAudioBytes);
-      });
 
       (
         globalThis as typeof globalThis & {

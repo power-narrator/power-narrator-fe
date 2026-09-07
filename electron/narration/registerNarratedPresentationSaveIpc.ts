@@ -1,8 +1,5 @@
 import type { IpcMain } from "electron";
-import type {
-  NarratedPresentationSaveRequest,
-  NarrationPreparationProgress,
-} from "../../shared/types/narration.js";
+import type { NarratedPresentationSaveRequest } from "../../shared/types/narration.js";
 import type { NarratedPresentationSaver } from "./NarratedPresentationSaver.js";
 
 interface NarratedPresentationSaveIpcRequest extends NarratedPresentationSaveRequest {

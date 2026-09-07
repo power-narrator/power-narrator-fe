@@ -1,11 +1,10 @@
-import type { GenerateSpeechRequest, TtsProviderId, Voice } from "../shared/types/tts";
+import type { TtsProviderId, Voice } from "../shared/types/tts";
 import type {
   NarratedPresentationSaveRequest,
   NarratedSaveResult,
   NarratedSlideSaveRequest,
   NarrationPreparationProgress,
   PreviewNarrationRequest,
-  PreviewNarrationResult,
 } from "../shared/types/narration";
 import type {
   BasicElectronResult,
@@ -18,7 +17,6 @@ import type {
   SlideElectronResult,
   SetGcpKeyResult,
   Slide,
-  SlideAudioEntry,
   SlidesElectronResult,
   VideoElectronResult,
 } from "./types/electron";
@@ -37,10 +35,7 @@ declare global {
         onProgress: (progress: NarrationPreparationProgress) => void,
       ) => Promise<NarratedSaveResult>;
       getVoices: () => Promise<Voice[]>;
-      generateSpeech: (payload: GenerateSpeechRequest) => Promise<Uint8Array>;
-      prepareNarrationPreview: (
-        payload: PreviewNarrationRequest,
-      ) => Promise<PreviewNarrationResult>;
+      prepareNarrationPreview: (payload: PreviewNarrationRequest) => Promise<Uint8Array>;
       getGcpKeyPath: () => Promise<string | null>;
       setGcpKey: () => Promise<SetGcpKeyResult>;
       setInsertMethod: (method: string) => Promise<void>;
@@ -49,10 +44,6 @@ declare global {
       getTtsProvider: () => Promise<TtsProviderId>;
       getXmlCliEnabled: () => Promise<boolean>;
       setXmlCliEnabled: (enabled: boolean) => Promise<BasicElectronResult>;
-      insertAudio: (
-        filePath: string,
-        slidesAudio: SlideAudioEntry[],
-      ) => Promise<BasicElectronResult>;
       generateVideo: (payload: GenerateVideoPayload) => Promise<VideoElectronResult>;
       removeAudio: (payload: RemoveAudioPayload) => Promise<BasicElectronResult>;
       playSlide: (payload: PlaySlidePayload) => Promise<BasicElectronResult>;

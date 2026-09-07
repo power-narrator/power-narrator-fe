@@ -77,10 +77,13 @@ export class NarrationPreparation {
     private readonly synthesizer: NarrationSynthesizer,
   ) {}
 
-  async preparePreview(request: PreviewNarrationRequest): Promise<Uint8Array | Buffer | null> {
+  async preparePreview(request: PreviewNarrationRequest): Promise<Uint8Array | Buffer> {
     const text = request.text.trim();
     if (!text) {
-      return null;
+      throw new NarrationPreparationError(
+        "validation",
+        `Narration validation failed for slide ${request.slideIndex}, section ${request.sectionIndex + 1}: text is empty.`,
+      );
     }
 
     const speakers = parseSections(request.notes).map((section) => section.speaker);

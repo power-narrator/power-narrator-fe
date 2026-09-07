@@ -8,6 +8,6 @@ export function registerNarrationPreviewIpc(
 ) {
   ipc.handle("prepare-narration-preview", async (_, request: PreviewNarrationRequest) => {
     const audio = await narrationPreparation.preparePreview(request);
-    return audio ? new Uint8Array(audio) : null;
+    return new Uint8Array(audio);
   });
 }

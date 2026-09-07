@@ -1,5 +1,6 @@
 import { Stack } from "@mantine/core";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ActionButtonState } from "../../types/viewer";
 import type { Slide, SlideElectronResult, SlidesElectronResult } from "../../types/electron";
 import { useSettings } from "../../context/useSettings";
@@ -240,14 +241,17 @@ export function ViewerPage({
   useEffect(() => {
     fullySavedNotesRef.current.clear();
     dirtySlideIndicesRef.current.clear();
-    updateFullySavedNotes(initialSlides, initialSlides);
+    for (const slide of initialSlides) {
+      fullySavedNotesRef.current.set(slide.index, slide.notes || "");
+    }
+    electronAPI.setHasUnsavedNarrationChanges(false);
     setSlides(initialSlides);
     setHistory([{ slides: initialSlides, changedSlidePositions: [] }]);
     historyIndexRef.current = 0;
     setHistoryIndex(0);
     setActiveSlideIndex(0);
     setActiveSectionIndex(0);
-  }, [initialSlides]);
+  }, [electronAPI, initialSlides]);
 
   useEffect(
     () => () => {
@@ -279,7 +283,7 @@ export function ViewerPage({
     [],
   );
 
-  const handleUndo = useCallback(() => {
+  const handleUndo = () => {
     if (historyIndexRef.current === 0) {
       return;
     }
@@ -294,9 +298,9 @@ export function ViewerPage({
     historyIndexRef.current = nextHistoryIndex;
     setHistoryIndex(nextHistoryIndex);
     setEditedSlides(nextEntry.slides, currentEntry.changedSlidePositions);
-  }, [history]);
+  };
 
-  const handleRedo = useCallback(() => {
+  const handleRedo = () => {
     if (historyIndexRef.current >= history.length - 1) {
       return;
     }
@@ -310,24 +314,19 @@ export function ViewerPage({
     historyIndexRef.current = nextHistoryIndex;
     setHistoryIndex(nextHistoryIndex);
     setEditedSlides(nextEntry.slides, nextEntry.changedSlidePositions);
-  }, [history]);
+  };
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === "z") {
-        event.preventDefault();
-        handleUndo();
-      }
+  function handleHistoryKeyDown(event: ReactKeyboardEvent) {
+    if ((event.ctrlKey || event.metaKey) && event.key === "z") {
+      event.preventDefault();
+      handleUndo();
+    }
 
-      if ((event.ctrlKey || event.metaKey) && event.key === "y") {
-        event.preventDefault();
-        handleRedo();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleRedo, handleUndo]);
+    if ((event.ctrlKey || event.metaKey) && event.key === "y") {
+      event.preventDefault();
+      handleRedo();
+    }
+  }
 
   useLayoutEffect(() => {
     const pendingSelection = pendingSelectionRef.current;
@@ -734,7 +733,7 @@ export function ViewerPage({
   };
 
   return (
-    <Stack gap="0" h="100%" mih={0}>
+    <Stack gap="0" h="100%" mih={0} onKeyDown={handleHistoryKeyDown}>
       <ViewerHeader
         onBack={async () => {
           if (await confirmDiscardChanges()) {

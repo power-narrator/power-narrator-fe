@@ -6,8 +6,6 @@ export interface PreviewNarrationRequest {
   previewSpeaker?: string;
 }
 
-export type PreviewNarrationResult = Uint8Array | null;
-
 export interface NarratedSlideSaveRequest {
   filePath: string;
   slideIndex: number;

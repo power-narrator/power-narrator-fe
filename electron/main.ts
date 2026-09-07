@@ -19,10 +19,8 @@ import type {
   PlaySlideRequest,
   ReloadSlideRequest,
   RemoveAudioRequest,
-  SlideAudioEntry,
   SlideManifestEntry,
 } from "./platform/types.js";
-import type { GenerateSpeechRequest } from "../shared/types/tts.js";
 import { NarrationPreparation } from "./narration/NarrationPreparation.js";
 import { registerNarrationPreviewIpc } from "./narration/registerNarrationPreviewIpc.js";
 import { NarratedPresentationSaver } from "./narration/NarratedPresentationSaver.js";
@@ -331,12 +329,6 @@ ipcMain.handle("save-notes", async (_, filePath: string, slides: SlideManifestEn
   return getActiveCoreProvider().saveNotes(absolutePath, slides);
 });
 
-ipcMain.handle("insert-audio", async (_, filePath: string, slidesAudio: SlideAudioEntry[]) => {
-  const absolutePath = path.resolve(filePath);
-  if (!fs.existsSync(absolutePath)) return { success: false, message: "File not found" };
-  return getActiveCoreProvider().insertAudio(absolutePath, slidesAudio);
-});
-
 ipcMain.handle("remove-audio", async (_, { filePath, slideIndices }: RemoveAudioRequest) => {
   const absolutePath = path.resolve(filePath);
   if (!fs.existsSync(absolutePath)) return { success: false, message: "File not found" };
@@ -435,8 +427,4 @@ ipcMain.handle("set-xml-cli-enabled", async (_, enabled) => {
 // ==========================================
 ipcMain.handle("get-voices", async () => {
   return ttsManager.getVoices();
-});
-
-ipcMain.handle("generate-speech", async (_, { text, voice }: GenerateSpeechRequest) => {
-  return ttsManager.generateSpeech(text, voice);
 });

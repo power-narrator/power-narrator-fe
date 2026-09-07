@@ -6,8 +6,3 @@ export interface Voice {
   ssmlGender: string;
   provider: TtsProviderId;
 }
-
-export type GenerateSpeechRequest = {
-  text: string;
-  voice: Voice;
-};

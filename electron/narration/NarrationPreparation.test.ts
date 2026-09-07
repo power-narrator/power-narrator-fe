@@ -70,7 +70,7 @@ describe("NarrationPreparation.preparePreview", () => {
     const provider: TtsProvider = {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
-        cacheIdentity: { text, voice: voice?.name ?? null },
+        cacheIdentity: { text, voice: voice.name },
         synthesize: () => generateSpeech(text, voice),
       }),
     };
@@ -94,7 +94,7 @@ describe("NarrationPreparation.preparePreview", () => {
     const firstProvider: TtsProvider = {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
-        cacheIdentity: { text, voice: voice?.name ?? null },
+        cacheIdentity: { text, voice: voice.name },
         synthesize: vi.fn().mockResolvedValue(new Uint8Array([4, 5, 6])),
       }),
     };
@@ -111,7 +111,7 @@ describe("NarrationPreparation.preparePreview", () => {
     const restartedProvider: TtsProvider = {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
-        cacheIdentity: { text, voice: voice?.name ?? null },
+        cacheIdentity: { text, voice: voice.name },
         synthesize: generateAfterRestart,
       }),
     };
@@ -164,7 +164,7 @@ describe("NarrationPreparation.preparePreview", () => {
         return {
           cacheIdentity: {
             input: { text },
-            voice: voice?.name ?? null,
+            voice: voice.name,
             audioEncoding: preparedEncoding,
           },
           synthesize: () => generateSpeech(preparedEncoding),
@@ -198,7 +198,7 @@ describe("NarrationPreparation.preparePreview", () => {
     const provider: TtsProvider = {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
-        cacheIdentity: { text, voice: voice?.name ?? null },
+        cacheIdentity: { text, voice: voice.name },
         synthesize: () => generateSpeech(),
       }),
     };
@@ -233,7 +233,7 @@ describe("NarrationPreparation.preparePreview", () => {
     const provider: TtsProvider = {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
-        cacheIdentity: { text, voice: voice?.name ?? null },
+        cacheIdentity: { text, voice: voice.name },
         synthesize: () => generateSpeech(),
       }),
     };
@@ -395,7 +395,7 @@ describe("NarrationPreparation.preparePreview", () => {
     expect(request.notes).toBe("[Narrator]\nWelcome");
   });
 
-  it("does not load mappings or synthesize whitespace-only preview text", async () => {
+  it("rejects whitespace-only preview text before loading mappings or synthesis", async () => {
     const getSpeakerMappings = vi.fn().mockReturnValue({ Narrator: narratorVoice });
     const generateSpeech = vi.fn();
     const preparation = new NarrationPreparation(
@@ -410,7 +410,12 @@ describe("NarrationPreparation.preparePreview", () => {
         notes: "[Narrator]\nStored",
         text: " \n\t ",
       }),
-    ).resolves.toBeNull();
+    ).rejects.toEqual(
+      new NarrationPreparationError(
+        "validation",
+        "Narration validation failed for slide 1, section 1: text is empty.",
+      ),
+    );
     expect(getSpeakerMappings).not.toHaveBeenCalled();
     expect(generateSpeech).not.toHaveBeenCalled();
   });

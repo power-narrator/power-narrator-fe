@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import type { NoteSection } from "../../types/notes";
 import { getErrorMessage } from "../../utils/errors";
 import { getSpeakerOptions } from "../../utils/viewer";
-import { getPreviewAudioBuffer } from "../../utils/tts";
 import type { Voice } from "../../../shared/types/tts";
 import { useAudio } from "../../context/useAudio";
 
@@ -104,7 +103,7 @@ export function SectionPreviewButtons({
       }
     }
 
-    if (!textToPlay) {
+    if (!textToPlay.trim()) {
       alert("No text to preview.");
       return;
     }
@@ -118,7 +117,7 @@ export function SectionPreviewButtons({
       setIsAudioGenerating(true);
       setActivePreviewTarget(speakerValue);
       setLastPlayedSpeaker(speakerValue);
-      const buffer = await getPreviewAudioBuffer({
+      const audio = await window.electronAPI.prepareNarrationPreview({
         slideIndex,
         sectionIndex,
         notes: slideNotes,
@@ -130,13 +129,7 @@ export function SectionPreviewButtons({
         return;
       }
 
-      if (!buffer) {
-        ownsPreviewRef.current = false;
-        alert("No text to preview.");
-        setActivePreviewTarget(null);
-        return;
-      }
-
+      const buffer = Uint8Array.from(audio).buffer;
       const url = URL.createObjectURL(new Blob([buffer], { type: "audio/mpeg" }));
       audioPlay(id, url);
     } catch (error: unknown) {

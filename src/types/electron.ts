@@ -5,7 +5,6 @@ import type {
   ReloadSlideRequest,
   RemoveAudioRequest,
   SlidePptResult,
-  SlideAudioEntry as PlatformSlideAudioEntry,
   SlideManifestEntry,
   SlideWithSrc,
   SlidesPptResult,
@@ -26,8 +25,6 @@ export type SlideElectronResult = SlidePptResult;
 export type VideoElectronResult = VideoPptResult;
 
 export type SetGcpKeyResult = PlatformSetGcpKeyResult;
-
-export interface SlideAudioEntry extends PlatformSlideAudioEntry {}
 
 export interface SaveNotesSlide extends SlideManifestEntry {}
 
