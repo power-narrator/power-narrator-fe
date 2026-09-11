@@ -198,6 +198,7 @@ electron/
     NarratedPresentationSaver.ts # Notes + narration audio committed together
   windows/
     UnsavedNarrationChanges.ts # Close guard for unsaved narration edits
+    createMainWindow.ts        # Window creation and renderer loading
   testing/
     narrationTestHarness.ts    # Documented seam for driving the app against fakes
   platform/
