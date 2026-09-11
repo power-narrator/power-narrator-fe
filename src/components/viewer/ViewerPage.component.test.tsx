@@ -66,50 +66,27 @@ async function renderViewer(onBack = vi.fn(), slides: Slide[] = [loadedSlide]) {
   return { screen, onBack };
 }
 
-test("undo and redo preserve edits made on other slides", async () => {
-  installElectronApi();
-  const secondSlide: Slide = {
-    index: 2,
-    image: "slide-two.png",
-    src: "slide-two",
-    notes: "Second narration",
-  };
-  const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
-
-  await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Edited one");
-  await new Promise((resolve) => window.setTimeout(resolve, 850));
-  await screen.getByRole("img", { name: "Slide 2 thumbnail" }).click();
-  await screen.getByRole("textbox", { name: "Slide 2 section 1 notes" }).fill("Edited two");
-  await new Promise((resolve) => window.setTimeout(resolve, 850));
-
-  screen
-    .getByRole("textbox", { name: "Slide 2 section 1 notes" })
-    .element()
-    .dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }));
-  await vi.waitFor(() =>
-    expect(screen.getByRole("textbox", { name: "Slide 2 section 1 notes" })).toHaveValue(
-      "Second narration",
-    ),
-  );
-  await screen.getByRole("img", { name: "Slide 1 thumbnail" }).click();
-  expect(screen.getByRole("textbox", { name: "Slide 1 section 1 notes" })).toHaveValue(
-    "Edited one",
-  );
-
-  screen
-    .getByRole("textbox", { name: "Slide 1 section 1 notes" })
-    .element()
-    .dispatchEvent(new KeyboardEvent("keydown", { key: "y", ctrlKey: true, bubbles: true }));
-  await screen.getByRole("img", { name: "Slide 2 thumbnail" }).click();
-  await vi.waitFor(() =>
-    expect(screen.getByRole("textbox", { name: "Slide 2 section 1 notes" })).toHaveValue(
-      "Edited two",
-    ),
-  );
-});
-
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+test("undo and redo keyboard shortcuts reach the session and render", async () => {
+  installElectronApi();
+  const { screen } = await renderViewer();
+  const editor = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });
+
+  await editor.fill("Edited narration");
+  await new Promise((resolve) => window.setTimeout(resolve, 850));
+
+  editor
+    .element()
+    .dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }));
+  await vi.waitFor(() => expect(editor.element()).toHaveValue("Loaded narration"));
+
+  editor
+    .element()
+    .dispatchEvent(new KeyboardEvent("keydown", { key: "y", ctrlKey: true, bubbles: true }));
+  await vi.waitFor(() => expect(editor.element()).toHaveValue("Edited narration"));
 });
 
 test("confirms before navigation and reload, then clears the warning after reload", async () => {

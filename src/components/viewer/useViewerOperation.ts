@@ -11,28 +11,28 @@ export type ViewerOperationKind =
   | "playSlide"
   | "removeAudio";
 
-interface OperationState {
+export interface OperationState {
   owner: ViewerOperationKind | null;
   running: boolean;
   status: string;
 }
 
-type OperationAction =
+export type OperationAction =
   | { type: "started"; owner: ViewerOperationKind; status: string }
   | { type: "status"; owner: ViewerOperationKind; status: string }
   | { type: "finished"; owner: ViewerOperationKind }
   | { type: "cleared"; owner: ViewerOperationKind };
 
-const INITIAL_STATE: OperationState = { owner: null, running: false, status: "" };
+export const INITIAL_OPERATION_STATE: OperationState = { owner: null, running: false, status: "" };
 
-function reduceOperation(state: OperationState, action: OperationAction): OperationState {
+export function reduceOperation(state: OperationState, action: OperationAction): OperationState {
   if (action.type === "started") {
     return { owner: action.owner, running: true, status: action.status };
   }
   if (state.owner !== action.owner) return state;
   if (action.type === "status") return { ...state, status: action.status };
   if (action.type === "finished") return { ...state, running: false };
-  return INITIAL_STATE;
+  return INITIAL_OPERATION_STATE;
 }
 
 interface OperationControls {
@@ -42,7 +42,7 @@ interface OperationControls {
 }
 
 export function useViewerOperation() {
-  const [state, dispatch] = useReducer(reduceOperation, INITIAL_STATE);
+  const [state, dispatch] = useReducer(reduceOperation, INITIAL_OPERATION_STATE);
   const activeOperationRef = useRef<ViewerOperationKind | null>(null);
   const statusTimeoutRef = useRef<number | null>(null);
 
