@@ -9,7 +9,7 @@ import {
   formatNarrationSections,
   parseNarrationSections,
   type NarrationSection,
-} from "../../../electron/narration/NarrationSections";
+} from "../../../shared/narration/NarrationSections";
 import { NotesSectionList } from "./NotesSectionList";
 import { SlideActionsBar, type SlideActionBarKey } from "./SlideActionsBar";
 import { SlidePreviewPane } from "./SlidePreviewPane";
@@ -18,7 +18,6 @@ import { SsmlToolbar } from "./SsmlToolbar";
 import { ViewerHeader, type ViewerHeaderActionKey } from "./ViewerHeader";
 import { Split } from "@gfazioli/mantine-split-pane";
 import { useViewerSession } from "./useViewerSession";
-import type { SavedSlideSelection } from "./ViewerSession";
 import { useViewerOperation } from "./useViewerOperation";
 
 interface ViewerPageProps {
@@ -98,22 +97,10 @@ export function ViewerPage({
     alert(`Save error: ${partialMessage}${result.partial ? ` ${result.message}` : ""}`);
   }
 
-  function pushToHistory(nextSlides: Slide[], changedSlidePositions: readonly number[]) {
-    viewerSession.commitSlides(nextSlides, changedSlidePositions);
-  }
-
   async function confirmDiscardChanges(slideIndices?: readonly number[]) {
     return (
       !viewerSession.wouldDiscard(slideIndices) || electronAPI.confirmDiscardNarrationChanges()
     );
-  }
-
-  function setEditedSlides(nextSlides: Slide[], changedSlidePositions: readonly number[]) {
-    viewerSession.updateSlides(nextSlides, changedSlidePositions);
-  }
-
-  function markSlidesFullySaved(savedSlides: SavedSlideSelection[]) {
-    viewerSession.saveCompleted(savedSlides);
   }
 
   function updateActiveSlideSections(updater: (sections: NarrationSection[]) => boolean) {
@@ -133,7 +120,7 @@ export function ViewerPage({
       notes: formatNarrationSections(sections),
     };
 
-    setEditedSlides(nextSlides, [activeSlideIndex]);
+    viewerSession.updateSlides(nextSlides, [activeSlideIndex]);
     return nextSlides;
   }
 
@@ -168,7 +155,7 @@ export function ViewerPage({
       return false;
     }
 
-    markSlidesFullySaved(slides.map((slide, position) => ({ slide, position })));
+    viewerSession.saveCompleted(slides.map((slide, position) => ({ slide, position })));
     return true;
   }
 
@@ -262,7 +249,7 @@ export function ViewerPage({
       end: selectionEnd + startTag.length,
     };
 
-    pushToHistory(nextSlides, [activeSlideIndex]);
+    viewerSession.commitSlides(nextSlides, [activeSlideIndex]);
   }
 
   function insertSelfClosingTag(tag: string) {
@@ -286,7 +273,7 @@ export function ViewerPage({
 
     clearDebounce();
     debounceRef.current = setTimeout(() => {
-      pushToHistory(nextSlides, [activeSlideIndex]);
+      viewerSession.commitSlides(nextSlides, [activeSlideIndex]);
       debounceRef.current = null;
     }, 800);
   };
@@ -306,7 +293,7 @@ export function ViewerPage({
       return;
     }
 
-    pushToHistory(nextSlides, [activeSlideIndex]);
+    viewerSession.commitSlides(nextSlides, [activeSlideIndex]);
   };
 
   const handleAddSection = () => {
@@ -320,7 +307,7 @@ export function ViewerPage({
       return;
     }
 
-    pushToHistory(nextSlides, [activeSlideIndex]);
+    viewerSession.commitSlides(nextSlides, [activeSlideIndex]);
     setActiveSectionIndex(newSectionIndex);
   };
 
@@ -339,7 +326,7 @@ export function ViewerPage({
       return;
     }
 
-    pushToHistory(nextSlides, [activeSlideIndex]);
+    viewerSession.commitSlides(nextSlides, [activeSlideIndex]);
 
     if (activeSectionIndex >= nextSectionCount) {
       setActiveSectionIndex(Math.max(0, nextSectionCount - 1));
@@ -414,7 +401,7 @@ export function ViewerPage({
           command.clearStatus();
           return;
         }
-        markSlidesFullySaved([{ slide: activeSlide, position: activeSlideIndex }]);
+        viewerSession.saveCompleted([{ slide: activeSlide, position: activeSlideIndex }]);
         command.showOutcome("Saved slides!");
       },
       (error) => alertError("Save error", error),

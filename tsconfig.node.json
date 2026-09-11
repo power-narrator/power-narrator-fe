@@ -27,6 +27,7 @@
     "vitest.config.ts",
     "tests/e2e/**/*.ts",
     "electron/**/*.ts",
+    "shared/**/*.ts",
     "electron/**/*.cts"
   ]
 }

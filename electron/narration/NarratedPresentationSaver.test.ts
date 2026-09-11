@@ -65,7 +65,7 @@ function createCachedRetrySaver(
   };
   const preparation = new NarrationPreparation(
     { getSpeakerMappings },
-    new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory }),
+    new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory),
   );
   const powerpoint = {
     saveNotes: vi.fn().mockResolvedValue({ success: true }),

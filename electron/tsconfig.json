@@ -2,8 +2,9 @@
   "extends": "../tsconfig.node.json",
   "compilerOptions": {
     "noEmit": false,
+    "rootDir": "..",
     "outDir": "../dist-electron"
   },
-  "include": ["**/*.ts", "**/*.cts"],
-  "exclude": ["**/*.test.ts"]
+  "include": ["**/*.ts", "**/*.cts", "../shared/**/*.ts"],
+  "exclude": ["**/*.test.ts", "../shared/**/*.test.ts"]
 }

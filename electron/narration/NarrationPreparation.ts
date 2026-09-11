@@ -4,7 +4,11 @@ import type {
   PreviewNarrationRequest,
 } from "../../shared/types/narration.js";
 import type { SlideAudioEntry } from "../platform/types.js";
-import { getEffectiveSpeaker, parseNarrationSections } from "./NarrationSections.js";
+import {
+  getEffectiveSpeaker,
+  parseNarrationSections,
+} from "../../shared/narration/NarrationSections.js";
+import { toEffectiveSpeaker, type EffectiveSpeaker } from "../../shared/narration/speaker.js";
 
 export interface SpeakerMappingSource {
   getSpeakerMappings(): Record<string, Voice> | Promise<Record<string, Voice>>;
@@ -15,12 +19,10 @@ export interface NarrationSynthesizer {
   generateSpeech(text: string, voice: Voice): Promise<SynthesizedSpeech>;
 }
 
-const DEFAULT_SPEAKER_KEY = "_default_";
-
 type PreparedNarrationSection = {
   slideIndex: number;
   sectionIndex: number;
-  speaker: string;
+  speaker: EffectiveSpeaker;
   text: string;
   voice: Voice;
 };
@@ -62,20 +64,12 @@ export class NarrationPreparation {
     }
 
     const sections = parseNarrationSections(request.notes);
-    const speaker =
-      request.previewSpeaker !== undefined
-        ? request.previewSpeaker || DEFAULT_SPEAKER_KEY
-        : getEffectiveSpeaker(sections, request.sectionIndex) || DEFAULT_SPEAKER_KEY;
+    const speaker = request.previewSpeaker ?? getEffectiveSpeaker(sections, request.sectionIndex);
     const mappings = await this.mappingSource.getSpeakerMappings();
-    const voice = this.resolveVoice(mappings, speaker, request.slideIndex, request.sectionIndex);
 
-    return this.synthesizeSection({
-      slideIndex: request.slideIndex,
-      sectionIndex: request.sectionIndex,
-      speaker,
-      text,
-      voice,
-    });
+    return this.synthesizeSection(
+      this.planSection(mappings, request.slideIndex, request.sectionIndex, text, speaker),
+    );
   }
 
   async prepareBatch(
@@ -92,10 +86,9 @@ export class NarrationPreparation {
           return [];
         }
 
-        const speaker = getEffectiveSpeaker(sections, sectionIndex) || DEFAULT_SPEAKER_KEY;
-        const voice = this.resolveVoice(mappings, speaker, slide.slideIndex, sectionIndex);
+        const speaker = getEffectiveSpeaker(sections, sectionIndex);
 
-        return [{ slideIndex: slide.slideIndex, sectionIndex, speaker, text, voice }];
+        return [this.planSection(mappings, slide.slideIndex, sectionIndex, text, speaker)];
       });
     });
 
@@ -117,26 +110,47 @@ export class NarrationPreparation {
     );
   }
 
+  /**
+   * Resolves one section's **Effective speaker** and voice, so preview and batch
+   * preparation share a single parse-to-synthesizable-section shape.
+   */
+  private planSection(
+    mappings: Record<string, Voice>,
+    slideIndex: number,
+    sectionIndex: number,
+    text: string,
+    speaker: string,
+  ): PreparedNarrationSection {
+    const effectiveSpeaker = toEffectiveSpeaker(speaker);
+
+    return {
+      slideIndex,
+      sectionIndex,
+      speaker: effectiveSpeaker,
+      text,
+      voice: this.resolveVoice(mappings, effectiveSpeaker, slideIndex, sectionIndex),
+    };
+  }
+
   private async synthesizeSection(section: PreparedNarrationSection): Promise<SynthesizedSpeech> {
     try {
       return await this.synthesizer.generateSpeech(section.text, section.voice);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown synthesis error";
-      const label = section.speaker === DEFAULT_SPEAKER_KEY ? "Default" : section.speaker;
       throw new NarrationPreparationError(
         "synthesis",
-        `Narration synthesis failed for slide ${section.slideIndex}, section ${section.sectionIndex + 1}, speaker "${label}": ${message}.`,
+        `Narration synthesis failed for slide ${section.slideIndex}, section ${section.sectionIndex + 1}, speaker "${section.speaker.label}": ${message}.`,
       );
     }
   }
 
   private resolveVoice(
     mappings: Record<string, Voice>,
-    speaker: string,
+    speaker: EffectiveSpeaker,
     slideIndex: number,
     sectionIndex: number,
   ): Voice {
-    const voice = mappings[speaker];
+    const voice = mappings[speaker.mappingKey];
     const validationProblem =
       voiceValidationProblem(voice) ||
       (voice && !this.synthesizer.supportsProvider(String(voice.provider))
@@ -144,10 +158,9 @@ export class NarrationPreparation {
         : null);
 
     if (validationProblem || !voice) {
-      const label = speaker === DEFAULT_SPEAKER_KEY ? "Default" : speaker;
       throw new NarrationPreparationError(
         "validation",
-        `Narration validation failed for slide ${slideIndex}, section ${sectionIndex + 1}, speaker "${label}": ${validationProblem}.`,
+        `Narration validation failed for slide ${slideIndex}, section ${sectionIndex + 1}, speaker "${speaker.label}": ${validationProblem}.`,
       );
     }
 

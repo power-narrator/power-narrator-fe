@@ -2,7 +2,7 @@ import {
   DEFAULT_SPEAKER_KEY,
   DEFAULT_SPEAKER_LABEL,
   DEFAULT_SPEAKER_VALUE,
-} from "../constants/speaker";
+} from "../../shared/narration/speaker";
 import type { Voice } from "../../shared/types/tts";
 
 export function getSpeakerOptions(mappings: Record<string, Voice>) {
@@ -11,13 +11,4 @@ export function getSpeakerOptions(mappings: Record<string, Voice>) {
       .filter((key) => key !== DEFAULT_SPEAKER_KEY)
       .map((key) => ({ value: key, label: key })),
   );
-}
-
-export function resolveSpeakerVoice(
-  mappings: Record<string, Voice>,
-  effectiveSpeaker: string,
-): Voice | undefined {
-  return effectiveSpeaker !== DEFAULT_SPEAKER_VALUE
-    ? mappings[effectiveSpeaker]
-    : mappings[DEFAULT_SPEAKER_KEY];
 }

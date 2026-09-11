@@ -40,6 +40,8 @@ The application is split into three layers:
 - **Provider Pattern** — `PptProvider` is an interface with two implementations:
   - `MacPptProvider` — drives PowerPoint directly via AppleScript (`osascript`) and VBA macros (`.ppam` add-in).
   - `XmlPptProvider` — a **Decorator** that wraps any `PptProvider`. Instead of VBA macros, it calls a bundled Python CLI (`slide-voice-pptx`) that directly manipulates the `.pptx` XML. It closes and reopens the presentation around each CLI invocation.
+- **Shared Contracts** — every type or constant both processes depend on lives in `shared/`; nothing in `src/` imports from `electron/`. The narration section contract and the default-voice key are declared there exactly once, so the two sides cannot drift apart.
+- **Injectable Narration Adapters** — `registerNarrationIpc` takes the speaker-mapping source, TTS synthesizer, and PowerPoint provider as adapters, and re-registering replaces the handlers. The end-to-end suite uses that seam (published as `powerNarratorTestHarness` only when `NODE_ENV=test`) to run the real app against a fake TTS adapter.
 - **Strategy Pattern** — `TtsProvider` is an interface with `GcpTtsProvider` and `LocalTtsProvider` implementations. `NarrationPreparation` resolves each section to a concrete mapped voice, and `TtsManager` routes that voice to its provider while handling persistent audio caching.
 
 ---
@@ -179,9 +181,25 @@ To ensure reliable cross-platform compatibility and prevent formatting loss duri
 ## Project Structure
 
 ```
+shared/
+  narration/
+    NarrationSections.ts # Speaker-tag parsing/formatting used by both processes
+    speaker.ts           # Default-voice key, label, and effective-speaker resolution
+  types/
+    narration.d.ts       # Narration request/result contracts crossing the IPC bridge
+    tts.d.ts             # Voice and provider-id contracts crossing the IPC bridge
+
 electron/
-  main.ts               # IPC handler registration, provider & TTS manager setup
+  main.ts               # Bootstrap: providers, TTS manager, non-narration IPC handlers
   preload.cts           # Context bridge (electronAPI)
+  narration/
+    registerNarrationIpc.ts    # Registers every narration IPC channel against its adapters
+    NarrationPreparation.ts    # Sections + speaker mappings -> synthesized audio
+    NarratedPresentationSaver.ts # Notes + narration audio committed together
+  windows/
+    UnsavedNarrationChanges.ts # Close guard for unsaved narration edits
+  testing/
+    narrationTestHarness.ts    # Documented seam for driving the app against fakes
   platform/
     PptProvider.ts      # Interface definition
     MacPptProvider.ts   # AppleScript integration + VBA-backed edit operations
@@ -213,10 +231,7 @@ src/
     viewer/
       ViewerPage.tsx    # Main UI: slide viewer, notes editor, toolbar
   utils/
-    notes.ts            # Split/join multi-section speaker notes
-    tts/
-      index.ts          # Frontend TTS orchestration and caching
-      ttsParse.ts       # Speaker-tag parsing
+    viewer.ts           # Speaker option list for the notes editor
 
 python-xml-main/        # XML CLI source and related docs
 ```

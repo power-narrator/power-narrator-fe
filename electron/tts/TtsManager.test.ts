@@ -114,7 +114,7 @@ describe("TtsManager", () => {
     const provider = createProvider();
     provider.generateSpeech.mockResolvedValue(new Uint8Array([1, 2, 3]));
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
 
     await manager.generateSpeech("../../unsafe / narration\0", gcpVoice);
 
@@ -131,7 +131,7 @@ describe("TtsManager", () => {
       }),
     };
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["local", wavProvider]]), "local", { cacheDirectory });
+    const manager = new TtsManager(new Map([["local", wavProvider]]), "local", cacheDirectory);
 
     await expect(manager.generateSpeech("Local narration", localVoice)).resolves.toEqual({
       audio: new Uint8Array([1, 2, 3]),
@@ -143,7 +143,7 @@ describe("TtsManager", () => {
   it("never serves an entry whose write was interrupted", async () => {
     const provider = createProvider();
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
     vi.spyOn(console, "error").mockImplementation(() => {});
     interruptNextCachePublish.value = true;
 
@@ -164,7 +164,7 @@ describe("TtsManager", () => {
   it("reuses a cached entry instead of synthesizing a repeated request", async () => {
     const provider = createProvider();
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
 
     await manager.generateSpeech("Repeated narration", gcpVoice);
     await expect(manager.generateSpeech("Repeated narration", gcpVoice)).resolves.toEqual({
@@ -179,7 +179,7 @@ describe("TtsManager", () => {
     const cacheDirectory = path.join(tempDir, "narration");
     const first = createProvider();
     first.generateSpeech.mockResolvedValue(new Uint8Array([4, 5, 6]));
-    await new TtsManager(new Map([["gcp", first]]), "gcp", { cacheDirectory }).generateSpeech(
+    await new TtsManager(new Map([["gcp", first]]), "gcp", cacheDirectory).generateSpeech(
       "Persistent narration",
       gcpVoice,
     );
@@ -188,7 +188,7 @@ describe("TtsManager", () => {
     restarted.generateSpeech.mockRejectedValue(new Error("cache miss"));
 
     await expect(
-      new TtsManager(new Map([["gcp", restarted]]), "gcp", { cacheDirectory }).generateSpeech(
+      new TtsManager(new Map([["gcp", restarted]]), "gcp", cacheDirectory).generateSpeech(
         "Persistent narration",
         gcpVoice,
       ),
@@ -210,7 +210,7 @@ describe("TtsManager", () => {
       }),
     };
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
 
     await manager.generateSpeech('Hello <break time="250ms"/>world', gcpVoice);
     await manager.generateSpeech('<speak>Hello <break time="250ms"/>world</speak>', gcpVoice);
@@ -233,7 +233,7 @@ describe("TtsManager", () => {
       },
     };
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
 
     await manager.generateSpeech("Settings", gcpVoice);
     audioEncoding = "LINEAR16";
@@ -260,7 +260,7 @@ describe("TtsManager", () => {
       }),
     };
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
 
     const first = manager.generateSpeech("Shared", gcpVoice);
     const second = manager.generateSpeech("Shared", gcpVoice);
@@ -285,7 +285,7 @@ describe("TtsManager", () => {
       .mockRejectedValueOnce(new Error("temporary outage"))
       .mockResolvedValueOnce(new Uint8Array([9, 9, 9]));
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
 
     const first = manager.generateSpeech("Retry me", gcpVoice);
     const second = manager.generateSpeech("Retry me", gcpVoice);
@@ -316,7 +316,7 @@ describe("TtsManager", () => {
       }),
     };
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
 
     const first = manager.generateSpeech("First", gcpVoice);
     const second = manager.generateSpeech("Second", gcpVoice);

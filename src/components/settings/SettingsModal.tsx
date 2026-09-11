@@ -13,7 +13,7 @@ import {
 } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
-import { DEFAULT_SPEAKER_KEY } from "../../constants/speaker";
+import { DEFAULT_SPEAKER_KEY } from "../../../shared/narration/speaker";
 import { useSettings } from "../../context/useSettings";
 import type { TtsProviderId, Voice } from "../../../shared/types/tts";
 import { VoiceSelector } from "./VoiceSelector";
