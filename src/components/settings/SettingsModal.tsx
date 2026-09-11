@@ -15,7 +15,8 @@ import { IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { DEFAULT_SPEAKER_KEY } from "../../../shared/narration/speaker";
 import { useSettings } from "../../context/useSettings";
-import type { TtsProviderId, Voice } from "../../../shared/types/tts";
+import type { Voice } from "../../../shared/types/tts";
+import { getProviderLabel } from "./providerLabels";
 import { VoiceSelector } from "./VoiceSelector";
 
 interface SettingsModalProps {
@@ -23,7 +24,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-function createEmptyVoice(provider: TtsProviderId): Voice {
+function createEmptyVoice(provider: string): Voice {
   return { name: "", languageCodes: [], ssmlGender: "", provider };
 }
 
@@ -33,7 +34,6 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
   const [newAlias, setNewAlias] = useState("");
   const [voices, setVoices] = useState<Voice[]>([]);
   const [xmlCliEnabled, setXmlCliEnabled] = useState(false);
-  const [providerMode, setProviderMode] = useState<TtsProviderId>("local");
   const { mappings, saveMappings } = useSettings();
   const mappedVoices = Object.entries(mappings).filter(([key]) => key !== DEFAULT_SPEAKER_KEY);
 
@@ -45,13 +45,11 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
     Promise.all([
       window.electronAPI.getGcpKeyPath(),
       window.electronAPI.getVoices(),
-      window.electronAPI.getTtsProvider(),
       window.electronAPI.getXmlCliEnabled(),
     ])
-      .then(([path, loadedVoices, provider, xmlEnabled]) => {
+      .then(([path, loadedVoices, xmlEnabled]) => {
         setKeyPath(path || null);
         setVoices(loadedVoices || []);
-        setProviderMode(provider || "local");
         setXmlCliEnabled(Boolean(xmlEnabled));
       })
       .catch((loadError) => {
@@ -71,11 +69,12 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
 
   const addAlias = () => {
     const trimmedAlias = newAlias.trim();
-    if (!trimmedAlias || mappings[trimmedAlias]) {
+    const provider = voices[0]?.provider;
+    if (!trimmedAlias || mappings[trimmedAlias] || !provider) {
       return;
     }
 
-    void saveMappings({ ...mappings, [trimmedAlias]: createEmptyVoice(providerMode) });
+    void saveMappings({ ...mappings, [trimmedAlias]: createEmptyVoice(provider) });
     setNewAlias("");
   };
 
@@ -144,7 +143,9 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
             </Text>
           </Box>
           <Text size="sm" fw={600} c="dimmed">
-            {providerMode === "gcp" ? "Google Cloud" : "Local TTS"}
+            {Array.from(new Set(voices.map((voice) => getProviderLabel(voice.provider)))).join(
+              ", ",
+            )}
           </Text>
         </Group>
 
@@ -162,7 +163,6 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
               value={mappings[DEFAULT_SPEAKER_KEY] || null}
               onChange={(voice) => updateMapping(DEFAULT_SPEAKER_KEY, voice)}
               voices={voices}
-              providerFilter={providerMode}
             />
           </Group>
 
@@ -180,7 +180,6 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
                   value={voice}
                   onChange={(nextVoice) => updateMapping(alias, nextVoice)}
                   voices={voices}
-                  providerFilter={providerMode}
                 />
                 <ActionIcon color="red" variant="subtle" onClick={() => removeMapping(alias)}>
                   <IconTrash size={16} />
@@ -202,7 +201,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
               }}
               style={{ flex: 1 }}
             />
-            <Button size="xs" onClick={addAlias} disabled={!newAlias.trim()}>
+            <Button size="xs" onClick={addAlias} disabled={!newAlias.trim() || voices.length === 0}>
               Add Mapping
             </Button>
           </Group>

@@ -63,7 +63,7 @@ describe("NarrationPreparation", () => {
     };
     const preparation = new NarrationPreparation(
       { getSpeakerMappings: () => ({ Narrator: narratorVoice }) },
-      new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory),
+      new TtsManager(new Map([["gcp", provider]]), cacheDirectory),
     );
     const request = {
       slideIndex: 2,

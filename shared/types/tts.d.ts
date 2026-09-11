@@ -1,4 +1,4 @@
-export type TtsProviderId = "gcp" | "local";
+export type TtsProviderId = string;
 
 export interface Voice {
   name: string;

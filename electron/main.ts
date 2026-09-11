@@ -11,7 +11,6 @@ import { XmlPptProvider } from "./platform/XmlPptProvider.js";
 import { APP_NAME } from "./platform/helpers.js";
 import { TtsManager } from "./tts/TtsManager.js";
 import { GcpTtsProvider } from "./tts/GcpTtsProvider.js";
-import { LocalTtsProvider } from "./tts/LocalTtsProvider.js";
 import type { TtsProvider, TtsProviderId, Voice } from "./tts/TtsProvider.js";
 import type {
   GenerateVideoRequest,
@@ -60,11 +59,7 @@ function getGcpKeyPath(): string | undefined {
 }
 
 const ttsManager = new TtsManager(
-  new Map<TtsProviderId, TtsProvider>([
-    ["gcp", new GcpTtsProvider(getGcpKeyPath)],
-    ["local", new LocalTtsProvider()],
-  ]),
-  process.env.TTS_PROVIDER ?? "gcp",
+  new Map<TtsProviderId, TtsProvider>([["gcp", new GcpTtsProvider(getGcpKeyPath)]]),
 );
 const nativeProvider: (PptProvider & NativePlatformProvider) | null =
   process.platform === "darwin"
@@ -237,10 +232,6 @@ ipcMain.handle("generate-video", async (_, { filePath, videoOutputPath }: Genera
 // ==========================================
 // Settings Handlers
 // ==========================================
-ipcMain.handle("get-tts-provider", async () => {
-  return ttsManager.defaultProviderId;
-});
-
 ipcMain.handle("get-speaker-mappings", async () => {
   return store.get("speakerMappings") || {};
 });
