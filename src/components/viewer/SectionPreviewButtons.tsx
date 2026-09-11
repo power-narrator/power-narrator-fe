@@ -1,6 +1,7 @@
 import { ActionIcon, Box, Button, Center, Group, Loader, Slider, Stack, Text } from "@mantine/core";
 import { IconHistory, IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react";
 import type { NarrationSection } from "../../../shared/narration/NarrationSections";
+import { DEFAULT_SPEAKER_VALUE } from "../../../shared/narration/speaker";
 import { getSpeakerOptions } from "../../utils/viewer";
 import type { Voice } from "../../../shared/types/tts";
 import { useNarrationPreview } from "./useNarrationPreview";
@@ -11,7 +12,6 @@ interface SectionPreviewButtonsProps {
   sectionIndex: number;
   slideNotes: string;
   section: NarrationSection;
-  effectiveSpeaker: string;
   mappings: Record<string, Voice>;
   onFocus: () => void;
   getTextarea?: () => HTMLTextAreaElement | null;
@@ -23,7 +23,6 @@ export function SectionPreviewButtons({
   sectionIndex,
   slideNotes,
   section,
-  effectiveSpeaker,
   mappings,
   onFocus,
   getTextarea,
@@ -37,6 +36,7 @@ export function SectionPreviewButtons({
     onFocus,
     getTextarea,
   });
+  const effectiveSpeaker = preview.effectiveSpeaker;
   const speakers = getSpeakerOptions(mappings);
 
   const formatTime = (time: number) => {
@@ -61,8 +61,17 @@ export function SectionPreviewButtons({
               size="compact-sm"
               variant={isActive || (isSelected && !isAnyPlaying) ? "filled" : "outline"}
               color="blue"
+              title={
+                speaker.value === preview.lastPlayedSpeaker ? "Previously previewed" : undefined
+              }
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => preview.play(speaker.value, speaker.value)}
+              onClick={() =>
+                preview.play(
+                  speaker.value === DEFAULT_SPEAKER_VALUE
+                    ? { kind: "default" }
+                    : { kind: "override", speaker: speaker.value },
+                )
+              }
               disabled={!section.text || (preview.isGenerating && !isActive)}
               leftSection={
                 isActive ? (
@@ -82,6 +91,8 @@ export function SectionPreviewButtons({
 
       <Group gap="xs">
         <ActionIcon
+          aria-label={preview.activeTarget !== null ? "Stop preview" : "Preview effective speaker"}
+          title={`Effective speaker: ${effectiveSpeaker || "Default"}`}
           color="blue"
           size="sm"
           radius="xl"
@@ -92,7 +103,7 @@ export function SectionPreviewButtons({
               return;
             }
 
-            preview.play(section.speaker);
+            preview.play({ kind: "effective" });
           }}
           disabled={!section.text}
         >

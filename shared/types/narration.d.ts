@@ -1,9 +1,14 @@
+export type PreviewSpeakerChoice =
+  | { kind: "effective" }
+  | { kind: "default" }
+  | { kind: "override"; speaker: string };
+
 export interface PreviewNarrationRequest {
   slideIndex: number;
   sectionIndex: number;
   notes: string;
   text: string;
-  previewSpeaker?: string;
+  speakerChoice: PreviewSpeakerChoice;
 }
 
 export interface NarrationPreviewResult {

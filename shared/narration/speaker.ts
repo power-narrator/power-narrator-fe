@@ -10,15 +10,15 @@ export const DEFAULT_SPEAKER_VALUE = "";
 export const DEFAULT_SPEAKER_LABEL = "Default";
 
 /**
- * An **Effective speaker** in the two forms callers need: the key its voice is
- * mapped under, and the label shown to a human.
+ * A speaker selected for synthesis in the two forms narration preparation
+ * needs: the key its voice is mapped under, and the label shown to a human.
  */
-export interface EffectiveSpeaker {
+export interface SynthesisSpeaker {
   mappingKey: string;
   label: string;
 }
 
-export function toEffectiveSpeaker(speaker: string): EffectiveSpeaker {
+export function toSynthesisSpeaker(speaker: string): SynthesisSpeaker {
   return speaker
     ? { mappingKey: speaker, label: speaker }
     : { mappingKey: DEFAULT_SPEAKER_KEY, label: DEFAULT_SPEAKER_LABEL };

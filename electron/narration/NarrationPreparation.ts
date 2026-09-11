@@ -8,7 +8,11 @@ import {
   getEffectiveSpeaker,
   parseNarrationSections,
 } from "../../shared/narration/NarrationSections.js";
-import { toEffectiveSpeaker, type EffectiveSpeaker } from "../../shared/narration/speaker.js";
+import {
+  DEFAULT_SPEAKER_VALUE,
+  toSynthesisSpeaker,
+  type SynthesisSpeaker,
+} from "../../shared/narration/speaker.js";
 
 export interface SpeakerMappingSource {
   getSpeakerMappings(): Record<string, Voice> | Promise<Record<string, Voice>>;
@@ -22,9 +26,13 @@ export interface NarrationSynthesizer {
 type PreparedNarrationSection = {
   slideIndex: number;
   sectionIndex: number;
-  speaker: EffectiveSpeaker;
+  synthesisSpeaker: SynthesisSpeaker;
   text: string;
   voice: Voice;
+};
+
+type SynthesizedNarrationSection = PreparedNarrationSection & {
+  speech: SynthesizedSpeech;
 };
 
 function voiceValidationProblem(voice: Voice | undefined): string | null {
@@ -64,12 +72,18 @@ export class NarrationPreparation {
     }
 
     const sections = parseNarrationSections(request.notes);
-    const speaker = request.previewSpeaker ?? getEffectiveSpeaker(sections, request.sectionIndex);
+    const speaker =
+      request.speakerChoice.kind === "effective"
+        ? getEffectiveSpeaker(sections, request.sectionIndex)
+        : request.speakerChoice.kind === "default"
+          ? DEFAULT_SPEAKER_VALUE
+          : request.speakerChoice.speaker;
     const mappings = await this.mappingSource.getSpeakerMappings();
-
-    return this.synthesizeSection(
+    const [preview] = await this.synthesizeSections([
       this.planSection(mappings, request.slideIndex, request.sectionIndex, text, speaker),
-    );
+    ]);
+
+    return preview!.speech;
   }
 
   async prepareBatch(
@@ -92,27 +106,18 @@ export class NarrationPreparation {
       });
     });
 
-    let completed = 0;
-    const total = prepared.length;
+    const synthesized = await this.synthesizeSections(prepared, onProgress);
 
-    return Promise.all(
-      prepared.map(async (section) => {
-        const { audio } = await this.synthesizeSection(section);
-        const entry = {
-          index: section.slideIndex,
-          sectionIndex: section.sectionIndex,
-          audioData: new Uint8Array(audio),
-        };
-        completed += 1;
-        onProgress?.({ completed, total });
-        return entry;
-      }),
-    );
+    return synthesized.map(({ slideIndex, sectionIndex, speech }) => ({
+      index: slideIndex,
+      sectionIndex,
+      audioData: new Uint8Array(speech.audio),
+    }));
   }
 
   /**
-   * Resolves one section's **Effective speaker** and voice, so preview and batch
-   * preparation share a single parse-to-synthesizable-section shape.
+   * Resolves one section's selected synthesis speaker and voice, so preview and
+   * batch preparation share a single parse-to-synthesizable-section shape.
    */
   private planSection(
     mappings: Record<string, Voice>,
@@ -121,32 +126,44 @@ export class NarrationPreparation {
     text: string,
     speaker: string,
   ): PreparedNarrationSection {
-    const effectiveSpeaker = toEffectiveSpeaker(speaker);
+    const synthesisSpeaker = toSynthesisSpeaker(speaker);
 
     return {
       slideIndex,
       sectionIndex,
-      speaker: effectiveSpeaker,
+      synthesisSpeaker,
       text,
-      voice: this.resolveVoice(mappings, effectiveSpeaker, slideIndex, sectionIndex),
+      voice: this.resolveVoice(mappings, synthesisSpeaker, slideIndex, sectionIndex),
     };
   }
 
-  private async synthesizeSection(section: PreparedNarrationSection): Promise<SynthesizedSpeech> {
-    try {
-      return await this.synthesizer.generateSpeech(section.text, section.voice);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown synthesis error";
-      throw new NarrationPreparationError(
-        "synthesis",
-        `Narration synthesis failed for slide ${section.slideIndex}, section ${section.sectionIndex + 1}, speaker "${section.speaker.label}": ${message}.`,
-      );
-    }
+  private synthesizeSections(
+    sections: PreparedNarrationSection[],
+    onProgress?: (progress: NarrationPreparationProgress) => void,
+  ): Promise<SynthesizedNarrationSection[]> {
+    let completed = 0;
+
+    return Promise.all(
+      sections.map(async (section) => {
+        try {
+          const speech = await this.synthesizer.generateSpeech(section.text, section.voice);
+          completed += 1;
+          onProgress?.({ completed, total: sections.length });
+          return { ...section, speech };
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : "Unknown synthesis error";
+          throw new NarrationPreparationError(
+            "synthesis",
+            `Narration synthesis failed for slide ${section.slideIndex}, section ${section.sectionIndex + 1}, speaker "${section.synthesisSpeaker.label}": ${message}.`,
+          );
+        }
+      }),
+    );
   }
 
   private resolveVoice(
     mappings: Record<string, Voice>,
-    speaker: EffectiveSpeaker,
+    speaker: SynthesisSpeaker,
     slideIndex: number,
     sectionIndex: number,
   ): Voice {

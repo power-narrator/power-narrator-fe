@@ -67,6 +67,7 @@ describe("NarrationPreparation", () => {
       sectionIndex: 0,
       notes: "[Narrator]\nHello",
       text: " Hello ",
+      speakerChoice: { kind: "effective" as const },
     };
 
     await preparation.preparePreview(request);
@@ -117,6 +118,7 @@ describe("NarrationPreparation", () => {
         sectionIndex: 0,
         notes: "[Narrator]\nStored text",
         text: "  Live renderer text  \n",
+        speakerChoice: { kind: "effective" },
       }),
     ).resolves.toEqual({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
     expect(generateSpeech).toHaveBeenCalledWith("Live renderer text", narratorVoice);
@@ -131,6 +133,7 @@ describe("NarrationPreparation", () => {
       sectionIndex: 1,
       notes: "[Narrator]\nFirst\n---\nSecond",
       text: "Second",
+      speakerChoice: { kind: "effective" },
     });
 
     await expect(preview).rejects.toEqual(
@@ -156,6 +159,7 @@ describe("NarrationPreparation", () => {
         sectionIndex: 1,
         notes: "[Narrator]\nFirst\n---\nSecond",
         text: "Second",
+        speakerChoice: { kind: "effective" },
       }),
     ).rejects.toThrow(/slide 4, section 2, speaker "Narrator"/);
     expect(generateSpeech).not.toHaveBeenCalled();
@@ -172,6 +176,7 @@ describe("NarrationPreparation", () => {
       sectionIndex: 1,
       notes: "[Narrator]\nFirst\n---\nSecond",
       text: "Inherited",
+      speakerChoice: { kind: "effective" },
     });
 
     expect(generateSpeech).toHaveBeenCalledWith("Inherited", narratorVoice);
@@ -188,6 +193,7 @@ describe("NarrationPreparation", () => {
       sectionIndex: 0,
       notes: "No speaker on this slide",
       text: "Defaulted",
+      speakerChoice: { kind: "effective" },
     });
 
     expect(generateSpeech).toHaveBeenCalledWith("Defaulted", defaultVoice);
@@ -203,13 +209,30 @@ describe("NarrationPreparation", () => {
       sectionIndex: 0,
       notes: "[Narrator]\nWelcome",
       text: "Welcome",
-      previewSpeaker: "Guest",
+      speakerChoice: { kind: "override" as const, speaker: "Guest" },
     };
 
     await preparation.preparePreview(request);
 
     expect(generateSpeech).toHaveBeenCalledWith("Welcome", guestVoice);
     expect(request.notes).toBe("[Narrator]\nWelcome");
+  });
+
+  it("treats an explicit Default preview as an override of the effective speaker", async () => {
+    const { preparation, generateSpeech } = createPreparation({
+      Narrator: narratorVoice,
+      _default_: defaultVoice,
+    });
+
+    await preparation.preparePreview({
+      slideIndex: 1,
+      sectionIndex: 0,
+      notes: "[Narrator]\nWelcome",
+      text: "Welcome",
+      speakerChoice: { kind: "default" },
+    });
+
+    expect(generateSpeech).toHaveBeenCalledWith("Welcome", defaultVoice);
   });
 
   it("rejects whitespace-only preview text before loading mappings or synthesis", async () => {
@@ -226,6 +249,7 @@ describe("NarrationPreparation", () => {
         sectionIndex: 0,
         notes: "[Narrator]\nStored",
         text: " \n\t ",
+        speakerChoice: { kind: "effective" },
       }),
     ).rejects.toEqual(
       new NarrationPreparationError(

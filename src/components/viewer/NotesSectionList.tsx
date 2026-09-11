@@ -117,7 +117,6 @@ export function NotesSectionList({
                   sectionIndex={index}
                   slideNotes={slideNotes}
                   section={section}
-                  effectiveSpeaker={effectiveSpeaker}
                   mappings={mappings}
                   onFocus={() => onFocusSection(index)}
                   getTextarea={() => getTextarea(index)}
