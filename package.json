@@ -8,7 +8,7 @@
     "dev": "concurrently -k \"vite\" \"pnpm run dev:electron\"",
     "dev:electron": "pnpm run build:electron && concurrently -k \"pnpm run build:electron --watch\" \"electron .\"",
     "build": "pnpm run typecheck && vite build && pnpm run build:electron",
-    "build:electron": "tsc -p electron",
+    "build:electron": "tsc -p tsconfig.build.json",
     "dist": "pnpm run build && electron-builder",
     "lint": "oxlint",
     "format": "oxfmt",
