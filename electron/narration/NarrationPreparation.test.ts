@@ -164,7 +164,7 @@ describe("NarrationPreparation", () => {
     expect(generateSpeech).not.toHaveBeenCalled();
   });
 
-  it("inherits only from an earlier section in the supplied slide and otherwise uses the default voice", async () => {
+  it("inherits the speaker from an earlier section in the supplied slide", async () => {
     const { preparation, generateSpeech } = createPreparation({
       Narrator: narratorVoice,
       _default_: defaultVoice,
@@ -176,6 +176,16 @@ describe("NarrationPreparation", () => {
       notes: "[Narrator]\nFirst\n---\nSecond",
       text: "Inherited",
     });
+
+    expect(generateSpeech).toHaveBeenCalledWith("Inherited", narratorVoice);
+  });
+
+  it("uses the default voice when the supplied slide names no speaker", async () => {
+    const { preparation, generateSpeech } = createPreparation({
+      Narrator: narratorVoice,
+      _default_: defaultVoice,
+    });
+
     await preparation.preparePreview({
       slideIndex: 4,
       sectionIndex: 0,
@@ -183,8 +193,7 @@ describe("NarrationPreparation", () => {
       text: "Defaulted",
     });
 
-    expect(generateSpeech).toHaveBeenNthCalledWith(1, "Inherited", narratorVoice);
-    expect(generateSpeech).toHaveBeenNthCalledWith(2, "Defaulted", defaultVoice);
+    expect(generateSpeech).toHaveBeenCalledWith("Defaulted", defaultVoice);
   });
 
   it("uses a temporary preview speaker without changing the supplied notes", async () => {
