@@ -8,14 +8,18 @@ interface VoiceSelectorProps {
   voices: Voice[];
 }
 
+function getVoiceOptionValue(voice: Voice): string {
+  return JSON.stringify([voice.provider, voice.name]);
+}
+
 export function VoiceSelector({ value, onChange, voices }: VoiceSelectorProps) {
   const options = voices.map((voice) => ({
-    value: `${voice.provider}:${voice.name}`,
+    value: getVoiceOptionValue(voice),
     label: `${voice.name.split("/").pop()} (${getProviderLabel(voice.provider)}, ${voice.ssmlGender})`,
   }));
 
   const handleChange = (selectedValue: string | null) => {
-    const voice = voices.find((option) => `${option.provider}:${option.name}` === selectedValue);
+    const voice = voices.find((option) => getVoiceOptionValue(option) === selectedValue);
     if (voice) {
       onChange(voice);
     }
@@ -25,7 +29,7 @@ export function VoiceSelector({ value, onChange, voices }: VoiceSelectorProps) {
     <Select
       placeholder="Select Voice"
       data={options}
-      value={value ? `${value.provider}:${value.name}` : null}
+      value={value ? getVoiceOptionValue(value) : null}
       onChange={handleChange}
       searchable
       size="xs"

@@ -64,7 +64,6 @@ export class GcpTtsProvider implements TtsProvider {
 
     return {
       cacheIdentity: request,
-      encoding: { fileExtension: "mp3", mediaType: "audio/mpeg" },
       synthesize: async () => {
         const keyPath = this.keyPathProvider();
         if (!keyPath) {
