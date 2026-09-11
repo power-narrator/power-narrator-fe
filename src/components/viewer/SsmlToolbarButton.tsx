@@ -16,7 +16,14 @@ export function SsmlToolbarButton({
 }: SsmlToolbarButtonProps) {
   return (
     <Tooltip label={label}>
-      <ActionIcon variant="subtle" color="gray" size="lg" onClick={onClick} disabled={disabled}>
+      <ActionIcon
+        aria-label={label}
+        variant="subtle"
+        color="gray"
+        size="lg"
+        onClick={onClick}
+        disabled={disabled}
+      >
         {icon}
       </ActionIcon>
     </Tooltip>
