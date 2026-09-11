@@ -12,10 +12,7 @@ const DISCARD_NARRATION_CHANGES_DIALOG: MessageBoxOptions = {
   detail: "Continuing will discard your session-only narration edits.",
 };
 
-/**
- * Asks the user whether session-only narration edits may be discarded. An
- * automated run substitutes its own implementation so no real dialog opens.
- */
+/** An automated run substitutes its own implementation so no real dialog opens. */
 export type DiscardConfirmation = (
   options: MessageBoxOptions,
   window?: BrowserWindow,
@@ -37,7 +34,6 @@ export class UnsavedNarrationChanges {
   private quitRequested = false;
   private confirmDiscard: DiscardConfirmation = showDiscardDialog;
 
-  /** Replaces the confirmation prompt; used to answer it without a real dialog. */
   useConfirmation(confirmDiscard: DiscardConfirmation): void {
     this.confirmDiscard = confirmDiscard;
   }

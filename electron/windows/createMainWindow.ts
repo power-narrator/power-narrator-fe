@@ -5,10 +5,6 @@ import type { UnsavedNarrationChanges } from "./UnsavedNarrationChanges.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 
-/**
- * Opens the application window, guarded against closing over unsaved narration
- * edits, and points it at the dev server or the built renderer bundle.
- */
 export function createMainWindow(unsavedNarrationChanges: UnsavedNarrationChanges): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width: 1200,
