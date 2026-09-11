@@ -4,6 +4,7 @@ import { MantineProvider } from "@mantine/core";
 import App from "./App.tsx";
 import { SettingsProvider } from "./context/SettingsContext.tsx";
 import { AudioProvider } from "./context/AudioContext.tsx";
+import { NarrationPreviewProvider } from "./components/viewer/useNarrationPreview.ts";
 import "@mantine/core/styles.css";
 import "@gfazioli/mantine-split-pane/styles.css";
 
@@ -12,7 +13,9 @@ createRoot(document.getElementById("root")!).render(
     <MantineProvider defaultColorScheme="dark">
       <SettingsProvider>
         <AudioProvider>
-          <App />
+          <NarrationPreviewProvider>
+            <App />
+          </NarrationPreviewProvider>
         </AudioProvider>
       </SettingsProvider>
     </MantineProvider>

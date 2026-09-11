@@ -1,11 +1,9 @@
 import { ActionIcon, Box, Button, Center, Group, Loader, Slider, Stack, Text } from "@mantine/core";
 import { IconHistory, IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react";
-import { useEffect, useRef, useState } from "react";
 import type { NarrationSection } from "../../../electron/narration/NarrationSections";
-import { getErrorMessage } from "../../utils/errors";
 import { getSpeakerOptions } from "../../utils/viewer";
 import type { Voice } from "../../../shared/types/tts";
-import { useAudio } from "../../context/useAudio";
+import { useNarrationPreview } from "./useNarrationPreview";
 
 interface SectionPreviewButtonsProps {
   id: string;
@@ -30,118 +28,16 @@ export function SectionPreviewButtons({
   onFocus,
   getTextarea,
 }: SectionPreviewButtonsProps) {
-  const {
-    activeId,
-    isPlaying: globalIsPlaying,
-    currentTime: globalCurrentTime,
-    duration: globalDuration,
-    play: audioPlay,
-    stop: audioStop,
-    seek: audioSeek,
-    setSeeking: audioSetSeeking,
-  } = useAudio();
-
-  const [activePreviewTarget, setActivePreviewTarget] = useState<string | null>(null);
-  const [lastPlayedSpeaker, setLastPlayedSpeaker] = useState<string | null>(null);
-  const [isAudioGenerating, setIsAudioGenerating] = useState(false);
-  const previewRequestIdRef = useRef(0);
-  const ownsPreviewRef = useRef(false);
-
-  const isCurrentActive = activeId === id;
-  const isPlaying = globalIsPlaying && isCurrentActive;
-  const currentTime = isCurrentActive ? globalCurrentTime : 0;
-  const duration = isCurrentActive ? globalDuration : 0;
+  const preview = useNarrationPreview({
+    id,
+    slideIndex,
+    sectionIndex,
+    slideNotes,
+    section,
+    onFocus,
+    getTextarea,
+  });
   const speakers = getSpeakerOptions(mappings);
-
-  useEffect(() => {
-    // Only clear if the global audio element stopped or switched to a different section entirely
-    if (!globalIsPlaying && activeId === null && !isAudioGenerating) {
-      ownsPreviewRef.current = false;
-      setActivePreviewTarget(null);
-    }
-    if (activeId !== null && !isCurrentActive) {
-      ownsPreviewRef.current = false;
-      setActivePreviewTarget(null);
-    }
-  }, [globalIsPlaying, activeId, isCurrentActive, isAudioGenerating]);
-
-  useEffect(
-    () => () => {
-      if (!ownsPreviewRef.current) {
-        return;
-      }
-
-      previewRequestIdRef.current += 1;
-      ownsPreviewRef.current = false;
-      audioStop();
-    },
-    [audioStop],
-  );
-
-  const stopPlayback = () => {
-    previewRequestIdRef.current += 1;
-    ownsPreviewRef.current = false;
-    audioStop();
-    setActivePreviewTarget(null);
-    setIsAudioGenerating(false);
-  };
-
-  const handlePlay = async (speakerValue: string, previewSpeaker?: string) => {
-    if (activePreviewTarget === speakerValue) {
-      stopPlayback();
-      return;
-    }
-
-    const textarea = getTextarea?.();
-    const textToPlay = textarea
-      ? textarea.selectionStart === textarea.selectionEnd
-        ? textarea.value
-        : textarea.value.substring(textarea.selectionStart, textarea.selectionEnd)
-      : section.text;
-
-    if (!textToPlay.trim()) {
-      alert("No text to preview.");
-      return;
-    }
-
-    onFocus();
-    const requestId = previewRequestIdRef.current + 1;
-    previewRequestIdRef.current = requestId;
-    ownsPreviewRef.current = true;
-
-    try {
-      setIsAudioGenerating(true);
-      setActivePreviewTarget(speakerValue);
-      setLastPlayedSpeaker(speakerValue);
-      const audio = await window.electronAPI.prepareNarrationPreview({
-        slideIndex,
-        sectionIndex,
-        notes: slideNotes,
-        text: textToPlay,
-        ...(previewSpeaker !== undefined ? { previewSpeaker } : {}),
-      });
-
-      if (previewRequestIdRef.current !== requestId) {
-        return;
-      }
-
-      const buffer = Uint8Array.from(audio).buffer;
-      const url = URL.createObjectURL(new Blob([buffer], { type: "audio/mpeg" }));
-      audioPlay(id, url);
-    } catch (error: unknown) {
-      if (previewRequestIdRef.current !== requestId) {
-        return;
-      }
-
-      alert(`Failed to play audio: ${getErrorMessage(error)}`);
-      ownsPreviewRef.current = false;
-      setActivePreviewTarget(null);
-    } finally {
-      if (previewRequestIdRef.current === requestId) {
-        setIsAudioGenerating(false);
-      }
-    }
-  };
 
   const formatTime = (time: number) => {
     const minutes = Math.floor(time / 60);
@@ -149,15 +45,15 @@ export function SectionPreviewButtons({
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
-  const isAnyPreviewActive = isPlaying && activePreviewTarget !== null;
+  const isAnyPreviewActive = preview.isPlaying && preview.activeTarget !== null;
 
   return (
     <Stack p="xs" gap="xs">
       <Group gap="xs">
         {speakers.map((speaker) => {
           const isSelected = speaker.value === effectiveSpeaker;
-          const isActive = activePreviewTarget === speaker.value;
-          const isAnyPlaying = activePreviewTarget !== null;
+          const isActive = preview.activeTarget === speaker.value;
+          const isAnyPlaying = preview.activeTarget !== null;
 
           return (
             <Button
@@ -166,12 +62,12 @@ export function SectionPreviewButtons({
               variant={isActive || (isSelected && !isAnyPlaying) ? "filled" : "outline"}
               color="blue"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => handlePlay(speaker.value, speaker.value)}
-              disabled={!section.text || (isAudioGenerating && !isActive)}
+              onClick={() => preview.play(speaker.value, speaker.value)}
+              disabled={!section.text || (preview.isGenerating && !isActive)}
               leftSection={
                 isActive ? (
                   <IconPlayerStop size={12} />
-                ) : speaker.value === lastPlayedSpeaker ? (
+                ) : speaker.value === preview.lastPlayedSpeaker ? (
                   <IconHistory size={12} />
                 ) : (
                   <IconPlayerPlay size={12} />
@@ -191,19 +87,19 @@ export function SectionPreviewButtons({
           radius="xl"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
-            if (activePreviewTarget !== null) {
-              stopPlayback();
+            if (preview.activeTarget !== null) {
+              preview.stop();
               return;
             }
 
-            handlePlay(section.speaker);
+            preview.play(section.speaker);
           }}
           disabled={!section.text}
         >
           {isAnyPreviewActive ? <IconPlayerStop size={12} /> : <IconPlayerPlay size={12} />}
         </ActionIcon>
         <Box style={{ flex: 1, position: "relative" }}>
-          {isAudioGenerating ? (
+          {preview.isGenerating ? (
             <Center>
               <Loader size="xs" variant="dots" color="blue" />
             </Center>
@@ -212,21 +108,21 @@ export function SectionPreviewButtons({
               <Slider
                 style={{ flexGrow: 1 }}
                 size="sm"
-                value={currentTime}
+                value={preview.currentTime}
                 min={0}
-                max={duration || 100}
+                max={preview.duration || 100}
                 onChange={(value) => {
-                  audioSetSeeking(true);
-                  audioSeek(value);
+                  preview.setSeeking(true);
+                  preview.seek(value);
                 }}
                 onChangeEnd={() => {
-                  audioSetSeeking(false);
+                  preview.setSeeking(false);
                 }}
                 label={formatTime}
-                disabled={!isCurrentActive}
+                disabled={!preview.isCurrentAudio}
               />
               <Text size="xs" c="dimmed">
-                {formatTime(currentTime)} / {formatTime(duration)}
+                {formatTime(preview.currentTime)} / {formatTime(preview.duration)}
               </Text>
             </Group>
           )}

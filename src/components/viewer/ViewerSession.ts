@@ -1,151 +1,140 @@
 import type { Slide } from "../../types/electron";
 
-interface HistoryEntry {
+interface SlideChange {
   slides: Slide[];
   changedSlidePositions: readonly number[];
 }
+
+type HistoryEntry = SlideChange;
 
 export interface SavedSlideSelection {
   position: number;
   slide: Slide;
 }
 
-export class ViewerSession {
-  private constructor(
-    readonly slides: Slide[],
-    private readonly fullySavedNotes: ReadonlyMap<number, string>,
-    private readonly dirtySlideIndices: ReadonlySet<number>,
-    private readonly history: readonly HistoryEntry[],
-    private readonly historyIndex: number,
-  ) {}
+export interface ViewerSessionState {
+  slides: Slide[];
+  fullySavedNotes: ReadonlyMap<number, string>;
+  dirtySlideIndices: ReadonlySet<number>;
+  history: readonly HistoryEntry[];
+  historyIndex: number;
+}
 
-  static load(slides: Slide[]) {
-    return new ViewerSession(
-      slides,
-      new Map(slides.map((slide) => [slide.index, slide.notes || ""])),
-      new Set(),
-      [{ slides, changedSlidePositions: [] }],
-      0,
-    );
-  }
+export type ViewerSessionAction =
+  | ({ type: "edit" } & SlideChange)
+  | ({ type: "checkpoint" } & SlideChange)
+  | { type: "undo" }
+  | { type: "redo" }
+  | { type: "saved"; savedSlides: readonly SavedSlideSelection[] }
+  | { type: "reloaded"; slides: Slide[]; reloadedSlidePositions?: readonly number[] };
 
-  get canUndo() {
-    return this.historyIndex > 0;
-  }
+export function loadViewerSession(slides: Slide[]): ViewerSessionState {
+  return {
+    slides,
+    fullySavedNotes: new Map(slides.map((slide) => [slide.index, slide.notes || ""])),
+    dirtySlideIndices: new Set(),
+    history: [{ slides, changedSlidePositions: [] }],
+    historyIndex: 0,
+  };
+}
 
-  get canRedo() {
-    return this.historyIndex < this.history.length - 1;
-  }
+function withEditedSlides(
+  state: ViewerSessionState,
+  slides: Slide[],
+  changedSlidePositions: readonly number[],
+): ViewerSessionState {
+  const dirtySlideIndices = new Set(state.dirtySlideIndices);
+  for (const position of changedSlidePositions) {
+    const slide = slides[position];
+    if (!slide) continue;
 
-  edit(nextSlides: Slide[], changedSlidePositions: readonly number[]) {
-    const dirtySlideIndices = new Set(this.dirtySlideIndices);
-    for (const position of changedSlidePositions) {
-      const slide = nextSlides[position];
-      if (!slide) {
-        continue;
-      }
-
-      if (this.fullySavedNotes.get(slide.index) === (slide.notes || "")) {
-        dirtySlideIndices.delete(slide.index);
-      } else {
-        dirtySlideIndices.add(slide.index);
-      }
+    if (state.fullySavedNotes.get(slide.index) === (slide.notes || "")) {
+      dirtySlideIndices.delete(slide.index);
+    } else {
+      dirtySlideIndices.add(slide.index);
     }
-
-    return new ViewerSession(
-      nextSlides,
-      this.fullySavedNotes,
-      dirtySlideIndices,
-      this.history,
-      this.historyIndex,
-    );
   }
 
-  checkpoint(changedSlidePositions: readonly number[]) {
-    const nextHistoryIndex = this.historyIndex + 1;
-    return new ViewerSession(
-      this.slides,
-      this.fullySavedNotes,
-      this.dirtySlideIndices,
-      [...this.history.slice(0, nextHistoryIndex), { slides: this.slides, changedSlidePositions }],
-      nextHistoryIndex,
-    );
-  }
+  return { ...state, slides, dirtySlideIndices };
+}
 
-  undo() {
-    if (this.historyIndex === 0) {
-      return this;
+function moveThroughHistory(
+  state: ViewerSessionState,
+  historyIndex: number,
+  changedSlidePositions: readonly number[],
+) {
+  return withEditedSlides(state, state.history[historyIndex]!.slides, changedSlidePositions);
+}
+
+export function reduceViewerSession(
+  state: ViewerSessionState,
+  action: ViewerSessionAction,
+): ViewerSessionState {
+  switch (action.type) {
+    case "edit":
+      return withEditedSlides(state, action.slides, action.changedSlidePositions);
+    case "checkpoint": {
+      const edited = withEditedSlides(state, action.slides, action.changedSlidePositions);
+      const historyIndex = state.historyIndex + 1;
+      return {
+        ...edited,
+        history: [
+          ...state.history.slice(0, historyIndex),
+          { slides: action.slides, changedSlidePositions: action.changedSlidePositions },
+        ],
+        historyIndex,
+      };
     }
-
-    const currentEntry = this.history[this.historyIndex]!;
-    const nextHistoryIndex = this.historyIndex - 1;
-    return this.moveThroughHistory(nextHistoryIndex, currentEntry.changedSlidePositions);
-  }
-
-  redo() {
-    if (this.historyIndex >= this.history.length - 1) {
-      return this;
+    case "undo": {
+      if (state.historyIndex === 0) return state;
+      const currentEntry = state.history[state.historyIndex]!;
+      return {
+        ...moveThroughHistory(state, state.historyIndex - 1, currentEntry.changedSlidePositions),
+        historyIndex: state.historyIndex - 1,
+      };
     }
-
-    const nextHistoryIndex = this.historyIndex + 1;
-    const nextEntry = this.history[nextHistoryIndex]!;
-    return this.moveThroughHistory(nextHistoryIndex, nextEntry.changedSlidePositions);
-  }
-
-  markSaved(savedSlides: readonly SavedSlideSelection[]) {
-    const fullySavedNotes = new Map(this.fullySavedNotes);
-    for (const { slide } of savedSlides) {
-      fullySavedNotes.set(slide.index, slide.notes || "");
+    case "redo": {
+      if (state.historyIndex >= state.history.length - 1) return state;
+      const historyIndex = state.historyIndex + 1;
+      const nextEntry = state.history[historyIndex]!;
+      return {
+        ...moveThroughHistory(state, historyIndex, nextEntry.changedSlidePositions),
+        historyIndex,
+      };
     }
-
-    const saved = new ViewerSession(
-      this.slides,
-      fullySavedNotes,
-      this.dirtySlideIndices,
-      this.history,
-      this.historyIndex,
-    );
-    return saved.edit(
-      saved.slides,
-      savedSlides.map(({ position }) => position),
-    );
-  }
-
-  reload(nextSlides: Slide[], reloadedSlidePositions?: readonly number[]) {
-    const positions = reloadedSlidePositions ?? nextSlides.map((_, position) => position);
-    const fullySavedNotes = new Map(this.fullySavedNotes);
-    for (const position of positions) {
-      const slide = nextSlides[position];
-      if (slide) {
+    case "saved": {
+      const fullySavedNotes = new Map(state.fullySavedNotes);
+      for (const { slide } of action.savedSlides) {
         fullySavedNotes.set(slide.index, slide.notes || "");
       }
+      return withEditedSlides(
+        { ...state, fullySavedNotes },
+        state.slides,
+        action.savedSlides.map(({ position }) => position),
+      );
     }
-
-    const reloaded = new ViewerSession(
-      nextSlides,
-      fullySavedNotes,
-      reloadedSlidePositions ? this.dirtySlideIndices : new Set(),
-      [{ slides: nextSlides, changedSlidePositions: [] }],
-      0,
-    );
-    return reloaded.edit(nextSlides, positions);
+    case "reloaded": {
+      const positions =
+        action.reloadedSlidePositions ?? action.slides.map((_, position) => position);
+      const fullySavedNotes = new Map(state.fullySavedNotes);
+      for (const position of positions) {
+        const slide = action.slides[position];
+        if (slide) fullySavedNotes.set(slide.index, slide.notes || "");
+      }
+      const reloaded: ViewerSessionState = {
+        slides: action.slides,
+        fullySavedNotes,
+        dirtySlideIndices: action.reloadedSlidePositions ? state.dirtySlideIndices : new Set(),
+        history: [{ slides: action.slides, changedSlidePositions: [] }],
+        historyIndex: 0,
+      };
+      return withEditedSlides(reloaded, action.slides, positions);
+    }
   }
+}
 
-  wouldDiscard(slideIndices?: readonly number[]) {
-    return slideIndices
-      ? slideIndices.some((slideIndex) => this.dirtySlideIndices.has(slideIndex))
-      : this.dirtySlideIndices.size > 0;
-  }
-
-  private moveThroughHistory(historyIndex: number, changedSlidePositions: readonly number[]) {
-    const history = this.history;
-    const moved = new ViewerSession(
-      history[historyIndex]!.slides,
-      this.fullySavedNotes,
-      this.dirtySlideIndices,
-      history,
-      historyIndex,
-    );
-    return moved.edit(moved.slides, changedSlidePositions);
-  }
+export function sessionWouldDiscard(state: ViewerSessionState, slideIndices?: readonly number[]) {
+  return slideIndices
+    ? slideIndices.some((slideIndex) => state.dirtySlideIndices.has(slideIndex))
+    : state.dirtySlideIndices.size > 0;
 }
