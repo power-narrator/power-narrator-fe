@@ -13,9 +13,9 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "typecheck": "tsc -b --noEmit",
-    "test": "pnpm run test:unit && pnpm run test:renderer && pnpm run test:e2e",
-    "test:unit": "vitest run src electron --exclude '**/*.browser.test.tsx'",
-    "test:renderer": "vitest run --config vitest.browser.config.ts",
+    "test": "pnpm run test:unit && pnpm run test:component && pnpm run test:e2e",
+    "test:unit": "vitest run --project unit",
+    "test:component": "vitest run --project component",
     "test:e2e": "pnpm run build && playwright test"
   },
   "dependencies": {
