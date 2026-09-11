@@ -3,7 +3,7 @@
   "version": "0.7.1",
   "private": true,
   "type": "module",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/electron/main.js",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"pnpm run dev:electron\"",
     "dev:electron": "pnpm run build:electron && concurrently -k \"pnpm run build:electron --watch\" \"electron .\"",

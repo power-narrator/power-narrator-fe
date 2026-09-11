@@ -57,7 +57,7 @@ export class TtsManager {
   constructor(
     providers: TtsProviderRegistry,
     configuredDefaultProvider: string,
-    cacheLocations: { cacheDirectory?: string } = {},
+    cacheDirectory?: string,
   ) {
     const defaultProviderId = Array.from(providers.keys()).find(
       (providerId) => providerId === configuredDefaultProvider,
@@ -67,8 +67,7 @@ export class TtsManager {
     }
 
     this.providers = new Map(providers);
-    this.cacheDirectory =
-      cacheLocations.cacheDirectory ?? getNarrationCacheDirectory(app.getPath("home"));
+    this.cacheDirectory = cacheDirectory ?? getNarrationCacheDirectory(app.getPath("home"));
     this.defaultProviderId = defaultProviderId;
   }
 

@@ -9,13 +9,13 @@ import {
   Text,
   Textarea,
 } from "@mantine/core";
-import type { NarrationSection } from "../../../electron/narration/NarrationSections";
+import type { NarrationSection } from "../../../shared/narration/NarrationSections";
 import { getSpeakerOptions } from "../../utils/viewer";
 import type { Voice } from "../../../shared/types/tts";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
 import { IconPlus } from "@tabler/icons-react";
-import { getEffectiveSpeaker } from "../../../electron/narration/NarrationSections";
-import { DEFAULT_SPEAKER_VALUE } from "../../constants/speaker";
+import { getEffectiveSpeaker } from "../../../shared/narration/NarrationSections";
+import { DEFAULT_SPEAKER_VALUE } from "../../../shared/narration/speaker";
 
 interface NotesSectionListProps {
   sections: NarrationSection[];

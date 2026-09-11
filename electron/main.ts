@@ -1,5 +1,4 @@
 import { app, BrowserWindow, ipcMain, dialog, protocol, net } from "electron";
-import type { MessageBoxOptions } from "electron";
 import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
@@ -21,11 +20,9 @@ import type {
   RemoveAudioRequest,
   SlideManifestEntry,
 } from "./platform/types.js";
-import { NarrationPreparation } from "./narration/NarrationPreparation.js";
-import { registerNarrationPreviewIpc } from "./narration/registerNarrationPreviewIpc.js";
-import { NarratedPresentationSaver } from "./narration/NarratedPresentationSaver.js";
-import { registerNarratedSlideSaveIpc } from "./narration/registerNarratedSlideSaveIpc.js";
-import { registerNarratedPresentationSaveIpc } from "./narration/registerNarratedPresentationSaveIpc.js";
+import { registerNarrationIpc } from "./narration/registerNarrationIpc.js";
+import { UnsavedNarrationChanges } from "./windows/UnsavedNarrationChanges.js";
+import { installTestHarness } from "./testing/narrationTestHarness.js";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -46,49 +43,8 @@ dotenv.config();
 
 app.setName(APP_NAME);
 const store = new Store();
-const windowsWithUnsavedNarrationChanges = new Set<number>();
-let applicationQuitRequested = false;
-const DISCARD_CHANGES_RESPONSE = 1;
-
-const discardNarrationChangesDialog: MessageBoxOptions = {
-  type: "warning",
-  buttons: ["Keep Editing", "Discard Changes"],
-  defaultId: 0,
-  cancelId: 0,
-  message: "Discard unsaved narration changes?",
-  detail: "Continuing will discard your session-only narration edits.",
-};
-let discardNarrationChangesTestAdapter:
-  | ((options: MessageBoxOptions) => Promise<boolean>)
-  | undefined;
-
-async function confirmDiscardNarrationChanges(window?: BrowserWindow) {
-  if (discardNarrationChangesTestAdapter) {
-    return discardNarrationChangesTestAdapter(discardNarrationChangesDialog);
-  }
-
-  const result = window
-    ? await dialog.showMessageBox(window, discardNarrationChangesDialog)
-    : await dialog.showMessageBox(discardNarrationChangesDialog);
-  return result.response === DISCARD_CHANGES_RESPONSE;
-}
-
-ipcMain.on("set-has-unsaved-narration-changes", (event, hasChanges: boolean) => {
-  if (hasChanges) {
-    windowsWithUnsavedNarrationChanges.add(event.sender.id);
-  } else {
-    windowsWithUnsavedNarrationChanges.delete(event.sender.id);
-  }
-  event.returnValue = undefined;
-});
-
-ipcMain.handle("confirm-discard-narration-changes", (event) =>
-  confirmDiscardNarrationChanges(BrowserWindow.fromWebContents(event.sender) ?? undefined),
-);
-
-app.on("before-quit", () => {
-  applicationQuitRequested = true;
-});
+const unsavedNarrationChanges = new UnsavedNarrationChanges();
+unsavedNarrationChanges.install(ipcMain);
 
 function getGcpKeyPath(): string | undefined {
   const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
@@ -112,12 +68,6 @@ const ttsManager = new TtsManager(
   ]),
   process.env.TTS_PROVIDER ?? "gcp",
 );
-const narrationPreparation = new NarrationPreparation(
-  { getSpeakerMappings: () => (store.get("speakerMappings") as Record<string, Voice>) || {} },
-  ttsManager,
-);
-registerNarrationPreviewIpc(ipcMain, narrationPreparation);
-
 const nativeProvider: (PptProvider & NativePlatformProvider) | null =
   process.platform === "darwin"
     ? new MacPptProvider()
@@ -139,44 +89,16 @@ function getActiveCoreProvider(): PptProvider {
   return nativeProvider;
 }
 
-const narratedPresentationSaver = new NarratedPresentationSaver(
-  narrationPreparation,
-  getActiveCoreProvider,
-);
-registerNarratedSlideSaveIpc(ipcMain, narratedPresentationSaver);
-registerNarratedPresentationSaveIpc(ipcMain, narratedPresentationSaver);
+registerNarrationIpc(ipcMain, {
+  mappingSource: {
+    getSpeakerMappings: () => (store.get("speakerMappings") as Record<string, Voice>) || {},
+  },
+  synthesizer: ttsManager,
+  getPowerPoint: getActiveCoreProvider,
+});
 
 if (process.env.NODE_ENV === "test") {
-  (
-    globalThis as typeof globalThis & {
-      __installNarrationTestAdapters?: (
-        mappingSource: ConstructorParameters<typeof NarrationPreparation>[0],
-        synthesizer: ConstructorParameters<typeof NarrationPreparation>[1],
-        powerpoint?: Pick<PptProvider, "saveNotes" | "insertAudio" | "removeAudio">,
-      ) => void;
-    }
-  ).__installNarrationTestAdapters = (mappingSource, synthesizer, powerpoint) => {
-    const testPreparation = new NarrationPreparation(mappingSource, synthesizer);
-    ipcMain.removeHandler("prepare-narration-preview");
-    registerNarrationPreviewIpc(ipcMain, testPreparation);
-
-    if (powerpoint) {
-      const testSaver = new NarratedPresentationSaver(testPreparation, () => powerpoint);
-      ipcMain.removeHandler("save-narrated-slide");
-      registerNarratedSlideSaveIpc(ipcMain, testSaver);
-      ipcMain.removeHandler("save-narrated-presentation");
-      registerNarratedPresentationSaveIpc(ipcMain, testSaver);
-    }
-  };
-  (
-    globalThis as typeof globalThis & {
-      __installDiscardNarrationChangesTestAdapter?: (
-        adapter: (options: MessageBoxOptions) => Promise<boolean>,
-      ) => void;
-    }
-  ).__installDiscardNarrationChangesTestAdapter = (adapter) => {
-    discardNarrationChangesTestAdapter = adapter;
-  };
+  installTestHarness(unsavedNarrationChanges);
 }
 
 function getOutputDir(absolutePath: string): string {
@@ -195,45 +117,12 @@ const createWindow = () => {
       preload: path.join(__dirname, "preload.cjs"),
     },
   });
-  const webContentsId = mainWindow.webContents.id;
-  let allowClose = false;
-  let closeConfirmationOpen = false;
-
-  mainWindow.on("close", (event) => {
-    if (allowClose || !windowsWithUnsavedNarrationChanges.has(mainWindow.webContents.id)) {
-      return;
-    }
-
-    event.preventDefault();
-    if (closeConfirmationOpen) {
-      return;
-    }
-
-    closeConfirmationOpen = true;
-    void confirmDiscardNarrationChanges(mainWindow).then((discardChanges) => {
-      closeConfirmationOpen = false;
-      if (!discardChanges) {
-        applicationQuitRequested = false;
-        return;
-      }
-
-      allowClose = true;
-      if (applicationQuitRequested) {
-        app.quit();
-      } else {
-        mainWindow.close();
-      }
-    });
-  });
-
-  mainWindow.on("closed", () => {
-    windowsWithUnsavedNarrationChanges.delete(webContentsId);
-  });
+  unsavedNarrationChanges.guard(mainWindow);
 
   if (!app.isPackaged && !(process.env.NODE_ENV === "test")) {
     mainWindow.loadURL("http://localhost:5173");
   } else {
-    mainWindow.loadFile(path.join(__dirname, "../dist-vite/index.html"));
+    mainWindow.loadFile(path.join(__dirname, "../../dist-vite/index.html"));
   }
 };
 

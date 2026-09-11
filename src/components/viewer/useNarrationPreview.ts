@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { NarrationSection } from "../../../electron/narration/NarrationSections";
+import type { NarrationSection } from "../../../shared/narration/NarrationSections";
 import { useAudio } from "../../context/useAudio";
 import { getErrorMessage } from "../../utils/errors";
 

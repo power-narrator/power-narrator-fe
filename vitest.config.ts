@@ -8,7 +8,7 @@ export default defineConfig({
       {
         test: {
           name: "unit",
-          include: ["src/**/*.test.ts", "electron/**/*.test.ts"],
+          include: ["src/**/*.test.ts", "electron/**/*.test.ts", "shared/**/*.test.ts"],
         },
       },
       {

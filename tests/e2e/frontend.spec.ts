@@ -79,9 +79,6 @@ type RendererNarrationApi = {
 type DiscardConfirmationTestGlobals = typeof globalThis & {
     __discardConfirmationCalls: unknown[];
     __shouldDiscardNarrationChanges: boolean;
-    __installDiscardNarrationChangesTestAdapter: (
-        adapter: (options: unknown) => Promise<boolean>,
-    ) => void;
 };
 
 let electronApp: ElectronApplication;
@@ -89,7 +86,7 @@ let window: Page;
 
 async function launchTestApp() {
     return electron.launch({
-        args: [path.join(__dirname, "../../dist-electron/main.js")],
+        args: [path.join(__dirname, "../../dist-electron/electron/main.js")],
         env: {
             ...process.env,
             NODE_ENV: "test",
@@ -104,9 +101,7 @@ async function installMockIpcHandlers(app: ElectronApplication) {
             const discardConfirmationGlobals = globalThis as DiscardConfirmationTestGlobals;
             discardConfirmationGlobals.__discardConfirmationCalls = [];
             discardConfirmationGlobals.__shouldDiscardNarrationChanges = false;
-            const installDiscardConfirmationAdapter =
-                discardConfirmationGlobals.__installDiscardNarrationChangesTestAdapter;
-            installDiscardConfirmationAdapter(async (options) => {
+            globalThis.powerNarratorTestHarness!.useDiscardConfirmation(async (options) => {
                 const globals = globalThis as DiscardConfirmationTestGlobals;
                 globals.__discardConfirmationCalls.push(options);
                 return globals.__shouldDiscardNarrationChanges;
@@ -254,20 +249,11 @@ async function installMockIpcHandlers(app: ElectronApplication) {
                 removeAudio: async () => ({ success: true as const }),
             };
 
-            const installNarrationTestAdapters = (
-                globalThis as typeof globalThis & {
-                    __installNarrationTestAdapters: (
-                        mappingSource: unknown,
-                        synthesizer: unknown,
-                        powerpoint: unknown,
-                    ) => void;
-                }
-            ).__installNarrationTestAdapters;
-            installNarrationTestAdapters(
+            globalThis.powerNarratorTestHarness!.useNarrationAdapters({
                 mappingSource,
-                deterministicFakeTtsAdapter,
-                deterministicFakePowerPointAdapter,
-            );
+                synthesizer: deterministicFakeTtsAdapter,
+                getPowerPoint: () => deterministicFakePowerPointAdapter,
+            });
         },
         {
             testFilePath: FIXTURE_TEST,

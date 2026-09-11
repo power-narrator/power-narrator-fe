@@ -1,6 +1,6 @@
 import { ActionIcon, Box, Button, Center, Group, Loader, Slider, Stack, Text } from "@mantine/core";
 import { IconHistory, IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react";
-import type { NarrationSection } from "../../../electron/narration/NarrationSections";
+import type { NarrationSection } from "../../../shared/narration/NarrationSections";
 import { getSpeakerOptions } from "../../utils/viewer";
 import type { Voice } from "../../../shared/types/tts";
 import { useNarrationPreview } from "./useNarrationPreview";

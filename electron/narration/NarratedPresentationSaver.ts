@@ -15,6 +15,10 @@ export class NarratedPresentationSaver {
     private readonly getPowerPoint: () => SavePowerPoint,
   ) {}
 
+  /**
+   * Commits one slide. Named separately from {@link savePresentation} because
+   * the single-slide save is its own IPC channel with its own request shape.
+   */
   saveSlide(request: NarratedSlideSaveRequest): Promise<NarratedSaveResult> {
     return this.savePresentation({
       filePath: request.filePath,
