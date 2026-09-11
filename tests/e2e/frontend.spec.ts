@@ -45,7 +45,14 @@ const MOCK_VOICES: Record<string, Voice> = {
   },
 };
 
-const TINY_FAKE_AUDIO_BYTES = [1, 2, 3, 4];
+const SILENT_MP3_FRAME = [
+  0xff,
+  0xfb,
+  0x90,
+  0x64,
+  ...Array.from({ length: 413 }, () => 0),
+];
+const DETERMINISTIC_MP3_BYTES = [...SILENT_MP3_FRAME, ...SILENT_MP3_FRAME, ...SILENT_MP3_FRAME];
 
 type GeneratedSpeechCall = {
   text: string;
@@ -96,7 +103,7 @@ async function launchTestApp() {
 
 async function installMockIpcHandlers(app: ElectronApplication) {
   await app.evaluate(
-    async ({ ipcMain }, { testFilePath, mockSlides, mockVoices, tinyFakeAudioBytes }) => {
+    async ({ ipcMain }, { testFilePath, mockSlides, mockVoices, deterministicMp3Bytes }) => {
       const discardConfirmationGlobals = globalThis as DiscardConfirmationTestGlobals;
       discardConfirmationGlobals.__discardConfirmationCalls = [];
       discardConfirmationGlobals.__shouldDiscardNarrationChanges = false;
@@ -214,12 +221,12 @@ async function installMockIpcHandlers(app: ElectronApplication) {
                     __completedPreviewSyntheses: number;
                   }
                 ).__completedPreviewSyntheses += 1;
-                resolve({ audio: new Uint8Array(tinyFakeAudioBytes), mediaType: "audio/mpeg" });
+                resolve({ audio: new Uint8Array(deterministicMp3Bytes), mediaType: "audio/mpeg" });
               };
             });
           }
 
-          return { audio: new Uint8Array(tinyFakeAudioBytes), mediaType: "audio/mpeg" };
+          return { audio: new Uint8Array(deterministicMp3Bytes), mediaType: "audio/mpeg" };
         },
       };
       (globalThis as typeof globalThis & { __insertAudioCalls?: unknown[] }).__insertAudioCalls =
@@ -258,7 +265,7 @@ async function installMockIpcHandlers(app: ElectronApplication) {
       testFilePath: FIXTURE_TEST,
       mockSlides: MOCK_SLIDES,
       mockVoices: MOCK_VOICES,
-      tinyFakeAudioBytes: TINY_FAKE_AUDIO_BYTES,
+      deterministicMp3Bytes: DETERMINISTIC_MP3_BYTES,
     },
   );
 }
@@ -358,6 +365,16 @@ async function resetCapturedIpcCalls() {
     globals.__previewMappings = mockVoices;
     globals.__failNextNarrationSynthesis = false;
   }, MOCK_VOICES);
+  await window.evaluate(() => {
+    const globals = globalThis as typeof globalThis & {
+      __audioPlayUrls: string[];
+      __createdBlobUrls: string[];
+      __revokedBlobUrls: string[];
+    };
+    globals.__audioPlayUrls = [];
+    globals.__createdBlobUrls = [];
+    globals.__revokedBlobUrls = [];
+  });
 }
 
 async function resetGeneratedSpeechCalls() {
@@ -512,6 +529,20 @@ test.describe("PPT Viewer UI Workflows", () => {
     await expect.poll(getCompletedPreviewSyntheses).toBe(1);
   });
 
+  test("previews narration through Electron with deterministic MP3 audio", async () => {
+    await resetGeneratedSpeechCalls();
+
+    await window.getByRole("button", { name: "Narrator", exact: true }).click();
+
+    await expect.poll(getGeneratedSpeechCalls).toContainEqual({
+      text: MOCK_SLIDES[0]!.notes,
+      voiceOption: MOCK_VOICES.Narrator,
+    });
+    await expect.poll(getPlaybackActivity).toMatchObject({
+      playUrls: [expect.stringMatching(/^blob:/)],
+    });
+  });
+
   test("saves the full presentation through Electron narration preparation", async () => {
     await window.getByRole("button", { name: "Save All Slides", exact: true }).click();
 
@@ -530,7 +561,7 @@ test.describe("PPT Viewer UI Workflows", () => {
         slidesAudio: MOCK_SLIDES.map((slide) => ({
           index: slide.index,
           sectionIndex: 0,
-          audioData: new Uint8Array(TINY_FAKE_AUDIO_BYTES),
+          audioData: new Uint8Array(DETERMINISTIC_MP3_BYTES),
         })),
       },
     ]);

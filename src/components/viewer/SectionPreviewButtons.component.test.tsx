@@ -6,6 +6,7 @@ import type {
   NarrationPreviewResult,
   PreviewNarrationRequest,
 } from "../../../shared/types/narration";
+import type { NarrationSection } from "../../../shared/narration/NarrationSections";
 import type { Voice } from "../../../shared/types/tts";
 import { AudioProvider } from "../../context/AudioContext";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
@@ -25,6 +26,60 @@ afterEach(() => {
 
 function playedMediaTypes(createObjectUrl: MockInstance<typeof URL.createObjectURL>) {
   return createObjectUrl.mock.calls.map(([source]) => (source as Blob).type);
+}
+
+async function renderSpeakerChoicePreview({
+  slideNotes,
+  section,
+  sectionIndex = 0,
+  captureAudio = false,
+}: {
+  slideNotes: string;
+  section: NarrationSection;
+  sectionIndex?: number;
+  captureAudio?: boolean;
+}) {
+  const previewRequests: PreviewNarrationRequest[] = [];
+  const audioElements: HTMLAudioElement[] = [];
+  Object.defineProperty(window, "electronAPI", {
+    configurable: true,
+    value: {
+      prepareNarrationPreview: async (request: PreviewNarrationRequest) => {
+        previewRequests.push(request);
+        return { audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" };
+      },
+    } as unknown as typeof window.electronAPI,
+  });
+  if (captureAudio) {
+    const NativeAudio = window.Audio;
+    vi.spyOn(window, "Audio").mockImplementation(function (...args) {
+      const audio = new NativeAudio(...args);
+      audioElements.push(audio);
+      return audio;
+    });
+  }
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
+  const screen = await render(
+    <MantineProvider>
+      <AudioProvider>
+        <NarrationPreviewProvider>
+          <SectionPreviewButtons
+            id={`1-${sectionIndex}`}
+            slideIndex={1}
+            sectionIndex={sectionIndex}
+            slideNotes={slideNotes}
+            section={section}
+            mappings={{ Narrator: narratorVoice }}
+            onFocus={() => undefined}
+          />
+        </NarrationPreviewProvider>
+      </AudioProvider>
+    </MantineProvider>,
+  );
+
+  return { audioElements, previewRequests, screen };
 }
 
 test("previews only the text selected in the live notes editor", async () => {
@@ -59,7 +114,6 @@ test("previews only the text selected in the live notes editor", async () => {
               sectionIndex={0}
               slideNotes="Stale section text"
               section={{ speaker: "Narrator", text: "Stale section text" }}
-              effectiveSpeaker="Narrator"
               mappings={{ Narrator: narratorVoice }}
               onFocus={() => undefined}
               getTextarea={() => editorRef.current}
@@ -78,9 +132,84 @@ test("previews only the text selected in the live notes editor", async () => {
 
   await vi.waitFor(() => {
     expect(previewRequests).toContainEqual(
-      expect.objectContaining({ text: "only this phrase", previewSpeaker: "Narrator" }),
+      expect.objectContaining({
+        text: "only this phrase",
+        speakerChoice: { kind: "override", speaker: "Narrator" },
+      }),
     );
   });
+});
+
+test("an effective preview derives its highlighted speaker from slide notes", async () => {
+  const { previewRequests, screen } = await renderSpeakerChoicePreview({
+    slideNotes: "[Narrator]\nFirst\n---\nInherited",
+    section: { speaker: "", text: "Inherited" },
+    sectionIndex: 1,
+  });
+
+  await screen.getByRole("button", { name: "Preview effective speaker" }).click();
+
+  expect(screen.getByRole("button", { name: "Stop preview" }).element()).toHaveAttribute(
+    "title",
+    "Effective speaker: Narrator",
+  );
+  await vi.waitFor(() =>
+    expect(previewRequests).toEqual([
+      expect.objectContaining({ speakerChoice: { kind: "effective" } }),
+    ]),
+  );
+  await vi.waitFor(() =>
+    expect(screen.getByRole("button", { name: "Narrator" }).element()).toHaveAttribute(
+      "data-variant",
+      "filled",
+    ),
+  );
+});
+
+test("an effective preview remembers the inherited speaker after playback", async () => {
+  const { audioElements, previewRequests, screen } = await renderSpeakerChoicePreview({
+    slideNotes: "[Narrator]\nFirst\n---\nInherited",
+    section: { speaker: "", text: "Inherited" },
+    sectionIndex: 1,
+    captureAudio: true,
+  });
+
+  await screen.getByRole("button", { name: "Preview effective speaker" }).click();
+  await vi.waitFor(() => expect(previewRequests).toHaveLength(1));
+  const activeAudio = audioElements.at(-1);
+  expect(activeAudio).toBeDefined();
+  activeAudio!.dispatchEvent(new Event("play"));
+  await vi.waitFor(() =>
+    expect(screen.getByRole("button", { name: "Stop preview" })).toBeVisible(),
+  );
+  activeAudio!.dispatchEvent(new Event("ended"));
+
+  await vi.waitFor(() =>
+    expect(screen.getByRole("button", { name: "Preview effective speaker" })).toBeVisible(),
+  );
+  expect(screen.getByRole("button", { name: "Narrator" }).element()).toHaveAttribute(
+    "title",
+    "Previously previewed",
+  );
+});
+
+test("an explicit Default preview remains a temporary override", async () => {
+  const slideNotes = "[Narrator]\nStored narration";
+  const { previewRequests, screen } = await renderSpeakerChoicePreview({
+    slideNotes,
+    section: { speaker: "Narrator", text: "Stored narration" },
+  });
+
+  await screen.getByRole("button", { name: "Default" }).click();
+
+  await vi.waitFor(() =>
+    expect(previewRequests).toEqual([
+      expect.objectContaining({
+        notes: slideNotes,
+        speakerChoice: { kind: "default" },
+      }),
+    ]),
+  );
 });
 
 test("stopping a pending preview suppresses its late audio result", async () => {
@@ -107,7 +236,6 @@ test("stopping a pending preview suppresses its late audio result", async () => 
             sectionIndex={0}
             slideNotes="Delayed preview"
             section={{ speaker: "Narrator", text: "Delayed preview" }}
-            effectiveSpeaker="Narrator"
             mappings={{ Narrator: narratorVoice }}
             onFocus={() => undefined}
           />
@@ -152,7 +280,6 @@ test("a newer section preview suppresses an older section's late result", async 
             sectionIndex={0}
             slideNotes="First section"
             section={{ speaker: "First", text: "First section" }}
-            effectiveSpeaker="First"
             mappings={{ First: narratorVoice }}
             onFocus={() => undefined}
           />
@@ -162,7 +289,6 @@ test("a newer section preview suppresses an older section's late result", async 
             sectionIndex={1}
             slideNotes="Second section"
             section={{ speaker: "Second", text: "Second section" }}
-            effectiveSpeaker="Second"
             mappings={{ Second: narratorVoice }}
             onFocus={() => undefined}
           />
@@ -209,7 +335,6 @@ test("active playback remains stoppable while another section generates", async 
             sectionIndex={0}
             slideNotes="First section"
             section={{ speaker: "First", text: "First section" }}
-            effectiveSpeaker="First"
             mappings={{ First: narratorVoice }}
             onFocus={() => undefined}
           />
@@ -219,7 +344,6 @@ test("active playback remains stoppable while another section generates", async 
             sectionIndex={1}
             slideNotes="Second section"
             section={{ speaker: "Second", text: "Second section" }}
-            effectiveSpeaker="Second"
             mappings={{ Second: narratorVoice }}
             onFocus={() => undefined}
           />
@@ -262,7 +386,6 @@ test("plays back preview audio as the media type the provider returned", async (
             sectionIndex={0}
             slideNotes="[Narrator]\nLocal narration"
             section={{ speaker: "Narrator", text: "Local narration" }}
-            effectiveSpeaker="Narrator"
             mappings={{ Narrator: narratorVoice }}
             onFocus={() => undefined}
           />

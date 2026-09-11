@@ -8,7 +8,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { NarrationSection } from "../../../shared/narration/NarrationSections";
+import {
+  getEffectiveSpeaker,
+  parseNarrationSections,
+  type NarrationSection,
+} from "../../../shared/narration/NarrationSections";
+import { DEFAULT_SPEAKER_VALUE } from "../../../shared/narration/speaker";
+import type { PreviewSpeakerChoice } from "../../../shared/types/narration";
 import { useAudio } from "../../context/useAudio";
 import { getErrorMessage } from "../../utils/errors";
 
@@ -82,6 +88,10 @@ interface NarrationPreviewOptions {
 }
 
 export function useNarrationPreview(options: NarrationPreviewOptions) {
+  const effectiveSpeaker = getEffectiveSpeaker(
+    parseNarrationSections(options.slideNotes),
+    options.sectionIndex,
+  );
   const {
     activeId,
     isPlaying: audioIsPlaying,
@@ -131,7 +141,13 @@ export function useNarrationPreview(options: NarrationPreviewOptions) {
   );
 
   const play = useCallback(
-    async (target: string, previewSpeaker?: string) => {
+    async (speakerChoice: PreviewSpeakerChoice) => {
+      const target =
+        speakerChoice.kind === "effective"
+          ? effectiveSpeaker
+          : speakerChoice.kind === "default"
+            ? DEFAULT_SPEAKER_VALUE
+            : speakerChoice.speaker;
       if (activeTarget === target) {
         stop();
         return;
@@ -159,7 +175,7 @@ export function useNarrationPreview(options: NarrationPreviewOptions) {
           sectionIndex: options.sectionIndex,
           notes: options.slideNotes,
           text,
-          ...(previewSpeaker !== undefined ? { previewSpeaker } : {}),
+          speakerChoice,
         });
         if (!isCurrent(token)) return;
 
@@ -175,10 +191,11 @@ export function useNarrationPreview(options: NarrationPreviewOptions) {
         finish(token);
       }
     },
-    [activeTarget, claim, clear, finish, isCurrent, options, playAudio, stop],
+    [activeTarget, claim, clear, effectiveSpeaker, finish, isCurrent, options, playAudio, stop],
   );
 
   return {
+    effectiveSpeaker,
     activeTarget,
     lastPlayedSpeaker,
     isGenerating,
