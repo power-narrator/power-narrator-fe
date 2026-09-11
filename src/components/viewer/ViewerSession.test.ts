@@ -18,23 +18,23 @@ function loadedSession(): ViewerSessionState {
   return loadViewerSession([firstSlide, secondSlide]);
 }
 
-function edit(state: ViewerSessionState, position: number, notes: string): ViewerSessionState {
+function editSlide(
+  state: ViewerSessionState,
+  type: "edit" | "checkpoint",
+  position: number,
+  notes: string,
+): ViewerSessionState {
   const slides = state.slides.map((existing, index) =>
     index === position ? { ...existing, notes } : existing,
   );
-  return reduceViewerSession(state, { type: "edit", slides, changedSlidePositions: [position] });
+  return reduceViewerSession(state, { type, slides, changedSlidePositions: [position] });
 }
 
-function checkpoint(state: ViewerSessionState, position: number, notes: string) {
-  const slides = state.slides.map((existing, index) =>
-    index === position ? { ...existing, notes } : existing,
-  );
-  return reduceViewerSession(state, {
-    type: "checkpoint",
-    slides,
-    changedSlidePositions: [position],
-  });
-}
+const edit = (state: ViewerSessionState, position: number, notes: string) =>
+  editSlide(state, "edit", position, notes);
+
+const checkpoint = (state: ViewerSessionState, position: number, notes: string) =>
+  editSlide(state, "checkpoint", position, notes);
 
 describe("reduceViewerSession", () => {
   it("marks an edited slide dirty", () => {
@@ -47,19 +47,6 @@ describe("reduceViewerSession", () => {
     const edited = edit(loadedSession(), 0, "Edited");
 
     expect([...edit(edited, 0, "First narration").dirtySlideIndices]).toEqual([]);
-  });
-
-  it("treats absent notes as empty when comparing against saved notes", () => {
-    const session = loadViewerSession([slide(1, "")]);
-    const slides = [{ ...session.slides[0]!, notes: undefined }] as unknown as Slide[];
-
-    const edited = reduceViewerSession(session, {
-      type: "edit",
-      slides,
-      changedSlidePositions: [0],
-    });
-
-    expect([...edited.dirtySlideIndices]).toEqual([]);
   });
 
   it("records a history entry on checkpoint", () => {

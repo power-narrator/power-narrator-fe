@@ -70,7 +70,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("undo and redo keyboard shortcuts reach the session and render", async () => {
+test("renders the notes restored by undo/redo keyboard shortcuts", async () => {
   installElectronApi();
   const { screen } = await renderViewer();
   const editor = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });

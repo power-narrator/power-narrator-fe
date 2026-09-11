@@ -270,6 +270,7 @@ describe("TtsManager", () => {
 
   it("synthesizes again after a shared pending request fails", async () => {
     const provider = createProvider();
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
     provider.generateSpeech
       .mockRejectedValueOnce(new Error("temporary outage"))
       .mockResolvedValueOnce(new Uint8Array([9, 9, 9]));
@@ -286,6 +287,7 @@ describe("TtsManager", () => {
       mediaType: "audio/mpeg",
     });
     expect(provider.generateSpeech).toHaveBeenCalledTimes(2);
+    expect(errorLog).toHaveBeenCalledOnce();
   });
 
   it("starts unrelated requests without waiting for each other", async () => {
