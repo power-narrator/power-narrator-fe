@@ -577,15 +577,14 @@ test.describe("PPT Viewer UI Workflows", () => {
     );
 
     expect(observed.result).toEqual({ success: true });
-    // The final update can race the invoke reply, so assert that what did arrive is an
-    // unbroken run of completion counts rather than a fixed number of updates.
+    // Main sends an update per prepared slide, but the renderer resolves the invoke reply
+    // before the last one is dispatched, so the teardown asserted below discards it. This
+    // flow therefore proves only that progress crosses the bridge; the exact sequence of
+    // updates is asserted in electron/narration/registerNarratedSaveIpc.test.ts.
     expect(observed.progress.length).toBeGreaterThan(0);
-    expect(observed.progress.map((progress) => progress.total)).toEqual(
-      observed.progress.map(() => MOCK_SLIDES.length),
-    );
-    expect([...observed.progress].map((progress) => progress.completed).sort()).toEqual(
-      observed.progress.map((_, position) => position + 1),
-    );
+    for (const progress of observed.progress) {
+      expect(progress.total).toBe(MOCK_SLIDES.length);
+    }
 
     // The bridge names each request's channel from a private counter, so probe every id
     // this window could plausibly have used rather than guessing one.
