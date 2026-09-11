@@ -48,7 +48,7 @@ function createPreparation(mappings: Record<string, Voice> = { Narrator: narrato
   return { preparation, generateSpeech };
 }
 
-describe("NarrationPreparation.preparePreview", () => {
+describe("NarrationPreparation", () => {
   it("reuses cached narration for a repeated prepared request", async () => {
     const cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "power-narrator-preparation-"));
     onTestFinished(() => fs.rmSync(cacheDirectory, { recursive: true, force: true }));
@@ -79,6 +79,36 @@ describe("NarrationPreparation.preparePreview", () => {
     });
 
     expect(synthesize).toHaveBeenCalledOnce();
+  });
+
+  it("returns batch audio in slide and section order regardless of synthesis order", async () => {
+    const pending = new Map<string, (audio: { audio: Uint8Array; mediaType: string }) => void>();
+    const generateSpeech = vi.fn(
+      (text: string) =>
+        new Promise<{ audio: Uint8Array; mediaType: string }>((resolve) => {
+          pending.set(text, resolve);
+        }),
+    );
+    const preparation = new NarrationPreparation(
+      { getSpeakerMappings: () => ({ Narrator: narratorVoice }) },
+      { supportsProvider: () => true, generateSpeech },
+    );
+
+    const batch = preparation.prepareBatch([
+      { slideIndex: 5, notes: "[Narrator]\nFive first\n---\nFive second" },
+      { slideIndex: 1, notes: "[Narrator]\nOne first" },
+    ]);
+    await vi.waitFor(() => expect(pending.size).toBe(3));
+
+    pending.get("One first")?.({ audio: new Uint8Array([3]), mediaType: "audio/mpeg" });
+    pending.get("Five second")?.({ audio: new Uint8Array([2]), mediaType: "audio/mpeg" });
+    pending.get("Five first")?.({ audio: new Uint8Array([1]), mediaType: "audio/mpeg" });
+
+    await expect(batch).resolves.toEqual([
+      { index: 5, sectionIndex: 0, audioData: new Uint8Array([1]) },
+      { index: 5, sectionIndex: 1, audioData: new Uint8Array([2]) },
+      { index: 1, sectionIndex: 0, audioData: new Uint8Array([3]) },
+    ]);
   });
 
   it("normalizes live text and synthesizes with the section's mapped speaker", async () => {
