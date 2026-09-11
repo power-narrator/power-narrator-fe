@@ -2,11 +2,9 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import type { AudioEncoding, TtsProvider, Voice } from "../tts/TtsProvider.js";
+import type { TtsProvider, Voice } from "../tts/TtsProvider.js";
 import { TtsManager } from "../tts/TtsManager.js";
 import { NarrationPreparation, NarrationPreparationError } from "./NarrationPreparation.js";
-
-const MP3_ENCODING: AudioEncoding = { fileExtension: "mp3", mediaType: "audio/mpeg" };
 
 const narratorVoice: Voice = {
   name: "en-US-narrator",
@@ -57,7 +55,6 @@ describe("NarrationPreparation", () => {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
         cacheIdentity: { text, voice: voice.name },
-        encoding: MP3_ENCODING,
         synthesize,
       }),
     };

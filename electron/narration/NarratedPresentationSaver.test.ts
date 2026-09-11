@@ -59,7 +59,6 @@ function createCachedRetrySaver(
     getVoices: vi.fn().mockResolvedValue([narratorVoice, alternateNarratorVoice]),
     prepareSpeech: (text, voice) => ({
       cacheIdentity: { text, voice: voice.name },
-      encoding: { fileExtension: "mp3", mediaType: "audio/mpeg" },
       synthesize,
     }),
   };

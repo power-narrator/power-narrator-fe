@@ -10,6 +10,8 @@ import type {
   Voice,
 } from "./TtsProvider.js";
 
+const MP3_MEDIA_TYPE = "audio/mpeg";
+
 export function getNarrationCacheDirectory(
   homeDirectory: string,
   platform: NodeJS.Platform = process.platform,
@@ -100,13 +102,12 @@ export class TtsManager {
         }),
       )
       .digest("hex");
-    const mediaType = preparedRequest.encoding.mediaType;
-    const cachePath = path.join(cacheDir, `${hash}.${preparedRequest.encoding.fileExtension}`);
+    const cachePath = path.join(cacheDir, `${hash}.mp3`);
 
     if (fs.existsSync(cachePath)) {
       console.log(`Serving TTS from persistent cache: ${hash}`);
       const buffer = fs.readFileSync(cachePath);
-      return { audio: new Uint8Array(buffer), mediaType };
+      return { audio: new Uint8Array(buffer), mediaType: MP3_MEDIA_TYPE };
     }
 
     const existingRequest = this.pending.get(hash);
@@ -118,7 +119,7 @@ export class TtsManager {
       .then(() => preparedRequest.synthesize())
       .then((audioData) => {
         this.writeCacheEntry(cachePath, Buffer.from(audioData));
-        return { audio: new Uint8Array(audioData), mediaType };
+        return { audio: new Uint8Array(audioData), mediaType: MP3_MEDIA_TYPE };
       })
       .catch((error: unknown) => {
         console.error(`TTS generation failed via ${providerId}:`, error);

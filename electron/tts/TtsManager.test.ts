@@ -51,7 +51,6 @@ function createProvider(
     getVoices: vi.fn().mockResolvedValue(voices),
     prepareSpeech: (text, voice) => ({
       cacheIdentity: { text, voice: voice.name },
-      encoding: { fileExtension: "mp3", mediaType: "audio/mpeg" },
       synthesize: () => generateSpeech(text, voice),
     }),
     generateSpeech,
@@ -128,23 +127,22 @@ describe("TtsManager", () => {
     expect(fs.readdirSync(cacheDirectory)).toEqual([expect.stringMatching(/^[a-f0-9]{64}\.mp3$/)]);
   });
 
-  it("names cache entries for the provider's actual output encoding", async () => {
-    const wavProvider: TtsProvider = {
+  it("stores output from every registered provider as PowerPoint-compatible MP3", async () => {
+    const futureProvider: TtsProvider = {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
         cacheIdentity: { text, voice: voice.name },
-        encoding: { fileExtension: "wav", mediaType: "audio/wav" },
         synthesize: async () => new Uint8Array([1, 2, 3]),
       }),
     };
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["future-provider", wavProvider]]), cacheDirectory);
+    const manager = new TtsManager(new Map([["future-provider", futureProvider]]), cacheDirectory);
 
     await expect(manager.generateSpeech("Future narration", futureVoice)).resolves.toEqual({
       audio: new Uint8Array([1, 2, 3]),
-      mediaType: "audio/wav",
+      mediaType: "audio/mpeg",
     });
-    expect(fs.readdirSync(cacheDirectory)).toEqual([expect.stringMatching(/^[a-f0-9]{64}\.wav$/)]);
+    expect(fs.readdirSync(cacheDirectory)).toEqual([expect.stringMatching(/^[a-f0-9]{64}\.mp3$/)]);
   });
 
   it("never serves an entry whose write was interrupted", async () => {
@@ -212,7 +210,6 @@ describe("TtsManager", () => {
           input: { ssml: text.startsWith("<speak>") ? text : `<speak>${text}</speak>` },
           voice: { languageCode: voice.languageCodes[0] ?? "", name: voice.name },
         },
-        encoding: { fileExtension: "mp3", mediaType: "audio/mpeg" },
         synthesize,
       }),
     };
@@ -234,7 +231,6 @@ describe("TtsManager", () => {
         const preparedEncoding = audioEncoding;
         return {
           cacheIdentity: { input: { text }, voice: voice.name, audioEncoding: preparedEncoding },
-          encoding: { fileExtension: "mp3", mediaType: "audio/mpeg" },
           synthesize: () => synthesize(preparedEncoding),
         };
       },
@@ -262,7 +258,6 @@ describe("TtsManager", () => {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
         cacheIdentity: { text, voice: voice.name },
-        encoding: { fileExtension: "mp3", mediaType: "audio/mpeg" },
         synthesize,
       }),
     };
@@ -314,7 +309,6 @@ describe("TtsManager", () => {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text) => ({
         cacheIdentity: { text },
-        encoding: { fileExtension: "mp3", mediaType: "audio/mpeg" },
         synthesize: () =>
           new Promise<Uint8Array>((resolve) => {
             starts.push(text);
