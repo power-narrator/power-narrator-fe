@@ -223,15 +223,19 @@ describe("TtsManager", () => {
   });
 
   it("does not reuse an entry when the prepared request changes", async () => {
-    let audioEncoding = "MP3";
+    let speakingRate = 1;
     const synthesize = vi.fn().mockResolvedValue(new Uint8Array([1]));
     const provider: TtsProvider = {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text, voice) => {
-        const preparedEncoding = audioEncoding;
+        const preparedSpeakingRate = speakingRate;
         return {
-          cacheIdentity: { input: { text }, voice: voice.name, audioEncoding: preparedEncoding },
-          synthesize: () => synthesize(preparedEncoding),
+          cacheIdentity: {
+            input: { text },
+            voice: voice.name,
+            audioConfig: { audioEncoding: "MP3", speakingRate: preparedSpeakingRate },
+          },
+          synthesize: () => synthesize(preparedSpeakingRate),
         };
       },
     };
@@ -239,11 +243,11 @@ describe("TtsManager", () => {
     const manager = new TtsManager(new Map([["gcp", provider]]), cacheDirectory);
 
     await manager.generateSpeech("Settings", gcpVoice);
-    audioEncoding = "LINEAR16";
+    speakingRate = 1.25;
     await manager.generateSpeech("Settings", gcpVoice);
 
-    expect(synthesize).toHaveBeenNthCalledWith(1, "MP3");
-    expect(synthesize).toHaveBeenNthCalledWith(2, "LINEAR16");
+    expect(synthesize).toHaveBeenNthCalledWith(1, 1);
+    expect(synthesize).toHaveBeenNthCalledWith(2, 1.25);
   });
 
   it("combines simultaneous requests for the same narration", async () => {
