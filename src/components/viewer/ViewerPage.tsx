@@ -148,13 +148,28 @@ export function ViewerPage({
     viewerSession.reloadCompleted(nextSlides, reloadedPositions);
   }
 
-  async function saveNotesToFile(slidesToSave: Slide[]) {
-    const result = await electronAPI.saveNotes(filePath, slidesToSave);
+  /**
+   * Commits the whole presentation through the narrated save path, so notes and
+   * narration audio are validated, synthesized, and committed together.
+   */
+  async function commitNarratedPresentation(setStatus: (status: string) => void) {
+    const result = await electronAPI.saveNarratedPresentation(
+      {
+        filePath,
+        slides: slides.map((slide) => ({
+          slideIndex: slide.index,
+          notes: slide.notes || "",
+        })),
+      },
+      ({ completed, total }) => setStatus(`Preparing narration ${completed}/${total}...`),
+    );
     if (!result.success) {
-      throw new Error(result.message);
+      reportNarratedSaveFailure(result);
+      return false;
     }
 
-    return result;
+    markSlidesFullySaved(slides.map((slide, position) => ({ slide, position })));
+    return true;
   }
 
   function runRemoveAudio(slideIndices: number[]) {
@@ -340,9 +355,13 @@ export function ViewerPage({
   const handleGenerateVideo = async () => {
     await operation.run(
       "generateVideo",
-      "Saving notes...",
+      "Preparing narration...",
       async (command) => {
-        await saveNotesToFile(slides);
+        if (!(await commitNarratedPresentation(command.setStatus))) {
+          command.clearStatus();
+          return;
+        }
+
         const savePath = await electronAPI.getVideoSavePath();
         if (!savePath) {
           command.clearStatus();
@@ -369,23 +388,11 @@ export function ViewerPage({
       "saveAllSlides",
       "Preparing narration...",
       async (command) => {
-        const result = await electronAPI.saveNarratedPresentation(
-          {
-            filePath,
-            slides: slides.map((slide) => ({
-              slideIndex: slide.index,
-              notes: slide.notes || "",
-            })),
-          },
-          ({ completed, total }) =>
-            command.setStatus(`Preparing narration ${completed}/${total}...`),
-        );
-        if (!result.success) {
-          reportNarratedSaveFailure(result);
+        if (!(await commitNarratedPresentation(command.setStatus))) {
           command.clearStatus();
           return;
         }
-        markSlidesFullySaved(slides.map((slide, position) => ({ slide, position })));
+
         command.showOutcome("Saved slides!");
       },
       (error) => alertError("Save error", error),

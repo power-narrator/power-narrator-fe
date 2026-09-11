@@ -199,7 +199,7 @@ async function installMockIpcHandlers(app: ElectronApplication) {
           ).__generatedSpeechCalls.push({ text, voiceOption });
 
           if (text === "Delayed preview") {
-            return new Promise<Uint8Array>((resolve) => {
+            return new Promise<{ audio: Uint8Array; mediaType: string }>((resolve) => {
               (
                 globalThis as typeof globalThis & {
                   __resolveDelayedPreview?: () => void;
@@ -210,12 +210,12 @@ async function installMockIpcHandlers(app: ElectronApplication) {
                     __completedPreviewSyntheses: number;
                   }
                 ).__completedPreviewSyntheses += 1;
-                resolve(new Uint8Array(tinyFakeAudioBytes));
+                resolve({ audio: new Uint8Array(tinyFakeAudioBytes), mediaType: "audio/mpeg" });
               };
             });
           }
 
-          return new Uint8Array(tinyFakeAudioBytes);
+          return { audio: new Uint8Array(tinyFakeAudioBytes), mediaType: "audio/mpeg" };
         },
       };
       (globalThis as typeof globalThis & { __insertAudioCalls?: unknown[] }).__insertAudioCalls =

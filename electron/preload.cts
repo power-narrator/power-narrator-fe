@@ -17,6 +17,7 @@ import type {
   NarratedSaveResult,
   NarratedSlideSaveRequest,
   NarrationPreparationProgress,
+  NarrationPreviewResult,
   PreviewNarrationRequest,
 } from "../shared/types/narration.js";
 let narratedPresentationRequestId = 0;
@@ -53,7 +54,7 @@ const electronAPI = {
     }
   },
   getVoices: (): Promise<Voice[]> => ipcRenderer.invoke("get-voices"),
-  prepareNarrationPreview: (payload: PreviewNarrationRequest): Promise<Uint8Array> =>
+  prepareNarrationPreview: (payload: PreviewNarrationRequest): Promise<NarrationPreviewResult> =>
     ipcRenderer.invoke("prepare-narration-preview", payload),
   getGcpKeyPath: (): Promise<string | null> => ipcRenderer.invoke("get-gcp-key-path"),
   setGcpKey: (): Promise<SetGcpKeyResult> => ipcRenderer.invoke("set-gcp-key"),

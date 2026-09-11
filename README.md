@@ -79,7 +79,9 @@ User saves the current slide or full presentation
 
 ```
 User clicks "Generate Video"
-  → Auto-save notes to .pptx
+  → IPC: save-narrated-presentation (same narrated save as "Save All Slides")
+    → notes and narration audio are validated, synthesized, and committed first
+    → a preparation or PowerPoint failure stops here; no video is rendered
   → IPC: generate-video
     → export-to-video.applescript → PowerPoint exports MP4
 ```
@@ -98,7 +100,7 @@ To ensure reliable cross-platform compatibility and prevent formatting loss duri
 1. **Line Break Unification**: PowerPoint on macOS can inject various line-ending characters (e.g., `\r`, `\r\n`, `\u2028`, `\u2029`). The parser first normalizes all variations into standard `\n` to ensure regex consistency.
 2. **Whitespace Preservation**: The parser avoids aggressive trimming. It only strips horizontal whitespace around tags (`[Speaker]`) and dividers (`---`), preserving all intentional vertical spacing and indentation within the content.
 3. **Robust Section Splitting**: Uses advanced regex to identify section dividers regardless of surrounding whitespace or newline variations, preventing issues where sections might fail to split due to hidden PowerPoint formatting.
-4. **Speaker Inheritance**: Narration preparation resolves an unspecified section to the nearest earlier explicit speaker on the same slide, or to the configured default voice when none exists.
+4. **Effective Speaker**: Narration preparation resolves an unspecified section to the nearest earlier explicitly selected speaker on the same slide, or to the configured default voice when none exists.
 
 ---
 
@@ -115,7 +117,7 @@ To ensure reliable cross-platform compatibility and prevent formatting loss duri
 - Edit speaker notes per slide directly in the UI
 - **Multi-section notes** — split a slide's notes into multiple sections separated by `---`
 - **Multi-speaker support** — tag each section with a `[SpeakerName]` label to assign different voices
-- **Speaker Inheritance** — sections without an explicit tag (or set to "Default") automatically inherit the voice from the most recently specified section on the slide
+- **Effective Speaker** — sections without an explicit tag (or set to "Default") inherit the speaker from the nearest earlier explicitly selected section on the same slide, falling back to the configured default voice
 - **Advanced SSML Toolbar** — insert tags at the cursor for:
   - `<break time="..."/>` with common presets and custom duration support
   - `<say-as interpret-as="...">` for spell-out, cardinal/ordinal numbers, digits, fractions, and expletives
@@ -133,7 +135,7 @@ To ensure reliable cross-platform compatibility and prevent formatting loss duri
   - **Recently Played Indicator**: The play button icon changes to a history icon (`IconHistory`) for the most recently tested voice in each section.
 - **Selection Playback** — highlight any subset of text in the editor before clicking a preview button to narrate only that specific selection
 - **Audio Orchestration** — maintains a global audio context; starting a new preview or slide-playback automatically stops any existing audio to prevent overlapping
-- Persistent disposable audio cache (SHA-256 keyed, stored in the operating system's application-cache location)
+- Persistent, disposable audio cache — SHA-256 keyed and stored in the operating system's application-cache location. It survives restarts and reboots, and the application never evicts entries; users or the operating system may delete it at any time without losing notes, settings, or other authored work.
 
 ### Multi-Speaker Mapping
 
