@@ -11,9 +11,7 @@ import type {
  * discard-changes prompt, and nothing else.
  */
 export interface PowerNarratorTestHarness {
-  /** Re-registers the narration IPC channels against fake TTS/PowerPoint adapters. */
   useNarrationAdapters(adapters: NarrationAdapters): void;
-  /** Answers the discard-unsaved-changes prompt without opening a dialog. */
   useDiscardConfirmation(confirmDiscard: DiscardConfirmation): void;
 }
 
@@ -21,10 +19,7 @@ declare global {
   var powerNarratorTestHarness: PowerNarratorTestHarness | undefined;
 }
 
-/**
- * Publishes the harness on the main-process global. Only the bootstrap calls
- * this, and only when the app was launched with `NODE_ENV=test`.
- */
+/** Called by the bootstrap only, and only when launched with `NODE_ENV=test`. */
 export function installTestHarness(unsavedNarrationChanges: UnsavedNarrationChanges): void {
   globalThis.powerNarratorTestHarness = {
     useNarrationAdapters: (adapters) => registerNarrationIpc(ipcMain, adapters),

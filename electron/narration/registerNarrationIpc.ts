@@ -10,7 +10,6 @@ import { registerNarratedPresentationSaveIpc } from "./registerNarratedPresentat
 import { registerNarratedSlideSaveIpc } from "./registerNarratedSlideSaveIpc.js";
 import { registerNarrationPreviewIpc } from "./registerNarrationPreviewIpc.js";
 
-/** The PowerPoint operations a narrated save needs. */
 export type NarrationPowerPoint = Pick<PptProvider, "saveNotes" | "insertAudio" | "removeAudio">;
 
 /** Everything narration preparation reaches for outside itself. */
@@ -23,9 +22,8 @@ export interface NarrationAdapters {
 type NarrationIpc = Pick<IpcMain, "handle" | "removeHandler">;
 
 /**
- * Registers every narration IPC channel against `adapters`. Registering again
- * replaces the previous handlers, which is the supported way to run the app
- * against fake TTS and PowerPoint adapters.
+ * Registering again replaces the previous handlers, which is the supported way
+ * to run the app against fake TTS and PowerPoint adapters.
  */
 export function registerNarrationIpc(ipc: NarrationIpc, adapters: NarrationAdapters): void {
   const preparation = new NarrationPreparation(adapters.mappingSource, adapters.synthesizer);
