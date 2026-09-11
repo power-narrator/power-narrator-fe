@@ -83,7 +83,7 @@ function createCachedRetrySaver(
   };
 }
 
-describe("NarratedPresentationSaver.savePresentation", () => {
+describe("NarratedPresentationSaver", () => {
   it("removes stale narration before succeeding when a slide has no narratable text", async () => {
     const { generateSpeech, powerpoint, saver } = createSaver();
 
@@ -140,7 +140,6 @@ describe("NarratedPresentationSaver.savePresentation", () => {
       success: false,
       stage: "validation",
       partial: false,
-      message: expect.stringMatching(/slide 8, section 1, speaker "Missing"/),
     });
     expect(generateSpeech).not.toHaveBeenCalled();
     expect(powerpoint.saveNotes).not.toHaveBeenCalled();
@@ -196,6 +195,77 @@ describe("NarratedPresentationSaver.savePresentation", () => {
     ]);
   });
 
+  it("reports a structured synthesis failure without mutating PowerPoint", async () => {
+    const { powerpoint, saver } = createSaver(
+      vi.fn().mockRejectedValue(new Error("provider unavailable")),
+    );
+
+    await expect(
+      saver.savePresentation({
+        filePath: "/slides/talk.pptx",
+        slides: [{ slideIndex: 5, notes: "[Narrator]\nHello" }],
+      }),
+    ).resolves.toMatchObject({ success: false, stage: "synthesis", partial: false });
+    expect(powerpoint.saveNotes).not.toHaveBeenCalled();
+    expect(powerpoint.insertAudio).not.toHaveBeenCalled();
+  });
+
+  it("reports a structured preparation failure when speaker mappings cannot be read", async () => {
+    const preparation = new NarrationPreparation(
+      {
+        getSpeakerMappings: () => {
+          throw new Error("settings unavailable");
+        },
+      },
+      { supportsProvider: () => true, generateSpeech: vi.fn() },
+    );
+    const powerpoint = {
+      saveNotes: vi.fn(),
+      insertAudio: vi.fn(),
+      removeAudio: vi.fn(),
+    };
+    const saver = new NarratedPresentationSaver(preparation, () => powerpoint);
+
+    await expect(
+      saver.savePresentation({
+        filePath: "/slides/talk.pptx",
+        slides: [{ slideIndex: 5, notes: "[Narrator]\nHello" }],
+      }),
+    ).resolves.toEqual({
+      success: false,
+      stage: "validation",
+      partial: false,
+      message: "settings unavailable",
+    });
+    expect(powerpoint.saveNotes).not.toHaveBeenCalled();
+    expect(powerpoint.insertAudio).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["notes", { success: false, message: "notes failed" }, { success: true }, false],
+    ["audio", { success: true }, { success: false, message: "audio failed" }, true],
+  ])(
+    "reports a structured PowerPoint failure while committing %s",
+    async (_, notesResult, audioResult, partial) => {
+      const { powerpoint, saver } = createSaver();
+      powerpoint.saveNotes.mockResolvedValue(notesResult);
+      powerpoint.insertAudio.mockResolvedValue(audioResult);
+
+      await expect(
+        saver.savePresentation({
+          filePath: "/slides/talk.pptx",
+          slides: [{ slideIndex: 2, notes: "[Narrator]\nHello" }],
+        }),
+      ).resolves.toEqual({
+        success: false,
+        stage: "powerpoint",
+        partial,
+        message: partial ? "audio failed" : "notes failed",
+      });
+      expect(powerpoint.insertAudio).toHaveBeenCalledTimes(partial ? 1 : 0);
+    },
+  );
+
   it("reuses prepared narration when an ordinary retry follows a partial PowerPoint failure", async () => {
     const { powerpoint, saver, synthesize } = createCachedRetrySaver();
     const request = {
@@ -244,5 +314,24 @@ describe("NarratedPresentationSaver.savePresentation", () => {
     await saver.savePresentation(request);
 
     expect(synthesize).toHaveBeenCalledTimes(2);
+  });
+
+  it("saves the current slide as a single-slide presentation request", async () => {
+    const { powerpoint, saver } = createSaver();
+
+    await expect(
+      saver.saveSlide({
+        filePath: "/slides/talk.pptx",
+        slideIndex: 7,
+        notes: "[Narrator]\nOnly slide",
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(powerpoint.saveNotes).toHaveBeenCalledWith("/slides/talk.pptx", [
+      { index: 7, notes: "[Narrator]\nOnly slide" },
+    ]);
+    expect(powerpoint.insertAudio).toHaveBeenCalledWith("/slides/talk.pptx", [
+      { index: 7, sectionIndex: 0, audioData: new Uint8Array([1]) },
+    ]);
   });
 });

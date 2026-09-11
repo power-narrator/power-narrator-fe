@@ -48,6 +48,17 @@ describe("narration section formatting", () => {
     expect(formatNarrationSections(parseNarrationSections(notes))).toBe(notes);
   });
 
+  it.each(["\r\n", "\r", "\u2028", "\u2029"])(
+    "normalizes PowerPoint's %j line ending before the speaker tag",
+    (lineEnding) => {
+      const sections = parseNarrationSections(`[Narrator]${lineEnding}Stored text`);
+
+      expect(sections).toEqual([
+        expect.objectContaining({ speaker: "Narrator", text: "Stored text" }),
+      ]);
+    },
+  );
+
   it("uses canonical formatting for sections without format metadata", () => {
     expect(
       formatNarrationSections([

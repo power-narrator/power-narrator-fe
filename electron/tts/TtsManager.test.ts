@@ -151,6 +151,171 @@ describe("TtsManager", () => {
     expect(fs.readdirSync(cacheDirectory)).toEqual([expect.stringMatching(/^[a-f0-9]{64}\.mp3$/)]);
   });
 
+  it("reuses a cached entry instead of synthesizing a repeated request", async () => {
+    const provider = createProvider();
+    const cacheDirectory = path.join(tempDir, "narration");
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+
+    await manager.generateSpeech("Repeated narration", gcpVoice);
+    await expect(manager.generateSpeech("Repeated narration", gcpVoice)).resolves.toEqual({
+      audio: new Uint8Array([1, 2, 3]),
+      mediaType: "audio/mpeg",
+    });
+
+    expect(provider.generateSpeech).toHaveBeenCalledOnce();
+  });
+
+  it("reuses a cached entry written by an earlier session", async () => {
+    const cacheDirectory = path.join(tempDir, "narration");
+    const first = createProvider();
+    first.generateSpeech.mockResolvedValue(new Uint8Array([4, 5, 6]));
+    await new TtsManager(new Map([["gcp", first]]), "gcp", { cacheDirectory }).generateSpeech(
+      "Persistent narration",
+      gcpVoice,
+    );
+
+    const restarted = createProvider();
+    restarted.generateSpeech.mockRejectedValue(new Error("cache miss"));
+
+    await expect(
+      new TtsManager(new Map([["gcp", restarted]]), "gcp", { cacheDirectory }).generateSpeech(
+        "Persistent narration",
+        gcpVoice,
+      ),
+    ).resolves.toEqual({ audio: new Uint8Array([4, 5, 6]), mediaType: "audio/mpeg" });
+    expect(restarted.generateSpeech).not.toHaveBeenCalled();
+  });
+
+  it("identifies cache entries from the normalized provider request", async () => {
+    const synthesize = vi.fn().mockResolvedValue(new Uint8Array([3, 2, 1]));
+    const provider: TtsProvider = {
+      getVoices: vi.fn().mockResolvedValue([]),
+      prepareSpeech: (text, voice) => ({
+        cacheIdentity: {
+          input: { ssml: text.startsWith("<speak>") ? text : `<speak>${text}</speak>` },
+          voice: { languageCode: voice.languageCodes[0] ?? "", name: voice.name },
+        },
+        encoding: { fileExtension: "mp3", mediaType: "audio/mpeg" },
+        synthesize,
+      }),
+    };
+    const cacheDirectory = path.join(tempDir, "narration");
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+
+    await manager.generateSpeech('Hello <break time="250ms"/>world', gcpVoice);
+    await manager.generateSpeech('<speak>Hello <break time="250ms"/>world</speak>', gcpVoice);
+
+    expect(synthesize).toHaveBeenCalledOnce();
+  });
+
+  it("does not reuse an entry when the prepared request changes", async () => {
+    let audioEncoding = "MP3";
+    const synthesize = vi.fn().mockResolvedValue(new Uint8Array([1]));
+    const provider: TtsProvider = {
+      getVoices: vi.fn().mockResolvedValue([]),
+      prepareSpeech: (text, voice) => {
+        const preparedEncoding = audioEncoding;
+        return {
+          cacheIdentity: { input: { text }, voice: voice.name, audioEncoding: preparedEncoding },
+          encoding: { fileExtension: "mp3", mediaType: "audio/mpeg" },
+          synthesize: () => synthesize(preparedEncoding),
+        };
+      },
+    };
+    const cacheDirectory = path.join(tempDir, "narration");
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+
+    await manager.generateSpeech("Settings", gcpVoice);
+    audioEncoding = "LINEAR16";
+    await manager.generateSpeech("Settings", gcpVoice);
+
+    expect(synthesize).toHaveBeenNthCalledWith(1, "MP3");
+    expect(synthesize).toHaveBeenNthCalledWith(2, "LINEAR16");
+  });
+
+  it("combines simultaneous requests for the same narration", async () => {
+    let finishSynthesis: (audio: Uint8Array) => void = () => {};
+    const synthesize = vi.fn(
+      () =>
+        new Promise<Uint8Array>((resolve) => {
+          finishSynthesis = resolve;
+        }),
+    );
+    const provider: TtsProvider = {
+      getVoices: vi.fn().mockResolvedValue([]),
+      prepareSpeech: (text, voice) => ({
+        cacheIdentity: { text, voice: voice.name },
+        encoding: { fileExtension: "mp3", mediaType: "audio/mpeg" },
+        synthesize,
+      }),
+    };
+    const cacheDirectory = path.join(tempDir, "narration");
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+
+    const first = manager.generateSpeech("Shared", gcpVoice);
+    const second = manager.generateSpeech("Shared", gcpVoice);
+    await vi.waitFor(() => expect(synthesize).toHaveBeenCalledOnce());
+
+    finishSynthesis(new Uint8Array([5, 5, 5]));
+    await expect(first).resolves.toEqual({
+      audio: new Uint8Array([5, 5, 5]),
+      mediaType: "audio/mpeg",
+    });
+    await expect(second).resolves.toEqual({
+      audio: new Uint8Array([5, 5, 5]),
+      mediaType: "audio/mpeg",
+    });
+    expect(fs.readdirSync(cacheDirectory)).toHaveLength(1);
+  });
+
+  it("synthesizes again after a shared pending request fails", async () => {
+    const provider = createProvider();
+    provider.generateSpeech
+      .mockRejectedValueOnce(new Error("temporary outage"))
+      .mockResolvedValueOnce(new Uint8Array([9, 9, 9]));
+    const cacheDirectory = path.join(tempDir, "narration");
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+
+    const first = manager.generateSpeech("Retry me", gcpVoice);
+    const second = manager.generateSpeech("Retry me", gcpVoice);
+    await expect(first).rejects.toThrow("temporary outage");
+    await expect(second).rejects.toThrow("temporary outage");
+
+    await expect(manager.generateSpeech("Retry me", gcpVoice)).resolves.toEqual({
+      audio: new Uint8Array([9, 9, 9]),
+      mediaType: "audio/mpeg",
+    });
+    expect(provider.generateSpeech).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts unrelated requests without waiting for each other", async () => {
+    const pending = new Map<string, (audio: Uint8Array) => void>();
+    const starts: string[] = [];
+    const provider: TtsProvider = {
+      getVoices: vi.fn().mockResolvedValue([]),
+      prepareSpeech: (text) => ({
+        cacheIdentity: { text },
+        encoding: { fileExtension: "mp3", mediaType: "audio/mpeg" },
+        synthesize: () =>
+          new Promise<Uint8Array>((resolve) => {
+            starts.push(text);
+            pending.set(text, resolve);
+          }),
+      }),
+    };
+    const cacheDirectory = path.join(tempDir, "narration");
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+
+    const first = manager.generateSpeech("First", gcpVoice);
+    const second = manager.generateSpeech("Second", gcpVoice);
+    await vi.waitFor(() => expect(starts).toEqual(["First", "Second"]));
+
+    pending.get("Second")?.(new Uint8Array([2]));
+    pending.get("First")?.(new Uint8Array([1]));
+    await expect(first).resolves.toMatchObject({ audio: new Uint8Array([1]) });
+    await expect(second).resolves.toMatchObject({ audio: new Uint8Array([2]) });
+  });
+
   it("routes a concrete voice to its provider regardless of the configured preference", async () => {
     const gcp = createProvider();
     const local = createProvider();
