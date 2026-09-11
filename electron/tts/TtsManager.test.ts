@@ -65,7 +65,14 @@ const gcpVoice: Voice = {
   provider: "gcp",
 };
 
-const localVoice: Voice = {
+const futureVoice: Voice = {
+  name: "future-voice",
+  languageCodes: ["en-US"],
+  ssmlGender: "NEUTRAL",
+  provider: "future-provider",
+};
+
+const legacyLocalVoice: Voice = {
   name: "en_UK/apope_low",
   languageCodes: ["en-GB"],
   ssmlGender: "MALE",
@@ -114,7 +121,7 @@ describe("TtsManager", () => {
     const provider = createProvider();
     provider.generateSpeech.mockResolvedValue(new Uint8Array([1, 2, 3]));
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
+    const manager = new TtsManager(new Map([["gcp", provider]]), cacheDirectory);
 
     await manager.generateSpeech("../../unsafe / narration\0", gcpVoice);
 
@@ -131,9 +138,9 @@ describe("TtsManager", () => {
       }),
     };
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["local", wavProvider]]), "local", cacheDirectory);
+    const manager = new TtsManager(new Map([["future-provider", wavProvider]]), cacheDirectory);
 
-    await expect(manager.generateSpeech("Local narration", localVoice)).resolves.toEqual({
+    await expect(manager.generateSpeech("Future narration", futureVoice)).resolves.toEqual({
       audio: new Uint8Array([1, 2, 3]),
       mediaType: "audio/wav",
     });
@@ -143,7 +150,7 @@ describe("TtsManager", () => {
   it("never serves an entry whose write was interrupted", async () => {
     const provider = createProvider();
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
+    const manager = new TtsManager(new Map([["gcp", provider]]), cacheDirectory);
     vi.spyOn(console, "error").mockImplementation(() => {});
     interruptNextCachePublish.value = true;
 
@@ -164,7 +171,7 @@ describe("TtsManager", () => {
   it("reuses a cached entry instead of synthesizing a repeated request", async () => {
     const provider = createProvider();
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
+    const manager = new TtsManager(new Map([["gcp", provider]]), cacheDirectory);
 
     await manager.generateSpeech("Repeated narration", gcpVoice);
     await expect(manager.generateSpeech("Repeated narration", gcpVoice)).resolves.toEqual({
@@ -179,7 +186,7 @@ describe("TtsManager", () => {
     const cacheDirectory = path.join(tempDir, "narration");
     const first = createProvider();
     first.generateSpeech.mockResolvedValue(new Uint8Array([4, 5, 6]));
-    await new TtsManager(new Map([["gcp", first]]), "gcp", cacheDirectory).generateSpeech(
+    await new TtsManager(new Map([["gcp", first]]), cacheDirectory).generateSpeech(
       "Persistent narration",
       gcpVoice,
     );
@@ -188,7 +195,7 @@ describe("TtsManager", () => {
     restarted.generateSpeech.mockRejectedValue(new Error("cache miss"));
 
     await expect(
-      new TtsManager(new Map([["gcp", restarted]]), "gcp", cacheDirectory).generateSpeech(
+      new TtsManager(new Map([["gcp", restarted]]), cacheDirectory).generateSpeech(
         "Persistent narration",
         gcpVoice,
       ),
@@ -210,7 +217,7 @@ describe("TtsManager", () => {
       }),
     };
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
+    const manager = new TtsManager(new Map([["gcp", provider]]), cacheDirectory);
 
     await manager.generateSpeech('Hello <break time="250ms"/>world', gcpVoice);
     await manager.generateSpeech('<speak>Hello <break time="250ms"/>world</speak>', gcpVoice);
@@ -233,7 +240,7 @@ describe("TtsManager", () => {
       },
     };
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
+    const manager = new TtsManager(new Map([["gcp", provider]]), cacheDirectory);
 
     await manager.generateSpeech("Settings", gcpVoice);
     audioEncoding = "LINEAR16";
@@ -260,7 +267,7 @@ describe("TtsManager", () => {
       }),
     };
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
+    const manager = new TtsManager(new Map([["gcp", provider]]), cacheDirectory);
 
     const first = manager.generateSpeech("Shared", gcpVoice);
     const second = manager.generateSpeech("Shared", gcpVoice);
@@ -285,7 +292,7 @@ describe("TtsManager", () => {
       .mockRejectedValueOnce(new Error("temporary outage"))
       .mockResolvedValueOnce(new Uint8Array([9, 9, 9]));
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
+    const manager = new TtsManager(new Map([["gcp", provider]]), cacheDirectory);
 
     const first = manager.generateSpeech("Retry me", gcpVoice);
     const second = manager.generateSpeech("Retry me", gcpVoice);
@@ -316,7 +323,7 @@ describe("TtsManager", () => {
       }),
     };
     const cacheDirectory = path.join(tempDir, "narration");
-    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", cacheDirectory);
+    const manager = new TtsManager(new Map([["gcp", provider]]), cacheDirectory);
 
     const first = manager.generateSpeech("First", gcpVoice);
     const second = manager.generateSpeech("Second", gcpVoice);
@@ -328,40 +335,36 @@ describe("TtsManager", () => {
     await expect(second).resolves.toMatchObject({ audio: new Uint8Array([2]) });
   });
 
-  it("routes a concrete voice to its provider regardless of the configured preference", async () => {
+  it("routes a concrete voice to its provider registry entry", async () => {
     const gcp = createProvider();
-    const local = createProvider();
+    const futureProvider = createProvider();
     const manager = new TtsManager(
       new Map([
         ["gcp", gcp],
-        ["local", local],
+        ["future-provider", futureProvider],
       ]),
-      "local",
     );
 
-    await manager.generateSpeech("A unique routing request", gcpVoice);
+    await manager.generateSpeech("A unique routing request", futureVoice);
 
-    expect(gcp.generateSpeech).toHaveBeenCalledWith("A unique routing request", gcpVoice);
-    expect(local.generateSpeech).not.toHaveBeenCalled();
-  });
-
-  it("rejects an unregistered configured default", () => {
-    expect(() => new TtsManager(new Map([["gcp", createProvider()]]), "local")).toThrow(
-      "TTS Provider 'local' is not registered.",
+    expect(futureProvider.generateSpeech).toHaveBeenCalledWith(
+      "A unique routing request",
+      futureVoice,
     );
+    expect(gcp.generateSpeech).not.toHaveBeenCalled();
   });
 
   it("rejects a voice whose provider is absent from the registry", async () => {
-    const manager = new TtsManager(new Map([["gcp", createProvider()]]), "gcp");
+    const manager = new TtsManager(new Map([["gcp", createProvider()]]));
 
-    await expect(manager.generateSpeech("Unavailable provider", localVoice)).rejects.toThrow(
+    await expect(manager.generateSpeech("Unavailable provider", legacyLocalVoice)).rejects.toThrow(
       "TTS Provider 'local' is not registered.",
     );
   });
 
   it("rejects a supplied runtime voice without a provider instead of using the default", async () => {
     const gcp = createProvider();
-    const manager = new TtsManager(new Map([["gcp", gcp]]), "gcp");
+    const manager = new TtsManager(new Map([["gcp", gcp]]));
     const voiceWithoutProvider = {
       name: "legacy-voice",
       languageCodes: ["en-US"],
@@ -376,10 +379,10 @@ describe("TtsManager", () => {
 
   it("loads providers concurrently and retains registry order", async () => {
     let releaseGcp: (voices: Voice[]) => void = () => {};
-    let releaseLocal: (voices: Voice[]) => void = () => {};
+    let releaseFuture: (voices: Voice[]) => void = () => {};
     const starts: string[] = [];
     const gcp = createProvider();
-    const local = createProvider();
+    const futureProvider = createProvider();
     vi.mocked(gcp.getVoices).mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -387,41 +390,40 @@ describe("TtsManager", () => {
           releaseGcp = resolve;
         }),
     );
-    vi.mocked(local.getVoices).mockImplementation(
+    vi.mocked(futureProvider.getVoices).mockImplementation(
       () =>
         new Promise((resolve) => {
-          starts.push("local");
-          releaseLocal = resolve;
+          starts.push("future-provider");
+          releaseFuture = resolve;
         }),
     );
     const manager = new TtsManager(
       new Map([
         ["gcp", gcp],
-        ["local", local],
+        ["future-provider", futureProvider],
       ]),
-      "gcp",
     );
 
     const voicesPromise = manager.getVoices();
-    expect(starts).toEqual(["gcp", "local"]);
+    expect(starts).toEqual(["gcp", "future-provider"]);
 
-    releaseLocal([localVoice]);
+    releaseFuture([futureVoice]);
     releaseGcp([gcpVoice]);
-    await expect(voicesPromise).resolves.toEqual([gcpVoice, localVoice]);
+    await expect(voicesPromise).resolves.toEqual([gcpVoice, futureVoice]);
   });
 
   it("keeps healthy voices and identifies a failed provider in the log", async () => {
     const failure = new Error("credentials unavailable");
     const gcp = createProvider();
-    const local = createProvider([localVoice]);
+    const futureProvider = createProvider([futureVoice]);
     vi.mocked(gcp.getVoices).mockRejectedValue(failure);
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
     const registry: TtsProviderRegistry = new Map([
       ["gcp", gcp],
-      ["local", local],
+      ["future-provider", futureProvider],
     ]);
 
-    await expect(new TtsManager(registry, "gcp").getVoices()).resolves.toEqual([localVoice]);
+    await expect(new TtsManager(registry).getVoices()).resolves.toEqual([futureVoice]);
     expect(errorLog).toHaveBeenCalledWith("Failed fetching voices from provider 'gcp':", failure);
   });
 });

@@ -1,25 +1,21 @@
 import { Select } from "@mantine/core";
 import type { Voice } from "../../../shared/types/tts";
+import { getProviderLabel } from "./providerLabels";
 
 interface VoiceSelectorProps {
   value: Voice | null;
   onChange: (voice: Voice) => void;
   voices: Voice[];
-  providerFilter?: "gcp" | "local";
 }
 
-export function VoiceSelector({ value, onChange, voices, providerFilter }: VoiceSelectorProps) {
-  const filteredVoices = providerFilter
-    ? voices.filter((voice) => voice.provider === providerFilter)
-    : voices;
-
-  const options = filteredVoices.map((voice) => ({
-    value: voice.name,
-    label: `${voice.name.split("/").pop()} (${voice.provider === "gcp" ? "Google" : "Local"}, ${voice.ssmlGender})`,
+export function VoiceSelector({ value, onChange, voices }: VoiceSelectorProps) {
+  const options = voices.map((voice) => ({
+    value: `${voice.provider}:${voice.name}`,
+    label: `${voice.name.split("/").pop()} (${getProviderLabel(voice.provider)}, ${voice.ssmlGender})`,
   }));
 
   const handleChange = (selectedValue: string | null) => {
-    const voice = voices.find((option) => option.name === selectedValue);
+    const voice = voices.find((option) => `${option.provider}:${option.name}` === selectedValue);
     if (voice) {
       onChange(voice);
     }
@@ -29,7 +25,7 @@ export function VoiceSelector({ value, onChange, voices, providerFilter }: Voice
     <Select
       placeholder="Select Voice"
       data={options}
-      value={value?.name || null}
+      value={value ? `${value.provider}:${value.name}` : null}
       onChange={handleChange}
       searchable
       size="xs"

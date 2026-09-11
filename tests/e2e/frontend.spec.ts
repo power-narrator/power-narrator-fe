@@ -90,7 +90,6 @@ async function launchTestApp() {
     env: {
       ...process.env,
       NODE_ENV: "test",
-      TTS_PROVIDER: "gcp",
     },
   });
 }

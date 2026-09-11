@@ -52,23 +52,10 @@ export class TtsManager {
   private readonly providers: TtsProviderRegistry;
   private readonly cacheDirectory: string;
   private readonly pending = new Map<string, Promise<SynthesizedSpeech>>();
-  readonly defaultProviderId: TtsProviderId;
 
-  constructor(
-    providers: TtsProviderRegistry,
-    configuredDefaultProvider: string,
-    cacheDirectory?: string,
-  ) {
-    const defaultProviderId = Array.from(providers.keys()).find(
-      (providerId) => providerId === configuredDefaultProvider,
-    );
-    if (!defaultProviderId) {
-      throw new Error(`TTS Provider '${configuredDefaultProvider}' is not registered.`);
-    }
-
+  constructor(providers: TtsProviderRegistry, cacheDirectory?: string) {
     this.providers = new Map(providers);
     this.cacheDirectory = cacheDirectory ?? getNarrationCacheDirectory(app.getPath("home"));
-    this.defaultProviderId = defaultProviderId;
   }
 
   async getVoices(): Promise<Voice[]> {
