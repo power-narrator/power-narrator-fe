@@ -23,6 +23,9 @@ interface ViewerElectronOverrides {
   saveNotes?: typeof window.electronAPI.saveNotes;
   getVideoSavePath?: typeof window.electronAPI.getVideoSavePath;
   generateVideo?: typeof window.electronAPI.generateVideo;
+  playSlide?: typeof window.electronAPI.playSlide;
+  removeAudio?: typeof window.electronAPI.removeAudio;
+  convertPptx?: typeof window.electronAPI.convertPptx;
 }
 
 function installElectronApi(overrides: ViewerElectronOverrides = {}) {
@@ -36,6 +39,9 @@ function installElectronApi(overrides: ViewerElectronOverrides = {}) {
     saveNotes: vi.fn(async () => ({ success: true as const })),
     getVideoSavePath: vi.fn(async () => "video.mp4"),
     generateVideo: vi.fn(async () => ({ success: true as const, outputPath: "video.mp4" })),
+    playSlide: vi.fn(async () => ({ success: true as const })),
+    removeAudio: vi.fn(async () => ({ success: true as const })),
+    convertPptx: vi.fn(async () => ({ success: true as const, slides: [loadedSlide] })),
     ...overrides,
   } as unknown as typeof window.electronAPI;
 
@@ -225,4 +231,67 @@ test("generates video only after narration and notes are committed together", as
   await screen.getByRole("button", { name: "Back", exact: false }).click();
   expect(confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
   expect(onBack).toHaveBeenCalledOnce();
+});
+
+test("plays the active slide and reports playback failures", async () => {
+  const playSlide = vi
+    .fn<typeof window.electronAPI.playSlide>()
+    .mockResolvedValueOnce({ success: false, message: "PowerPoint is busy" })
+    .mockResolvedValueOnce({ success: true });
+  installElectronApi({ playSlide });
+  const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+  const { screen } = await renderViewer();
+
+  await screen.getByRole("button", { name: "Play", exact: true }).click();
+  await vi.waitFor(() =>
+    expect(alertSpy).toHaveBeenCalledWith("Failed to play slide: PowerPoint is busy"),
+  );
+  expect(playSlide).toHaveBeenCalledWith({ filePath: "presentation.pptx", slideIndex: 1 });
+
+  await screen.getByRole("button", { name: "Play", exact: true }).click();
+  await vi.waitFor(() => expect(screen.getByText("Played").first()).toBeInTheDocument());
+});
+
+test("removes audio for the active slide and for every slide", async () => {
+  const removeAudio = vi.fn<typeof window.electronAPI.removeAudio>(async () => ({ success: true }));
+  installElectronApi({ removeAudio });
+  vi.spyOn(window, "alert").mockImplementation(() => undefined);
+  const secondSlide: Slide = { ...loadedSlide, index: 2, image: "slide-two.png" };
+  const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
+
+  await screen.getByRole("button", { name: "Remove Audio", exact: true }).click();
+  await vi.waitFor(() => expect(screen.getByText("Removed!").first()).toBeInTheDocument());
+  expect(removeAudio).toHaveBeenCalledWith({
+    filePath: "presentation.pptx",
+    slideIndices: [1],
+  });
+
+  await screen.getByRole("button", { name: "Remove All Audio", exact: true }).click();
+  await vi.waitFor(() => expect(removeAudio).toHaveBeenCalledTimes(2));
+  expect(removeAudio).toHaveBeenLastCalledWith({
+    filePath: "presentation.pptx",
+    slideIndices: [1, 2],
+  });
+});
+
+test("reloads every slide only after unsaved edits are discarded", async () => {
+  let allowDiscard = false;
+  const confirmDiscardNarrationChanges = vi.fn(async () => allowDiscard);
+  const convertPptx = vi.fn<typeof window.electronAPI.convertPptx>(async () => ({
+    success: true,
+    slides: [{ ...loadedSlide, notes: "Reloaded narration" }],
+  }));
+  installElectronApi({ confirmDiscardNarrationChanges, convertPptx });
+  const { screen } = await renderViewer();
+  const editor = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });
+
+  await editor.fill("Unsaved narration");
+  await screen.getByRole("button", { name: "Reload All Slides", exact: true }).click();
+  await vi.waitFor(() => expect(confirmDiscardNarrationChanges).toHaveBeenCalledOnce());
+  expect(convertPptx).not.toHaveBeenCalled();
+
+  allowDiscard = true;
+  await screen.getByRole("button", { name: "Reload All Slides", exact: true }).click();
+  await vi.waitFor(() => expect(editor.element()).toHaveValue("Reloaded narration"));
+  expect(convertPptx).toHaveBeenCalledWith("presentation.pptx");
 });

@@ -66,6 +66,16 @@ type InsertAudioCall = {
   slidesAudio: Array<{ index: number; sectionIndex: number; audioData: Uint8Array }>;
 };
 
+type NarrationProgress = { completed: number; total: number };
+
+type RendererNarrationApi = {
+  saveNarratedPresentation: (
+    payload: { filePath: string; slides: Array<{ slideIndex: number; notes: string }> },
+    onProgress: (progress: NarrationProgress) => void,
+  ) => Promise<unknown>;
+  getVideoSavePath: () => Promise<string | null>;
+};
+
 type DiscardConfirmationTestGlobals = typeof globalThis & {
   __discardConfirmationCalls: unknown[];
   __shouldDiscardNarrationChanges: boolean;
@@ -539,6 +549,67 @@ test.describe("PPT Viewer UI Workflows", () => {
         })),
       },
     ]);
+  });
+
+  test("delivers narration progress over the bridge and stops listening once settled", async () => {
+    const observed = await window.evaluate(
+      async ({ filePath, slides }) => {
+        const globals = globalThis as typeof globalThis & {
+          __bridgeProgress: NarrationProgress[];
+          electronAPI: RendererNarrationApi;
+        };
+        globals.__bridgeProgress = [];
+
+        const result = await globals.electronAPI.saveNarratedPresentation(
+          { filePath, slides },
+          (progress) => globals.__bridgeProgress.push(progress),
+        );
+
+        return { result, progress: [...globals.__bridgeProgress] };
+      },
+      {
+        filePath: FIXTURE_TEST,
+        slides: MOCK_SLIDES.map((slide) => ({
+          slideIndex: slide.index,
+          notes: slide.notes ?? "",
+        })),
+      },
+    );
+
+    expect(observed.result).toEqual({ success: true });
+    // The final update can race the invoke reply, so assert that what did arrive is an
+    // unbroken run of completion counts rather than a fixed number of updates.
+    expect(observed.progress.length).toBeGreaterThan(0);
+    expect(observed.progress.map((progress) => progress.total)).toEqual(
+      observed.progress.map(() => MOCK_SLIDES.length),
+    );
+    expect([...observed.progress].map((progress) => progress.completed).sort()).toEqual(
+      observed.progress.map((_, position) => position + 1),
+    );
+
+    // The bridge names each request's channel from a private counter, so probe every id
+    // this window could plausibly have used rather than guessing one.
+    await electronApp.evaluate(({ BrowserWindow }, probeCount) => {
+      const webContents = BrowserWindow.getAllWindows()[0]?.webContents;
+      for (let requestId = 1; requestId <= probeCount; requestId += 1) {
+        webContents?.send(`narrated-presentation-save-progress:${requestId}`, {
+          completed: 99,
+          total: 99,
+        });
+      }
+    }, 5);
+    await window.evaluate(() =>
+      (
+        globalThis as typeof globalThis & { electronAPI: RendererNarrationApi }
+      ).electronAPI.getVideoSavePath(),
+    );
+
+    const progressAfterSettle = await window.evaluate(
+      () =>
+        (globalThis as typeof globalThis & { __bridgeProgress: NarrationProgress[] })
+          .__bridgeProgress,
+    );
+    expect(progressAfterSettle).toEqual(observed.progress);
   });
 
   test("warns window and application close while narration edits are dirty", async () => {

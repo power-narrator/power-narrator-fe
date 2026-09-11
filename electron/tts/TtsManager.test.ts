@@ -91,6 +91,16 @@ describe("TtsManager", () => {
       { LOCALAPPDATA: "C:\\Users\\example\\AppData\\Local" },
       path.win32.join("C:\\Users\\example\\AppData\\Local", "power-narrator", "Cache", "narration"),
     ],
+    [
+      "win32",
+      {},
+      path.win32.join("/users/example", "AppData", "Local", "power-narrator", "Cache", "narration"),
+    ],
+    [
+      "win32",
+      { LOCALAPPDATA: "relative\\cache" },
+      path.win32.join("/users/example", "AppData", "Local", "power-narrator", "Cache", "narration"),
+    ],
   ] as const)(
     "uses the conventional %s application cache location",
     (platform, environment, expected) => {
