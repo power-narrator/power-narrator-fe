@@ -6,6 +6,7 @@ import { AudioProvider } from "../../context/AudioContext";
 import type { Slide } from "../../types/electron";
 import { SettingsProvider } from "../../context/SettingsContext";
 import { ViewerPage } from "./ViewerPage";
+import { NarrationPreviewProvider } from "./useNarrationPreview";
 
 const loadedSlide: Slide = {
   index: 1,
@@ -37,23 +38,67 @@ function installElectronApi(overrides: ViewerElectronOverrides = {}) {
   return electronAPI;
 }
 
-async function renderViewer(onBack = vi.fn()) {
+async function renderViewer(onBack = vi.fn(), slides: Slide[] = [loadedSlide]) {
   const screen = await render(
     <MantineProvider>
       <SettingsProvider>
         <AudioProvider>
-          <ViewerPage
-            slides={[loadedSlide]}
-            filePath="presentation.pptx"
-            onBack={onBack}
-            onOpenSettings={() => undefined}
-          />
+          <NarrationPreviewProvider>
+            <ViewerPage
+              slides={slides}
+              filePath="presentation.pptx"
+              onBack={onBack}
+              onOpenSettings={() => undefined}
+            />
+          </NarrationPreviewProvider>
         </AudioProvider>
       </SettingsProvider>
     </MantineProvider>,
   );
   return { screen, onBack };
 }
+
+test("undo and redo preserve edits made on other slides", async () => {
+  installElectronApi();
+  const secondSlide: Slide = {
+    index: 2,
+    image: "slide-two.png",
+    src: "slide-two",
+    notes: "Second narration",
+  };
+  const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
+
+  await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Edited one");
+  await new Promise((resolve) => window.setTimeout(resolve, 850));
+  await screen.getByRole("img", { name: "Slide 2 thumbnail" }).click();
+  await screen.getByRole("textbox", { name: "Slide 2 section 1 notes" }).fill("Edited two");
+  await new Promise((resolve) => window.setTimeout(resolve, 850));
+
+  screen
+    .getByRole("textbox", { name: "Slide 2 section 1 notes" })
+    .element()
+    .dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }));
+  await vi.waitFor(() =>
+    expect(screen.getByRole("textbox", { name: "Slide 2 section 1 notes" })).toHaveValue(
+      "Second narration",
+    ),
+  );
+  await screen.getByRole("img", { name: "Slide 1 thumbnail" }).click();
+  expect(screen.getByRole("textbox", { name: "Slide 1 section 1 notes" })).toHaveValue(
+    "Edited one",
+  );
+
+  screen
+    .getByRole("textbox", { name: "Slide 1 section 1 notes" })
+    .element()
+    .dispatchEvent(new KeyboardEvent("keydown", { key: "y", ctrlKey: true, bubbles: true }));
+  await screen.getByRole("img", { name: "Slide 2 thumbnail" }).click();
+  await vi.waitFor(() =>
+    expect(screen.getByRole("textbox", { name: "Slide 2 section 1 notes" })).toHaveValue(
+      "Edited two",
+    ),
+  );
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -113,4 +158,46 @@ test("clears dirty state only after a successful narrated save", async () => {
   await screen.getByRole("button", { name: "Back", exact: false }).click();
   expect(confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
   expect(onBack).toHaveBeenCalledOnce();
+});
+
+test("keeps narration edited during a save dirty after that save completes", async () => {
+  let finishSave: ((result: NarratedSaveResult) => void) | undefined;
+  const saveNarratedSlide = vi.fn(
+    () => new Promise<NarratedSaveResult>((resolve) => (finishSave = resolve)),
+  );
+  const confirmDiscardNarrationChanges = vi.fn(async () => false);
+  installElectronApi({ saveNarratedSlide, confirmDiscardNarrationChanges });
+  const { screen, onBack } = await renderViewer();
+  const editor = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });
+
+  await editor.fill("Sent for save");
+  await screen.getByRole("button", { name: "Save Slide", exact: true }).click();
+  await vi.waitFor(() => expect(saveNarratedSlide).toHaveBeenCalledOnce());
+  await editor.fill("Edited while saving");
+  finishSave?.({ success: true });
+  await vi.waitFor(() => expect(screen.getByText("Saved slides!").first()).toBeInTheDocument());
+
+  await screen.getByRole("button", { name: "Back", exact: false }).click();
+  expect(confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
+  expect(onBack).not.toHaveBeenCalled();
+});
+
+test("allows only the active Viewer operation to report progress", async () => {
+  let finishSave: ((result: NarratedSaveResult) => void) | undefined;
+  const saveNarratedSlide = vi.fn(
+    () => new Promise<NarratedSaveResult>((resolve) => (finishSave = resolve)),
+  );
+  installElectronApi({ saveNarratedSlide });
+  const { screen } = await renderViewer();
+
+  await screen.getByRole("button", { name: "Save Slide", exact: true }).click();
+  await vi.waitFor(() => expect(saveNarratedSlide).toHaveBeenCalledOnce());
+  expect(screen.getByRole("button", { name: "Reload Slide", exact: true })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Play", exact: true })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Remove Audio", exact: true })).toBeDisabled();
+
+  finishSave?.({ success: true });
+  await vi.waitFor(() =>
+    expect(screen.getByRole("button", { name: "Reload Slide", exact: true })).not.toBeDisabled(),
+  );
 });

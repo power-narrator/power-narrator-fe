@@ -1,48 +1,51 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import type { Slide } from "../../types/electron";
-import { ViewerSession, type SavedSlideSelection } from "./ViewerSession";
+import {
+  loadViewerSession,
+  reduceViewerSession,
+  sessionWouldDiscard,
+  type SavedSlideSelection,
+} from "./ViewerSession";
 
 export function useViewerSession(
   initialSlides: Slide[],
   onUnsavedChangesChange: (hasUnsavedChanges: boolean) => void,
 ) {
-  const [session, setSession] = useState(() => ViewerSession.load(initialSlides));
-  const onUnsavedChangesChangeRef = useRef(onUnsavedChangesChange);
-  onUnsavedChangesChangeRef.current = onUnsavedChangesChange;
-
-  const transition = useCallback((update: (current: ViewerSession) => ViewerSession) => {
-    setSession((current) => {
-      const next = update(current);
-      onUnsavedChangesChangeRef.current(next.wouldDiscard());
-      return next;
-    });
-  }, []);
+  const [state, dispatch] = useReducer(reduceViewerSession, initialSlides, loadViewerSession);
+  const reportUnsavedChangesRef = useRef(onUnsavedChangesChange);
+  reportUnsavedChangesRef.current = onUnsavedChangesChange;
+  const hasUnsavedChanges = state.dirtySlideIndices.size > 0;
 
   useEffect(() => {
-    transition(() => ViewerSession.load(initialSlides));
-  }, [initialSlides, transition]);
+    reportUnsavedChangesRef.current(hasUnsavedChanges);
+  }, [hasUnsavedChanges]);
 
   useEffect(
     () => () => {
-      onUnsavedChangesChangeRef.current(false);
+      reportUnsavedChangesRef.current(false);
     },
     [],
   );
 
+  const wouldDiscard = useCallback(
+    (slideIndices?: readonly number[]) => sessionWouldDiscard(state, slideIndices),
+    [state],
+  );
+
   return {
-    slides: session.slides,
-    canUndo: session.canUndo,
-    canRedo: session.canRedo,
-    wouldDiscard: (slideIndices?: readonly number[]) => session.wouldDiscard(slideIndices),
-    edit: (slides: Slide[], positions: readonly number[]) =>
-      transition((current) => current.edit(slides, positions)),
-    checkpoint: (slides: Slide[], positions: readonly number[]) =>
-      transition((current) => current.edit(slides, positions).checkpoint(positions)),
-    undo: () => transition((current) => current.undo()),
-    redo: () => transition((current) => current.redo()),
-    markSaved: (savedSlides: readonly SavedSlideSelection[]) =>
-      transition((current) => current.markSaved(savedSlides)),
-    reload: (slides: Slide[], positions?: readonly number[]) =>
-      transition((current) => current.reload(slides, positions)),
+    slides: state.slides,
+    canUndo: state.historyIndex > 0,
+    canRedo: state.historyIndex < state.history.length - 1,
+    wouldDiscard,
+    updateSlides: (slides: Slide[], changedSlidePositions: readonly number[]) =>
+      dispatch({ type: "edit", slides, changedSlidePositions }),
+    commitSlides: (slides: Slide[], changedSlidePositions: readonly number[]) =>
+      dispatch({ type: "checkpoint", slides, changedSlidePositions }),
+    undo: () => dispatch({ type: "undo" }),
+    redo: () => dispatch({ type: "redo" }),
+    saveCompleted: (savedSlides: readonly SavedSlideSelection[]) =>
+      dispatch({ type: "saved", savedSlides }),
+    reloadCompleted: (slides: Slide[], reloadedSlidePositions?: readonly number[]) =>
+      dispatch({ type: "reloaded", slides, reloadedSlidePositions }),
   };
 }

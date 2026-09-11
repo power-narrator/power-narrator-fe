@@ -6,6 +6,7 @@ import type { PreviewNarrationRequest } from "../../../shared/types/narration";
 import type { Voice } from "../../../shared/types/tts";
 import { AudioProvider } from "../../context/AudioContext";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
+import { NarrationPreviewProvider } from "./useNarrationPreview";
 
 const narratorVoice: Voice = {
   name: "narrator-test-voice",
@@ -37,23 +38,25 @@ test("previews only the text selected in the live notes editor", async () => {
     return (
       <MantineProvider>
         <AudioProvider>
-          <label htmlFor="preview-editor">Narration text</label>
-          <textarea
-            id="preview-editor"
-            ref={editorRef}
-            defaultValue="Read only this phrase please"
-          />
-          <SectionPreviewButtons
-            id="1-0"
-            slideIndex={1}
-            sectionIndex={0}
-            slideNotes="Stale section text"
-            section={{ speaker: "Narrator", text: "Stale section text" }}
-            effectiveSpeaker="Narrator"
-            mappings={{ Narrator: narratorVoice }}
-            onFocus={() => undefined}
-            getTextarea={() => editorRef.current}
-          />
+          <NarrationPreviewProvider>
+            <label htmlFor="preview-editor">Narration text</label>
+            <textarea
+              id="preview-editor"
+              ref={editorRef}
+              defaultValue="Read only this phrase please"
+            />
+            <SectionPreviewButtons
+              id="1-0"
+              slideIndex={1}
+              sectionIndex={0}
+              slideNotes="Stale section text"
+              section={{ speaker: "Narrator", text: "Stale section text" }}
+              effectiveSpeaker="Narrator"
+              mappings={{ Narrator: narratorVoice }}
+              onFocus={() => undefined}
+              getTextarea={() => editorRef.current}
+            />
+          </NarrationPreviewProvider>
         </AudioProvider>
       </MantineProvider>
     );
@@ -70,4 +73,149 @@ test("previews only the text selected in the live notes editor", async () => {
       expect.objectContaining({ text: "only this phrase", previewSpeaker: "Narrator" }),
     );
   });
+});
+
+test("stopping a pending preview suppresses its late audio result", async () => {
+  let finishPreview: ((audio: Uint8Array) => void) | undefined;
+  Object.defineProperty(window, "electronAPI", {
+    configurable: true,
+    value: {
+      prepareNarrationPreview: () =>
+        new Promise<Uint8Array>((resolve) => {
+          finishPreview = resolve;
+        }),
+    } as unknown as typeof window.electronAPI,
+  });
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  const createObjectUrl = vi.spyOn(URL, "createObjectURL");
+  const screen = await render(
+    <MantineProvider>
+      <AudioProvider>
+        <NarrationPreviewProvider>
+          <SectionPreviewButtons
+            id="1-0"
+            slideIndex={1}
+            sectionIndex={0}
+            slideNotes="Delayed preview"
+            section={{ speaker: "Narrator", text: "Delayed preview" }}
+            effectiveSpeaker="Narrator"
+            mappings={{ Narrator: narratorVoice }}
+            onFocus={() => undefined}
+          />
+        </NarrationPreviewProvider>
+      </AudioProvider>
+    </MantineProvider>,
+  );
+
+  await screen.getByRole("button", { name: "Narrator" }).click();
+  await screen.getByRole("button", { name: "Narrator" }).click();
+  finishPreview?.(new Uint8Array([1, 2, 3]));
+
+  await new Promise((resolve) => window.setTimeout(resolve, 0));
+  expect(createObjectUrl).not.toHaveBeenCalled();
+  expect(play).not.toHaveBeenCalled();
+});
+
+test("a newer section preview suppresses an older section's late result", async () => {
+  const finishPreview = new Map<number, (audio: Uint8Array) => void>();
+  Object.defineProperty(window, "electronAPI", {
+    configurable: true,
+    value: {
+      prepareNarrationPreview: ({ sectionIndex }: PreviewNarrationRequest) =>
+        new Promise<Uint8Array>((resolve) => finishPreview.set(sectionIndex, resolve)),
+    } as unknown as typeof window.electronAPI,
+  });
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
+  const screen = await render(
+    <MantineProvider>
+      <AudioProvider>
+        <NarrationPreviewProvider>
+          <SectionPreviewButtons
+            id="1-0"
+            slideIndex={1}
+            sectionIndex={0}
+            slideNotes="First section"
+            section={{ speaker: "First", text: "First section" }}
+            effectiveSpeaker="First"
+            mappings={{ First: narratorVoice }}
+            onFocus={() => undefined}
+          />
+          <SectionPreviewButtons
+            id="1-1"
+            slideIndex={1}
+            sectionIndex={1}
+            slideNotes="Second section"
+            section={{ speaker: "Second", text: "Second section" }}
+            effectiveSpeaker="Second"
+            mappings={{ Second: narratorVoice }}
+            onFocus={() => undefined}
+          />
+        </NarrationPreviewProvider>
+      </AudioProvider>
+    </MantineProvider>,
+  );
+
+  await screen.getByRole("button", { name: "First" }).click();
+  await screen.getByRole("button", { name: "Second" }).click();
+  finishPreview.get(1)?.(new Uint8Array([2]));
+  await vi.waitFor(() => expect(play).toHaveBeenCalledOnce());
+  finishPreview.get(0)?.(new Uint8Array([1]));
+  await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+  expect(play).toHaveBeenCalledOnce();
+});
+
+test("active playback remains stoppable while another section generates", async () => {
+  const finishPreview = new Map<number, (audio: Uint8Array) => void>();
+  Object.defineProperty(window, "electronAPI", {
+    configurable: true,
+    value: {
+      prepareNarrationPreview: ({ sectionIndex }: PreviewNarrationRequest) =>
+        new Promise<Uint8Array>((resolve) => finishPreview.set(sectionIndex, resolve)),
+    } as unknown as typeof window.electronAPI,
+  });
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+  const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
+  const screen = await render(
+    <MantineProvider>
+      <AudioProvider>
+        <NarrationPreviewProvider>
+          <SectionPreviewButtons
+            id="1-0"
+            slideIndex={1}
+            sectionIndex={0}
+            slideNotes="First section"
+            section={{ speaker: "First", text: "First section" }}
+            effectiveSpeaker="First"
+            mappings={{ First: narratorVoice }}
+            onFocus={() => undefined}
+          />
+          <SectionPreviewButtons
+            id="1-1"
+            slideIndex={1}
+            sectionIndex={1}
+            slideNotes="Second section"
+            section={{ speaker: "Second", text: "Second section" }}
+            effectiveSpeaker="Second"
+            mappings={{ Second: narratorVoice }}
+            onFocus={() => undefined}
+          />
+        </NarrationPreviewProvider>
+      </AudioProvider>
+    </MantineProvider>,
+  );
+
+  await screen.getByRole("button", { name: "First" }).click();
+  finishPreview.get(0)?.(new Uint8Array([1]));
+  await vi.waitFor(() => expect(play).toHaveBeenCalledOnce());
+  await screen.getByRole("button", { name: "Second" }).click();
+  await screen.getByRole("button", { name: "First" }).click();
+  expect(pause).toHaveBeenCalled();
+
+  finishPreview.get(1)?.(new Uint8Array([2]));
+  await vi.waitFor(() => expect(play).toHaveBeenCalledTimes(2));
 });
