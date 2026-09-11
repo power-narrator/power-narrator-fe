@@ -27,7 +27,11 @@ afterEach(() => {
   }
 });
 
-function createSaver(generateSpeech = vi.fn().mockResolvedValue(new Uint8Array([1]))) {
+function createSaver(
+  generateSpeech = vi
+    .fn()
+    .mockResolvedValue({ audio: new Uint8Array([1]), mediaType: "audio/mpeg" }),
+) {
   const preparation = new NarrationPreparation(
     { getSpeakerMappings: () => ({ Narrator: narratorVoice }) },
     { supportsProvider: () => true, generateSpeech },
@@ -55,6 +59,7 @@ function createCachedRetrySaver(
     getVoices: vi.fn().mockResolvedValue([narratorVoice, alternateNarratorVoice]),
     prepareSpeech: (text, voice) => ({
       cacheIdentity: { text, voice: voice.name },
+      encoding: { fileExtension: "mp3", mediaType: "audio/mpeg" },
       synthesize,
     }),
   };
@@ -146,8 +151,8 @@ describe("NarratedPresentationSaver.savePresentation", () => {
     const pending = new Map<string, (audio: Uint8Array) => void>();
     const generateSpeech = vi.fn(
       (text: string) =>
-        new Promise<Uint8Array>((resolve) => {
-          pending.set(text, resolve);
+        new Promise<{ audio: Uint8Array; mediaType: string }>((resolve) => {
+          pending.set(text, (audio) => resolve({ audio, mediaType: "audio/mpeg" }));
         }),
     );
     const { powerpoint, saver } = createSaver(generateSpeech);

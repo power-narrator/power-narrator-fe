@@ -3,7 +3,12 @@ import * as path from "path";
 import * as crypto from "crypto";
 import { app } from "electron";
 import { APP_NAME } from "../platform/helpers.js";
-import type { TtsProviderId, TtsProviderRegistry, Voice } from "./TtsProvider.js";
+import type {
+  SynthesizedSpeech,
+  TtsProviderId,
+  TtsProviderRegistry,
+  Voice,
+} from "./TtsProvider.js";
 
 export function getNarrationCacheDirectory(
   homeDirectory: string,
@@ -46,7 +51,7 @@ function deterministicJson(value: unknown): string {
 export class TtsManager {
   private readonly providers: TtsProviderRegistry;
   private readonly cacheDirectory: string;
-  private readonly pending = new Map<string, Promise<Uint8Array>>();
+  private readonly pending = new Map<string, Promise<SynthesizedSpeech>>();
   readonly defaultProviderId: TtsProviderId;
 
   constructor(
@@ -86,7 +91,7 @@ export class TtsManager {
     return this.providers.has(providerId as TtsProviderId);
   }
 
-  async generateSpeech(text: string, voice: Voice): Promise<Uint8Array> {
+  async generateSpeech(text: string, voice: Voice): Promise<SynthesizedSpeech> {
     const providerId = voice.provider;
     const provider = this.providers.get(providerId);
 
@@ -109,12 +114,13 @@ export class TtsManager {
         }),
       )
       .digest("hex");
-    const cachePath = path.join(cacheDir, `${hash}.mp3`);
+    const mediaType = preparedRequest.encoding.mediaType;
+    const cachePath = path.join(cacheDir, `${hash}.${preparedRequest.encoding.fileExtension}`);
 
     if (fs.existsSync(cachePath)) {
       console.log(`Serving TTS from persistent cache: ${hash}`);
       const buffer = fs.readFileSync(cachePath);
-      return new Uint8Array(buffer);
+      return { audio: new Uint8Array(buffer), mediaType };
     }
 
     const existingRequest = this.pending.get(hash);
@@ -125,13 +131,8 @@ export class TtsManager {
     const pendingRequest = Promise.resolve()
       .then(() => preparedRequest.synthesize())
       .then((audioData) => {
-        try {
-          fs.writeFileSync(cachePath, Buffer.from(audioData));
-        } catch (error) {
-          console.error("Failed to write TTS cache:", error);
-        }
-
-        return new Uint8Array(audioData);
+        this.writeCacheEntry(cachePath, Buffer.from(audioData));
+        return { audio: new Uint8Array(audioData), mediaType };
       })
       .catch((error: unknown) => {
         console.error(`TTS generation failed via ${providerId}:`, error);
@@ -140,5 +141,20 @@ export class TtsManager {
       .finally(() => this.pending.delete(hash));
     this.pending.set(hash, pendingRequest);
     return pendingRequest;
+  }
+
+  /**
+   * Publishes a cache entry by renaming a fully written temporary file, so an
+   * interrupted write never leaves a truncated entry to be served later.
+   */
+  private writeCacheEntry(cachePath: string, audio: Buffer): void {
+    const temporaryPath = `${cachePath}.${crypto.randomUUID()}.part`;
+    try {
+      fs.writeFileSync(temporaryPath, audio);
+      fs.renameSync(temporaryPath, cachePath);
+    } catch (error) {
+      console.error("Failed to write TTS cache:", error);
+      fs.rmSync(temporaryPath, { force: true });
+    }
   }
 }

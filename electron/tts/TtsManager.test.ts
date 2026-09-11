@@ -5,13 +5,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TtsProvider, TtsProviderRegistry, Voice } from "./TtsProvider.js";
 import { getNarrationCacheDirectory, TtsManager } from "./TtsManager.js";
 
-const { getUserDataPath } = vi.hoisted(() => ({
+const { getUserDataPath, interruptNextCachePublish } = vi.hoisted(() => ({
   getUserDataPath: vi.fn<() => string>(),
+  interruptNextCachePublish: { value: false },
 }));
 
 vi.mock("electron", () => ({
   app: { getPath: getUserDataPath },
 }));
+
+// Lets one cache publication fail the way a crash or power loss would.
+vi.mock("fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("fs")>();
+  return {
+    ...actual,
+    default: actual,
+    renameSync: (from: string, to: string) => {
+      if (interruptNextCachePublish.value) {
+        interruptNextCachePublish.value = false;
+        throw new Error("interrupted");
+      }
+      actual.renameSync(from, to);
+    },
+  };
+});
 
 let tempDir: string;
 
@@ -22,6 +39,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  interruptNextCachePublish.value = false;
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
@@ -33,6 +51,7 @@ function createProvider(
     getVoices: vi.fn().mockResolvedValue(voices),
     prepareSpeech: (text, voice) => ({
       cacheIdentity: { text, voice: voice.name },
+      encoding: { fileExtension: "mp3", mediaType: "audio/mpeg" },
       synthesize: () => generateSpeech(text, voice),
     }),
     generateSpeech,
@@ -89,6 +108,46 @@ describe("TtsManager", () => {
 
     await manager.generateSpeech("../../unsafe / narration\0", gcpVoice);
 
+    expect(fs.readdirSync(cacheDirectory)).toEqual([expect.stringMatching(/^[a-f0-9]{64}\.mp3$/)]);
+  });
+
+  it("names cache entries for the provider's actual output encoding", async () => {
+    const wavProvider: TtsProvider = {
+      getVoices: vi.fn().mockResolvedValue([]),
+      prepareSpeech: (text, voice) => ({
+        cacheIdentity: { text, voice: voice.name },
+        encoding: { fileExtension: "wav", mediaType: "audio/wav" },
+        synthesize: async () => new Uint8Array([1, 2, 3]),
+      }),
+    };
+    const cacheDirectory = path.join(tempDir, "narration");
+    const manager = new TtsManager(new Map([["local", wavProvider]]), "local", { cacheDirectory });
+
+    await expect(manager.generateSpeech("Local narration", localVoice)).resolves.toEqual({
+      audio: new Uint8Array([1, 2, 3]),
+      mediaType: "audio/wav",
+    });
+    expect(fs.readdirSync(cacheDirectory)).toEqual([expect.stringMatching(/^[a-f0-9]{64}\.wav$/)]);
+  });
+
+  it("never serves an entry whose write was interrupted", async () => {
+    const provider = createProvider();
+    const cacheDirectory = path.join(tempDir, "narration");
+    const manager = new TtsManager(new Map([["gcp", provider]]), "gcp", { cacheDirectory });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    interruptNextCachePublish.value = true;
+
+    await expect(manager.generateSpeech("Interrupted narration", gcpVoice)).resolves.toEqual({
+      audio: new Uint8Array([1, 2, 3]),
+      mediaType: "audio/mpeg",
+    });
+    expect(fs.readdirSync(cacheDirectory)).toEqual([]);
+
+    provider.generateSpeech.mockResolvedValue(new Uint8Array([4, 5, 6]));
+    await expect(manager.generateSpeech("Interrupted narration", gcpVoice)).resolves.toEqual({
+      audio: new Uint8Array([4, 5, 6]),
+      mediaType: "audio/mpeg",
+    });
     expect(fs.readdirSync(cacheDirectory)).toEqual([expect.stringMatching(/^[a-f0-9]{64}\.mp3$/)]);
   });
 

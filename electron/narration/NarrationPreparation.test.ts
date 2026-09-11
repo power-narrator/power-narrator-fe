@@ -2,9 +2,11 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { TtsProvider, Voice } from "../tts/TtsProvider.js";
+import type { AudioEncoding, TtsProvider, Voice } from "../tts/TtsProvider.js";
 import { TtsManager } from "../tts/TtsManager.js";
 import { NarrationPreparation, NarrationPreparationError } from "./NarrationPreparation.js";
+
+const MP3_ENCODING: AudioEncoding = { fileExtension: "mp3", mediaType: "audio/mpeg" };
 
 const narratorVoice: Voice = {
   name: "en-US-narrator",
@@ -52,7 +54,9 @@ function createCachedPreparation(provider: TtsProvider, cacheDirectory?: string)
 }
 
 function createPreparation(mappings: Record<string, Voice> = { Narrator: narratorVoice }) {
-  const generateSpeech = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]));
+  const generateSpeech = vi
+    .fn()
+    .mockResolvedValue({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
   const preparation = new NarrationPreparation(
     { getSpeakerMappings: () => mappings },
     {
@@ -71,6 +75,7 @@ describe("NarrationPreparation.preparePreview", () => {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
         cacheIdentity: { text, voice: voice.name },
+        encoding: MP3_ENCODING,
         synthesize: () => generateSpeech(text, voice),
       }),
     };
@@ -82,8 +87,14 @@ describe("NarrationPreparation.preparePreview", () => {
       text: " Hello ",
     };
 
-    await expect(preparation.preparePreview(request)).resolves.toEqual(new Uint8Array([7, 8, 9]));
-    await expect(preparation.preparePreview(request)).resolves.toEqual(new Uint8Array([7, 8, 9]));
+    await expect(preparation.preparePreview(request)).resolves.toEqual({
+      audio: new Uint8Array([7, 8, 9]),
+      mediaType: "audio/mpeg",
+    });
+    await expect(preparation.preparePreview(request)).resolves.toEqual({
+      audio: new Uint8Array([7, 8, 9]),
+      mediaType: "audio/mpeg",
+    });
 
     expect(generateSpeech).toHaveBeenCalledOnce();
   });
@@ -95,6 +106,7 @@ describe("NarrationPreparation.preparePreview", () => {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
         cacheIdentity: { text, voice: voice.name },
+        encoding: MP3_ENCODING,
         synthesize: vi.fn().mockResolvedValue(new Uint8Array([4, 5, 6])),
       }),
     };
@@ -112,12 +124,13 @@ describe("NarrationPreparation.preparePreview", () => {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
         cacheIdentity: { text, voice: voice.name },
+        encoding: MP3_ENCODING,
         synthesize: generateAfterRestart,
       }),
     };
     await expect(
       createCachedPreparation(restartedProvider, cacheDirectory).preparePreview(request),
-    ).resolves.toEqual(new Uint8Array([4, 5, 6]));
+    ).resolves.toEqual({ audio: new Uint8Array([4, 5, 6]), mediaType: "audio/mpeg" });
     expect(generateAfterRestart).not.toHaveBeenCalled();
   });
 
@@ -133,6 +146,7 @@ describe("NarrationPreparation.preparePreview", () => {
           voice: { languageCode: voice.languageCodes[0] ?? "", name: voice.name },
           audioConfig: { audioEncoding: "MP3" },
         },
+        encoding: MP3_ENCODING,
         synthesize: () => generateSpeech(text, voice),
       }),
     };
@@ -167,6 +181,7 @@ describe("NarrationPreparation.preparePreview", () => {
             voice: voice.name,
             audioEncoding: preparedEncoding,
           },
+          encoding: MP3_ENCODING,
           synthesize: () => generateSpeech(preparedEncoding),
         };
       },
@@ -199,6 +214,7 @@ describe("NarrationPreparation.preparePreview", () => {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
         cacheIdentity: { text, voice: voice.name },
+        encoding: MP3_ENCODING,
         synthesize: () => generateSpeech(),
       }),
     };
@@ -217,7 +233,10 @@ describe("NarrationPreparation.preparePreview", () => {
     await vi.waitFor(() => expect(generateSpeech).toHaveBeenCalledOnce());
 
     finishSynthesis(new Uint8Array([5, 5, 5]));
-    await expect(preview).resolves.toEqual(new Uint8Array([5, 5, 5]));
+    await expect(preview).resolves.toEqual({
+      audio: new Uint8Array([5, 5, 5]),
+      mediaType: "audio/mpeg",
+    });
     await expect(save).resolves.toEqual([
       { index: 1, sectionIndex: 0, audioData: new Uint8Array([5, 5, 5]) },
     ]);
@@ -234,6 +253,7 @@ describe("NarrationPreparation.preparePreview", () => {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
         cacheIdentity: { text, voice: voice.name },
+        encoding: MP3_ENCODING,
         synthesize: () => generateSpeech(),
       }),
     };
@@ -250,7 +270,10 @@ describe("NarrationPreparation.preparePreview", () => {
     await expect(firstPreview).rejects.toThrow("temporary outage");
     await expect(firstSave).rejects.toThrow("temporary outage");
 
-    await expect(preparation.preparePreview(request)).resolves.toEqual(new Uint8Array([9, 9, 9]));
+    await expect(preparation.preparePreview(request)).resolves.toEqual({
+      audio: new Uint8Array([9, 9, 9]),
+      mediaType: "audio/mpeg",
+    });
     expect(generateSpeech).toHaveBeenCalledTimes(2);
     expect(errorLog).toHaveBeenCalledOnce();
   });
@@ -262,6 +285,7 @@ describe("NarrationPreparation.preparePreview", () => {
       getVoices: vi.fn().mockResolvedValue([]),
       prepareSpeech: (text) => ({
         cacheIdentity: { text },
+        encoding: MP3_ENCODING,
         synthesize: () =>
           new Promise<Uint8Array>((resolve) => {
             starts.push(text);
@@ -294,7 +318,7 @@ describe("NarrationPreparation.preparePreview", () => {
         notes: "[Narrator]\nStored text",
         text: "  Live renderer text  \n",
       }),
-    ).resolves.toEqual(new Uint8Array([1, 2, 3]));
+    ).resolves.toEqual({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
     expect(generateSpeech).toHaveBeenCalledWith("Live renderer text", narratorVoice);
   });
 

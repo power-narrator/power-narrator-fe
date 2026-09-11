@@ -21,8 +21,8 @@ function createHarness(mappings: Record<string, Voice>) {
   const pending = new Map<string, (audio: Uint8Array) => void>();
   const generateSpeech = vi.fn(
     (text: string) =>
-      new Promise<Uint8Array>((resolve) => {
-        pending.set(text, resolve);
+      new Promise<{ audio: Uint8Array; mediaType: string }>((resolve) => {
+        pending.set(text, (audio) => resolve({ audio, mediaType: "audio/mpeg" }));
       }),
   );
   const preparation = new NarrationPreparation(
@@ -174,7 +174,9 @@ describe("NarratedPresentationSaver current-slide save", () => {
   ])(
     "reports a structured PowerPoint failure while committing %s",
     async (_, notesResult, audioResult, partial) => {
-      const generateSpeech = vi.fn().mockResolvedValue(new Uint8Array([1]));
+      const generateSpeech = vi
+        .fn()
+        .mockResolvedValue({ audio: new Uint8Array([1]), mediaType: "audio/mpeg" });
       const preparation = new NarrationPreparation(
         { getSpeakerMappings: () => ({ Narrator: narratorVoice }) },
         { supportsProvider: () => true, generateSpeech },

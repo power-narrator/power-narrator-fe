@@ -1,4 +1,4 @@
-import type { Voice } from "../tts/TtsProvider.js";
+import type { SynthesizedSpeech, Voice } from "../tts/TtsProvider.js";
 import type {
   NarrationPreparationProgress,
   PreviewNarrationRequest,
@@ -12,7 +12,7 @@ export interface SpeakerMappingSource {
 
 export interface NarrationSynthesizer {
   supportsProvider(providerId: string): boolean;
-  generateSpeech(text: string, voice: Voice): Promise<Uint8Array | Buffer>;
+  generateSpeech(text: string, voice: Voice): Promise<SynthesizedSpeech>;
 }
 
 const DEFAULT_SPEAKER_KEY = "_default_";
@@ -52,7 +52,7 @@ export class NarrationPreparation {
     private readonly synthesizer: NarrationSynthesizer,
   ) {}
 
-  async preparePreview(request: PreviewNarrationRequest): Promise<Uint8Array | Buffer> {
+  async preparePreview(request: PreviewNarrationRequest): Promise<SynthesizedSpeech> {
     const text = request.text.trim();
     if (!text) {
       throw new NarrationPreparationError(
@@ -104,7 +104,7 @@ export class NarrationPreparation {
 
     return Promise.all(
       prepared.map(async (section) => {
-        const audio = await this.synthesizeSection(section);
+        const { audio } = await this.synthesizeSection(section);
         const entry = {
           index: section.slideIndex,
           sectionIndex: section.sectionIndex,
@@ -117,7 +117,7 @@ export class NarrationPreparation {
     );
   }
 
-  private async synthesizeSection(section: PreparedNarrationSection): Promise<Uint8Array | Buffer> {
+  private async synthesizeSection(section: PreparedNarrationSection): Promise<SynthesizedSpeech> {
     try {
       return await this.synthesizer.generateSpeech(section.text, section.voice);
     } catch (error: unknown) {

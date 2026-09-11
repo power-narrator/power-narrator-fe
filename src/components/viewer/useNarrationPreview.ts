@@ -154,7 +154,7 @@ export function useNarrationPreview(options: NarrationPreviewOptions) {
       setLastPlayedSpeaker(target);
 
       try {
-        const bytes = await window.electronAPI.prepareNarrationPreview({
+        const preview = await window.electronAPI.prepareNarrationPreview({
           slideIndex: options.slideIndex,
           sectionIndex: options.sectionIndex,
           notes: options.slideNotes,
@@ -163,8 +163,8 @@ export function useNarrationPreview(options: NarrationPreviewOptions) {
         });
         if (!isCurrent(token)) return;
 
-        const buffer = Uint8Array.from(bytes).buffer;
-        const url = URL.createObjectURL(new Blob([buffer], { type: "audio/mpeg" }));
+        const buffer = Uint8Array.from(preview.audio).buffer;
+        const url = URL.createObjectURL(new Blob([buffer], { type: preview.mediaType }));
         playAudio(options.id, url);
       } catch (error: unknown) {
         if (!isCurrent(token)) return;

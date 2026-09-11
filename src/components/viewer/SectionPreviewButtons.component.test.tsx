@@ -2,7 +2,10 @@ import { MantineProvider } from "@mantine/core";
 import { useRef } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
-import type { PreviewNarrationRequest } from "../../../shared/types/narration";
+import type {
+  NarrationPreviewResult,
+  PreviewNarrationRequest,
+} from "../../../shared/types/narration";
 import type { Voice } from "../../../shared/types/tts";
 import { AudioProvider } from "../../context/AudioContext";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
@@ -26,7 +29,7 @@ test("previews only the text selected in the live notes editor", async () => {
     value: {
       prepareNarrationPreview: async (request: PreviewNarrationRequest) => {
         previewRequests.push(request);
-        return new Uint8Array([1, 2, 3]);
+        return { audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" };
       },
     } as unknown as typeof window.electronAPI,
   });
@@ -76,12 +79,12 @@ test("previews only the text selected in the live notes editor", async () => {
 });
 
 test("stopping a pending preview suppresses its late audio result", async () => {
-  let finishPreview: ((audio: Uint8Array) => void) | undefined;
+  let finishPreview: ((preview: NarrationPreviewResult) => void) | undefined;
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
     value: {
       prepareNarrationPreview: () =>
-        new Promise<Uint8Array>((resolve) => {
+        new Promise<NarrationPreviewResult>((resolve) => {
           finishPreview = resolve;
         }),
     } as unknown as typeof window.electronAPI,
@@ -110,7 +113,7 @@ test("stopping a pending preview suppresses its late audio result", async () => 
 
   await screen.getByRole("button", { name: "Narrator" }).click();
   await screen.getByRole("button", { name: "Narrator" }).click();
-  finishPreview?.(new Uint8Array([1, 2, 3]));
+  finishPreview?.({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
 
   await new Promise((resolve) => window.setTimeout(resolve, 0));
   expect(createObjectUrl).not.toHaveBeenCalled();
@@ -118,12 +121,12 @@ test("stopping a pending preview suppresses its late audio result", async () => 
 });
 
 test("a newer section preview suppresses an older section's late result", async () => {
-  const finishPreview = new Map<number, (audio: Uint8Array) => void>();
+  const finishPreview = new Map<number, (preview: NarrationPreviewResult) => void>();
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
     value: {
       prepareNarrationPreview: ({ sectionIndex }: PreviewNarrationRequest) =>
-        new Promise<Uint8Array>((resolve) => finishPreview.set(sectionIndex, resolve)),
+        new Promise<NarrationPreviewResult>((resolve) => finishPreview.set(sectionIndex, resolve)),
     } as unknown as typeof window.electronAPI,
   });
   const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
@@ -160,21 +163,21 @@ test("a newer section preview suppresses an older section's late result", async 
 
   await screen.getByRole("button", { name: "First" }).click();
   await screen.getByRole("button", { name: "Second" }).click();
-  finishPreview.get(1)?.(new Uint8Array([2]));
+  finishPreview.get(1)?.({ audio: new Uint8Array([2]), mediaType: "audio/mpeg" });
   await vi.waitFor(() => expect(play).toHaveBeenCalledOnce());
-  finishPreview.get(0)?.(new Uint8Array([1]));
+  finishPreview.get(0)?.({ audio: new Uint8Array([1]), mediaType: "audio/mpeg" });
   await new Promise((resolve) => window.setTimeout(resolve, 0));
 
   expect(play).toHaveBeenCalledOnce();
 });
 
 test("active playback remains stoppable while another section generates", async () => {
-  const finishPreview = new Map<number, (audio: Uint8Array) => void>();
+  const finishPreview = new Map<number, (preview: NarrationPreviewResult) => void>();
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
     value: {
       prepareNarrationPreview: ({ sectionIndex }: PreviewNarrationRequest) =>
-        new Promise<Uint8Array>((resolve) => finishPreview.set(sectionIndex, resolve)),
+        new Promise<NarrationPreviewResult>((resolve) => finishPreview.set(sectionIndex, resolve)),
     } as unknown as typeof window.electronAPI,
   });
   const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
@@ -210,12 +213,50 @@ test("active playback remains stoppable while another section generates", async 
   );
 
   await screen.getByRole("button", { name: "First" }).click();
-  finishPreview.get(0)?.(new Uint8Array([1]));
+  finishPreview.get(0)?.({ audio: new Uint8Array([1]), mediaType: "audio/mpeg" });
   await vi.waitFor(() => expect(play).toHaveBeenCalledOnce());
   await screen.getByRole("button", { name: "Second" }).click();
   await screen.getByRole("button", { name: "First" }).click();
   expect(pause).toHaveBeenCalled();
 
-  finishPreview.get(1)?.(new Uint8Array([2]));
+  finishPreview.get(1)?.({ audio: new Uint8Array([2]), mediaType: "audio/mpeg" });
   await vi.waitFor(() => expect(play).toHaveBeenCalledTimes(2));
+});
+
+test("plays back preview audio as the media type the provider returned", async () => {
+  Object.defineProperty(window, "electronAPI", {
+    configurable: true,
+    value: {
+      prepareNarrationPreview: async () => ({
+        audio: new Uint8Array([1, 2, 3]),
+        mediaType: "audio/wav",
+      }),
+    } as unknown as typeof window.electronAPI,
+  });
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
+  const screen = await render(
+    <MantineProvider>
+      <AudioProvider>
+        <NarrationPreviewProvider>
+          <SectionPreviewButtons
+            id="1-0"
+            slideIndex={1}
+            sectionIndex={0}
+            slideNotes="[Narrator]\nLocal narration"
+            section={{ speaker: "Narrator", text: "Local narration" }}
+            effectiveSpeaker="Narrator"
+            mappings={{ Narrator: narratorVoice }}
+            onFocus={() => undefined}
+          />
+        </NarrationPreviewProvider>
+      </AudioProvider>
+    </MantineProvider>,
+  );
+
+  await screen.getByRole("button", { name: "Narrator" }).click();
+
+  await vi.waitFor(() => expect(createObjectURL).toHaveBeenCalledOnce());
+  expect((createObjectURL.mock.calls[0]![0] as Blob).type).toBe("audio/wav");
 });

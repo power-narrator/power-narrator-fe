@@ -19,6 +19,10 @@ interface ViewerElectronOverrides {
   confirmDiscardNarrationChanges?: () => Promise<boolean>;
   reloadSlide?: typeof window.electronAPI.reloadSlide;
   saveNarratedSlide?: typeof window.electronAPI.saveNarratedSlide;
+  saveNarratedPresentation?: typeof window.electronAPI.saveNarratedPresentation;
+  saveNotes?: typeof window.electronAPI.saveNotes;
+  getVideoSavePath?: typeof window.electronAPI.getVideoSavePath;
+  generateVideo?: typeof window.electronAPI.generateVideo;
 }
 
 function installElectronApi(overrides: ViewerElectronOverrides = {}) {
@@ -28,6 +32,10 @@ function installElectronApi(overrides: ViewerElectronOverrides = {}) {
     confirmDiscardNarrationChanges: vi.fn(async () => false),
     reloadSlide: vi.fn(async () => ({ success: true as const, slide: loadedSlide })),
     saveNarratedSlide: vi.fn(async (): Promise<NarratedSaveResult> => ({ success: true })),
+    saveNarratedPresentation: vi.fn(async (): Promise<NarratedSaveResult> => ({ success: true })),
+    saveNotes: vi.fn(async () => ({ success: true as const })),
+    getVideoSavePath: vi.fn(async () => "video.mp4"),
+    generateVideo: vi.fn(async () => ({ success: true as const, outputPath: "video.mp4" })),
     ...overrides,
   } as unknown as typeof window.electronAPI;
 
@@ -200,4 +208,44 @@ test("allows only the active Viewer operation to report progress", async () => {
   await vi.waitFor(() =>
     expect(screen.getByRole("button", { name: "Reload Slide", exact: true })).not.toBeDisabled(),
   );
+});
+
+test("generates video only after narration and notes are committed together", async () => {
+  const saveNarratedPresentation = vi
+    .fn<typeof window.electronAPI.saveNarratedPresentation>()
+    .mockResolvedValueOnce({
+      success: false,
+      stage: "synthesis",
+      partial: false,
+      message: "Synthesis failed",
+    })
+    .mockResolvedValueOnce({ success: true });
+  const confirmDiscardNarrationChanges = vi.fn(async () => false);
+  const generateVideo = vi.fn(async () => ({ success: true as const, outputPath: "video.mp4" }));
+  const saveNotes = vi.fn(async () => ({ success: true as const }));
+  const electronAPI = installElectronApi({
+    saveNarratedPresentation,
+    confirmDiscardNarrationChanges,
+    generateVideo,
+    saveNotes,
+  });
+  vi.spyOn(window, "alert").mockImplementation(() => undefined);
+  const { screen, onBack } = await renderViewer();
+
+  await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Edited narration");
+  await screen.getByRole("button", { name: "Generate Video", exact: true }).click();
+  await vi.waitFor(() => expect(saveNarratedPresentation).toHaveBeenCalledTimes(1));
+  expect(generateVideo).not.toHaveBeenCalled();
+  expect(electronAPI.getVideoSavePath).not.toHaveBeenCalled();
+  await screen.getByRole("button", { name: "Back", exact: false }).click();
+  expect(confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
+  expect(onBack).not.toHaveBeenCalled();
+
+  await screen.getByRole("button", { name: "Generate Video", exact: true }).click();
+  await vi.waitFor(() => expect(generateVideo).toHaveBeenCalledOnce());
+  expect(saveNotes).not.toHaveBeenCalled();
+
+  await screen.getByRole("button", { name: "Back", exact: false }).click();
+  expect(confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
+  expect(onBack).toHaveBeenCalledOnce();
 });

@@ -38,11 +38,21 @@ describe("LocalTtsProvider", () => {
   });
 
   it("records Mimic3's fixed WAV response encoding in the prepared request identity", () => {
-    expect(
-      new LocalTtsProvider().prepareSpeech("Hello", concreteVoice).cacheIdentity,
-    ).toMatchObject({
-      audioEncoding: "WAV",
-    });
+    const prepared = new LocalTtsProvider().prepareSpeech("Hello", concreteVoice);
+
+    expect(prepared.cacheIdentity).toMatchObject({ audioEncoding: "WAV" });
+    expect(prepared.encoding).toEqual({ fileExtension: "wav", mediaType: "audio/wav" });
+  });
+
+  it("keeps the prepared request identity when the server moves host or port", () => {
+    vi.stubEnv("LOCAL_TTS_URL", "http://localhost:59125/api/tts");
+    const original = new LocalTtsProvider().prepareSpeech("Hello", concreteVoice).cacheIdentity;
+
+    vi.stubEnv("LOCAL_TTS_URL", "http://speech.internal:8080/api/tts");
+
+    expect(new LocalTtsProvider().prepareSpeech("Hello", concreteVoice).cacheIdentity).toEqual(
+      original,
+    );
   });
 
   it("uses the supplied concrete voice", async () => {

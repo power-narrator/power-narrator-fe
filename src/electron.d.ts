@@ -4,6 +4,7 @@ import type {
   NarratedSaveResult,
   NarratedSlideSaveRequest,
   NarrationPreparationProgress,
+  NarrationPreviewResult,
   PreviewNarrationRequest,
 } from "../shared/types/narration";
 import type {
@@ -35,7 +36,9 @@ declare global {
         onProgress: (progress: NarrationPreparationProgress) => void,
       ) => Promise<NarratedSaveResult>;
       getVoices: () => Promise<Voice[]>;
-      prepareNarrationPreview: (payload: PreviewNarrationRequest) => Promise<Uint8Array>;
+      prepareNarrationPreview: (
+        payload: PreviewNarrationRequest,
+      ) => Promise<NarrationPreviewResult>;
       getGcpKeyPath: () => Promise<string | null>;
       setGcpKey: () => Promise<SetGcpKeyResult>;
       setInsertMethod: (method: string) => Promise<void>;
