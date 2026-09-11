@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, protocol, net } from "electron";
 import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
-import { fileURLToPath, pathToFileURL } from "url";
+import { pathToFileURL } from "url";
 import Store from "electron-store";
 import type { NativePlatformProvider, PptProvider } from "./platform/PptProvider.js";
 import { MacPptProvider } from "./platform/MacPptProvider.js";
@@ -22,6 +22,7 @@ import type {
 } from "./platform/types.js";
 import { registerNarrationIpc } from "./narration/registerNarrationIpc.js";
 import { UnsavedNarrationChanges } from "./windows/UnsavedNarrationChanges.js";
+import { createMainWindow } from "./windows/createMainWindow.js";
 import { installTestHarness } from "./testing/narrationTestHarness.js";
 
 protocol.registerSchemesAsPrivileged([
@@ -35,9 +36,6 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ]);
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -109,23 +107,6 @@ function getOutputDir(absolutePath: string): string {
   );
 }
 
-const createWindow = () => {
-  const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"),
-    },
-  });
-  unsavedNarrationChanges.guard(mainWindow);
-
-  if (!app.isPackaged && !(process.env.NODE_ENV === "test")) {
-    mainWindow.loadURL("http://localhost:5173");
-  } else {
-    mainWindow.loadFile(path.join(__dirname, "../../dist-vite/index.html"));
-  }
-};
-
 app.whenReady().then(() => {
   protocol.handle(APP_NAME, (request) => {
     const url = new URL(request.url);
@@ -148,11 +129,11 @@ app.whenReady().then(() => {
 
     return net.fetch(pathToFileURL(assetPath).toString());
   });
-  createWindow();
+  createMainWindow(unsavedNarrationChanges);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      createMainWindow(unsavedNarrationChanges);
     }
   });
 });
