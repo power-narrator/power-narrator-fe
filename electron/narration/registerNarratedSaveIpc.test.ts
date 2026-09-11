@@ -42,6 +42,28 @@ function registerHandlers() {
 
 const event = { sender: { send: vi.fn() } } as unknown as IpcMainInvokeEvent;
 
+it("forwards preparation progress to the requested progress channel", async () => {
+  const { handlers, saver } = registerHandlers();
+  vi.mocked(saver.savePresentation).mockImplementation(async (_request, onProgress) => {
+    onProgress?.({ completed: 1, total: 2 });
+    onProgress?.({ completed: 2, total: 2 });
+    return { success: true };
+  });
+  const send = vi.fn();
+  const progressEvent = { sender: { send } } as unknown as IpcMainInvokeEvent;
+
+  await handlers.get("save-narrated-presentation")!(progressEvent, {
+    filePath: presentationPath,
+    slides: [{ slideIndex: 1, notes: "[Narrator]\nHello" }],
+    progressChannel: "narrated-presentation-save-progress:7",
+  } as never);
+
+  expect(send.mock.calls).toEqual([
+    ["narrated-presentation-save-progress:7", { completed: 1, total: 2 }],
+    ["narrated-presentation-save-progress:7", { completed: 2, total: 2 }],
+  ]);
+});
+
 describe.each([
   [
     "save-narrated-slide",
