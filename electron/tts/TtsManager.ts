@@ -1,6 +1,6 @@
-import * as fs from "fs";
-import * as path from "path";
-import * as crypto from "crypto";
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
 import { app } from "electron";
 import { APP_NAME } from "../platform/helpers.js";
 import type {
@@ -37,12 +37,12 @@ export function getNarrationCacheDirectory(
 
 function deterministicJson(value: unknown): string {
   if (Array.isArray(value)) {
-    return `[${value.map(deterministicJson).join(",")}]`;
+    return `[${value.map((entry) => deterministicJson(entry)).join(",")}]`;
   }
 
   if (value !== null && typeof value === "object") {
     return `{${Object.entries(value)
-      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([key, entry]) => `${JSON.stringify(key)}:${deterministicJson(entry)}`)
       .join(",")}}`;
   }
@@ -76,7 +76,7 @@ export class TtsManager {
   }
 
   supportsProvider(providerId: string): providerId is TtsProviderId {
-    return this.providers.has(providerId as TtsProviderId);
+    return this.providers.has(providerId);
   }
 
   async generateSpeech(text: string, voice: Voice): Promise<SynthesizedSpeech> {

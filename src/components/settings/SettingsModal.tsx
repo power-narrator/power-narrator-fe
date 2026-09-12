@@ -127,7 +127,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
         </Group>
 
         <Group justify="flex-end">
-          <Button onClick={handleSetKey} variant="light" size="xs">
+          <Button onClick={() => void handleSetKey()} variant="light" size="xs">
             Select Key File...
           </Button>
         </Group>

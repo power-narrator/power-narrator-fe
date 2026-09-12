@@ -22,17 +22,19 @@ const electron = vi.hoisted(() => {
   return {
     state,
     contextBridge: {
-      exposeInMainWorld: vi.fn((_name: string, api: unknown) => {
+      exposeInMainWorld: vi.fn<(name: string, api: unknown) => void>((_name, api) => {
         state.exposedApi = api as typeof state.exposedApi;
       }),
     },
     ipcRenderer: {
-      invoke: vi.fn(),
-      on: vi.fn((_channel: string, listener: ProgressListener) => state.listeners.add(listener)),
-      removeListener: vi.fn((_channel: string, listener: ProgressListener) =>
-        state.listeners.delete(listener),
+      invoke: vi.fn<(channel: string, ...args: unknown[]) => Promise<unknown>>(),
+      on: vi.fn<(channel: string, listener: ProgressListener) => unknown>((_channel, listener) =>
+        state.listeners.add(listener),
       ),
-      sendSync: vi.fn(),
+      removeListener: vi.fn<(channel: string, listener: ProgressListener) => unknown>(
+        (_channel, listener) => state.listeners.delete(listener),
+      ),
+      sendSync: vi.fn<(channel: string, ...args: unknown[]) => unknown>(),
     },
   };
 });

@@ -29,22 +29,22 @@ test("creates a mapping from the voices exposed by the provider registry", async
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
     value: {
-      getSpeakerMappings: async () => ({}),
-      setSpeakerMappings: async (mappings: Record<string, Voice>) => {
+      getSpeakerMappings: () => Promise.resolve({}),
+      setSpeakerMappings: (mappings: Record<string, Voice>) => {
         savedMappings.push(mappings);
-        return { success: true };
+        return Promise.resolve({ success: true });
       },
-      getGcpKeyPath: async () => null,
-      getVoices: async () => [registryVoice],
-      getXmlCliEnabled: async () => false,
-      setXmlCliEnabled: async () => ({ success: true }),
-    } as unknown as typeof window.electronAPI,
+      getGcpKeyPath: () => Promise.resolve(null),
+      getVoices: () => Promise.resolve([registryVoice]),
+      getXmlCliEnabled: () => Promise.resolve(false),
+      setXmlCliEnabled: () => Promise.resolve({ success: true }),
+    },
   });
 
   const screen = await render(
     <MantineProvider>
       <SettingsProvider>
-        <SettingsModal opened onClose={() => undefined} />
+        <SettingsModal opened onClose={() => {}} />
       </SettingsProvider>
     </MantineProvider>,
   );
@@ -73,22 +73,22 @@ test("replaces a persisted mapping whose provider is no longer registered", asyn
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
     value: {
-      getSpeakerMappings: async () => ({ Narrator: legacyVoice }),
-      setSpeakerMappings: async (mappings: Record<string, Voice>) => {
+      getSpeakerMappings: () => Promise.resolve({ Narrator: legacyVoice }),
+      setSpeakerMappings: (mappings: Record<string, Voice>) => {
         savedMappings.push(mappings);
-        return { success: true };
+        return Promise.resolve({ success: true });
       },
-      getGcpKeyPath: async () => null,
-      getVoices: async () => [gcpVoice],
-      getXmlCliEnabled: async () => false,
-      setXmlCliEnabled: async () => ({ success: true }),
-    } as unknown as typeof window.electronAPI,
+      getGcpKeyPath: () => Promise.resolve(null),
+      getVoices: () => Promise.resolve([gcpVoice]),
+      getXmlCliEnabled: () => Promise.resolve(false),
+      setXmlCliEnabled: () => Promise.resolve({ success: true }),
+    },
   });
 
   const screen = await render(
     <MantineProvider>
       <SettingsProvider>
-        <SettingsModal opened onClose={() => undefined} />
+        <SettingsModal opened onClose={() => {}} />
       </SettingsProvider>
     </MantineProvider>,
   );

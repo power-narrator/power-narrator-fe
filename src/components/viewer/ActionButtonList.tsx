@@ -19,7 +19,7 @@ export function ActionButtonList<TKey extends string>({
   actionStates,
   handlers,
 }: ActionButtonListProps<TKey>) {
-  const sortedItems = [...items].sort((a, b) => {
+  const sortedItems = items.toSorted((a, b) => {
     if (a.key === "playSlide") return 1;
     if (b.key === "playSlide") return -1;
     return 0;

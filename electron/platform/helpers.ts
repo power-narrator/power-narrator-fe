@@ -1,6 +1,6 @@
 import { app } from "electron";
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 import type { SlideManifestEntry, SlideWithSrc } from "./types.js";
 
 export const APP_NAME = "power-narrator";
@@ -27,7 +27,7 @@ export function isManagedPptAudioName(name: string): boolean {
 }
 
 export function normalizeNotes(notes: string): string {
-  return notes.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return notes.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
 }
 
 export function buildSlidesWithPaths(

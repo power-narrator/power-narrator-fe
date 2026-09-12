@@ -1,6 +1,6 @@
-import fs from "fs";
-import os from "os";
-import path from "path";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { XmlPptProvider } from "./XmlPptProvider.js";
 import type { NativePlatformProvider } from "./PptProvider.js";
@@ -28,12 +28,20 @@ function createNativeProvider(
   reloadSlideImage: NativePlatformProvider["reloadSlideImage"],
 ): NativePlatformProvider {
   return {
-    closePresentation: vi.fn().mockResolvedValue(1),
-    exportSlideImages: vi.fn().mockResolvedValue({ success: false, message: "Not used" }),
-    generateVideo: vi.fn().mockResolvedValue({ success: false, message: "Not used" }),
-    playSlide: vi.fn().mockResolvedValue({ success: false, message: "Not used" }),
+    closePresentation: vi.fn<NativePlatformProvider["closePresentation"]>().mockResolvedValue(1),
+    exportSlideImages: vi
+      .fn<NativePlatformProvider["exportSlideImages"]>()
+      .mockResolvedValue({ success: false, message: "Not used" }),
+    generateVideo: vi
+      .fn<NativePlatformProvider["generateVideo"]>()
+      .mockResolvedValue({ success: false, message: "Not used" }),
+    playSlide: vi
+      .fn<NativePlatformProvider["playSlide"]>()
+      .mockResolvedValue({ success: false, message: "Not used" }),
     reloadSlideImage,
-    reopenPresentation: vi.fn().mockResolvedValue(undefined),
+    reopenPresentation: vi.fn<NativePlatformProvider["reopenPresentation"]>(() =>
+      Promise.resolve(),
+    ),
   };
 }
 

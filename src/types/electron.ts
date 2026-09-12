@@ -12,7 +12,7 @@ import type {
   VideoPptResult,
 } from "../../electron/platform/types";
 
-export interface Slide extends SlideWithSrc {}
+export type Slide = SlideWithSrc;
 
 export type ConvertResponse = SlidesPptResult;
 
@@ -26,12 +26,12 @@ export type VideoElectronResult = VideoPptResult;
 
 export type SetGcpKeyResult = PlatformSetGcpKeyResult;
 
-export interface SaveNotesSlide extends SlideManifestEntry {}
+export type SaveNotesSlide = SlideManifestEntry;
 
-export interface GenerateVideoPayload extends GenerateVideoRequest {}
+export type GenerateVideoPayload = GenerateVideoRequest;
 
-export interface PlaySlidePayload extends PlaySlideRequest {}
+export type PlaySlidePayload = PlaySlideRequest;
 
-export interface ReloadSlidePayload extends ReloadSlideRequest {}
+export type ReloadSlidePayload = ReloadSlideRequest;
 
-export interface RemoveAudioPayload extends RemoveAudioRequest {}
+export type RemoveAudioPayload = RemoveAudioRequest;

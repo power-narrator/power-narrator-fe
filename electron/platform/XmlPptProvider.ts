@@ -1,7 +1,7 @@
 import { app } from "electron";
-import path from "path";
-import fs from "fs";
-import { spawn } from "child_process";
+import path from "node:path";
+import fs from "node:fs";
+import { spawn } from "node:child_process";
 import type { NativePlatformProvider, PptProvider } from "./PptProvider.js";
 import { getErrorMessage } from "./errors.js";
 import {
@@ -242,7 +242,7 @@ export class XmlPptProvider implements PptProvider {
       }
 
       for (const [slideIndex, slideEntries] of slideAudioEntriesBySlide) {
-        for (const slide of [...slideEntries].reverse()) {
+        for (const slide of slideEntries.toReversed()) {
           const slideDir = path.join(sessionDir, `slide_${slideIndex}`);
           const audioFileName = buildPptAudioFileName(slide.sectionIndex);
           const audioFilePath = path.join(slideDir, audioFileName);

@@ -20,7 +20,7 @@ interface RawNarrationSection {
 }
 
 export const normalizeNotes = (text: string): string =>
-  text.replace(/\r\n|[\r\u2028\u2029]/g, "\n");
+  text.replaceAll(/\r\n|[\r\u2028\u2029]/g, "\n");
 
 function splitRawSections(text: string): RawNarrationSection[] {
   const sections: RawNarrationSection[] = [];
@@ -62,7 +62,7 @@ function parseSection(rawSection: RawNarrationSection): NarrationSection {
     return {
       speaker: "",
       text: rawSection.text,
-      ...(Object.keys(format).length ? { format } : {}),
+      ...(Object.keys(format).length > 0 ? { format } : {}),
     };
   }
 
@@ -82,7 +82,7 @@ function parseSection(rawSection: RawNarrationSection): NarrationSection {
 }
 
 export const parseNarrationSections = (text: string): NarrationSection[] =>
-  splitRawSections(normalizeNotes(text)).map(parseSection);
+  splitRawSections(normalizeNotes(text)).map((section) => parseSection(section));
 
 export const getEffectiveSpeaker = (
   sections: readonly Pick<NarrationSection, "speaker">[],

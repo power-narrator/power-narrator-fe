@@ -17,6 +17,12 @@ interface SectionPreviewButtonsProps {
   getTextarea?: () => HTMLTextAreaElement | null;
 }
 
+function formatTime(time: number) {
+  const minutes = Math.floor(time / 60);
+  const seconds = Math.floor(time % 60);
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
 export function SectionPreviewButtons({
   id,
   slideIndex,
@@ -39,12 +45,6 @@ export function SectionPreviewButtons({
   const effectiveSpeaker = preview.effectiveSpeaker;
   const speakers = getSpeakerOptions(mappings);
 
-  const formatTime = (time: number) => {
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-  };
-
   const isAnyPreviewActive = preview.isPlaying && preview.activeTarget !== null;
 
   return (
@@ -66,7 +66,7 @@ export function SectionPreviewButtons({
               }
               onMouseDown={(event) => event.preventDefault()}
               onClick={() =>
-                preview.play(
+                void preview.play(
                   speaker.value === DEFAULT_SPEAKER_VALUE
                     ? { kind: "default" }
                     : { kind: "override", speaker: speaker.value },
@@ -91,7 +91,7 @@ export function SectionPreviewButtons({
 
       <Group gap="xs">
         <ActionIcon
-          aria-label={preview.activeTarget !== null ? "Stop preview" : "Preview effective speaker"}
+          aria-label={preview.activeTarget === null ? "Preview effective speaker" : "Stop preview"}
           title={`Effective speaker: ${effectiveSpeaker || "Default"}`}
           color="blue"
           size="sm"
@@ -103,7 +103,7 @@ export function SectionPreviewButtons({
               return;
             }
 
-            preview.play({ kind: "effective" });
+            void preview.play({ kind: "effective" });
           }}
           disabled={!section.text}
         >

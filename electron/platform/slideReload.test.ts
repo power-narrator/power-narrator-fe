@@ -1,6 +1,6 @@
-import fs from "fs";
-import os from "os";
-import path from "path";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { completeSlideReload } from "./slideReload.js";
 import type { ReadSlideNotesResult } from "./types.js";
@@ -53,7 +53,7 @@ describe("completeSlideReload", () => {
       const previousImage = writeFixture(outputDir, "slides/Slide_2_previous.png");
       const stagedImage = "slides/Slide_2_staged.png";
       const stagedImagePath = writeFixture(outputDir, stagedImage);
-      const loadNotes = vi.fn(loadNotesImplementation);
+      const loadNotes = vi.fn<() => Promise<ReadSlideNotesResult>>(loadNotesImplementation);
       const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
       const result = await completeSlideReload(outputDir, 2, stagedImage, loadNotes);
@@ -87,9 +87,9 @@ describe("completeSlideReload", () => {
       });
       expect(loadNotes).not.toHaveBeenCalled();
       expect(fs.existsSync(previousImage)).toBe(true);
-      if (stagedImagePath) {
-        expect(fs.existsSync(stagedImagePath)).toBe(true);
-      }
+      const stagedImageStillExists =
+        stagedImagePath === null ? createStagedImage : fs.existsSync(stagedImagePath);
+      expect(stagedImageStillExists).toBe(createStagedImage);
     },
   );
 });

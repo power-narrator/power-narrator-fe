@@ -1,5 +1,5 @@
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 import { getErrorMessage } from "./errors.js";
 import { buildSlidesWithPaths } from "./helpers.js";
 import type { ReadSlideNotesResult, SlidePptResult } from "./types.js";

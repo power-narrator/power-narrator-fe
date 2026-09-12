@@ -1,8 +1,8 @@
 import { test, expect, type ElectronApplication, type Page, type Locator } from "@playwright/test";
 import { _electron as electron } from "playwright";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { SlideWithSrc as Slide } from "../../electron/platform/types.js";
 import type { Voice } from "../../shared/types/tts.js";
 
@@ -96,23 +96,23 @@ async function launchTestApp() {
 
 async function installMockIpcHandlers(app: ElectronApplication) {
   await app.evaluate(
-    async ({ ipcMain }, { testFilePath, mockSlides, mockVoices, deterministicMp3Bytes }) => {
+    ({ ipcMain }, { testFilePath, mockSlides, mockVoices, deterministicMp3Bytes }) => {
       const discardConfirmationGlobals = globalThis as DiscardConfirmationTestGlobals;
       discardConfirmationGlobals.__discardConfirmationCalls = [];
       discardConfirmationGlobals.__shouldDiscardNarrationChanges = false;
-      globalThis.powerNarratorTestHarness!.useDiscardConfirmation(async (options) => {
+      globalThis.powerNarratorTestHarness!.useDiscardConfirmation((options) => {
         const globals = globalThis as DiscardConfirmationTestGlobals;
         globals.__discardConfirmationCalls.push(options);
-        return globals.__shouldDiscardNarrationChanges;
+        return Promise.resolve(globals.__shouldDiscardNarrationChanges);
       });
 
       ipcMain.removeHandler("select-file");
-      ipcMain.handle("select-file", async () => testFilePath);
+      ipcMain.handle("select-file", () => testFilePath);
 
       ipcMain.removeHandler("convert-pptx");
       (globalThis as typeof globalThis & { __convertPptxCalls?: unknown[] }).__convertPptxCalls =
         [];
-      ipcMain.handle("convert-pptx", async (_, filePath) => {
+      ipcMain.handle("convert-pptx", (_, filePath: string) => {
         (
           globalThis as typeof globalThis & {
             __convertPptxCalls: unknown[];
@@ -128,25 +128,28 @@ async function installMockIpcHandlers(app: ElectronApplication) {
       ipcMain.removeHandler("reload-slide");
       (globalThis as typeof globalThis & { __reloadSlideCalls?: unknown[] }).__reloadSlideCalls =
         [];
-      ipcMain.handle("reload-slide", async (_, { filePath, slideIndex }) => {
-        (
-          globalThis as typeof globalThis & {
-            __reloadSlideCalls: unknown[];
-          }
-        ).__reloadSlideCalls.push({ filePath, slideIndex });
+      ipcMain.handle(
+        "reload-slide",
+        (_, { filePath, slideIndex }: { filePath: string; slideIndex: number }) => {
+          (
+            globalThis as typeof globalThis & {
+              __reloadSlideCalls: unknown[];
+            }
+          ).__reloadSlideCalls.push({ filePath, slideIndex });
 
-        return {
-          success: true,
-          slide: mockSlides[slideIndex - 1],
-        };
-      });
+          return {
+            success: true,
+            slide: mockSlides[slideIndex - 1],
+          };
+        },
+      );
 
       ipcMain.removeHandler("get-video-save-path");
-      ipcMain.handle("get-video-save-path", async () => "/tmp/output.mp4");
+      ipcMain.handle("get-video-save-path", () => "/tmp/output.mp4");
 
       ipcMain.removeHandler("save-notes");
       (globalThis as typeof globalThis & { __saveNotesCalls?: unknown[] }).__saveNotesCalls = [];
-      ipcMain.handle("save-notes", async (_, filePath, slides) => {
+      ipcMain.handle("save-notes", (_, filePath: string, slides: unknown) => {
         (
           globalThis as typeof globalThis & {
             __saveNotesCalls: unknown[];
@@ -157,10 +160,10 @@ async function installMockIpcHandlers(app: ElectronApplication) {
       });
 
       ipcMain.removeHandler("get-speaker-mappings");
-      ipcMain.handle("get-speaker-mappings", async () => mockVoices);
+      ipcMain.handle("get-speaker-mappings", () => mockVoices);
 
       ipcMain.removeHandler("set-speaker-mappings");
-      ipcMain.handle("set-speaker-mappings", async () => ({ success: true }));
+      ipcMain.handle("set-speaker-mappings", () => ({ success: true }));
 
       (
         globalThis as typeof globalThis & { __generatedSpeechCalls?: unknown[] }
@@ -225,15 +228,15 @@ async function installMockIpcHandlers(app: ElectronApplication) {
       (globalThis as typeof globalThis & { __insertAudioCalls?: unknown[] }).__insertAudioCalls =
         [];
       const deterministicFakePowerPointAdapter = {
-        saveNotes: async (filePath: string, slides: unknown[]) => {
+        saveNotes: (filePath: string, slides: unknown[]) => {
           (
             globalThis as typeof globalThis & {
               __saveNotesCalls: unknown[];
             }
           ).__saveNotesCalls.push({ filePath, slides });
-          return { success: true as const };
+          return Promise.resolve({ success: true as const });
         },
-        insertAudio: async (filePath: string, slidesAudio: unknown[]) => {
+        insertAudio: (filePath: string, slidesAudio: unknown[]) => {
           const globals = globalThis as typeof globalThis & {
             __insertAudioCalls: unknown[];
             __failNextAudioInsertion?: boolean;
@@ -241,11 +244,11 @@ async function installMockIpcHandlers(app: ElectronApplication) {
           globals.__insertAudioCalls.push({ filePath, slidesAudio });
           if (globals.__failNextAudioInsertion) {
             globals.__failNextAudioInsertion = false;
-            return { success: false as const, message: "audio automation failed" };
+            return Promise.resolve({ success: false as const, message: "audio automation failed" });
           }
-          return { success: true as const };
+          return Promise.resolve({ success: true as const });
         },
-        removeAudio: async () => ({ success: true as const }),
+        removeAudio: () => Promise.resolve({ success: true as const }),
       };
 
       globalThis.powerNarratorTestHarness!.useNarrationAdapters({

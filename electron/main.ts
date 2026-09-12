@@ -1,8 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog, protocol, net } from "electron";
-import path from "path";
-import fs from "fs";
+import path from "node:path";
+import fs from "node:fs";
 import dotenv from "dotenv";
-import { pathToFileURL } from "url";
+import { pathToFileURL } from "node:url";
 import Store from "electron-store";
 import type { NativePlatformProvider, PptProvider } from "./platform/PptProvider.js";
 import { MacPptProvider } from "./platform/MacPptProvider.js";
@@ -102,7 +102,7 @@ function getOutputDir(absolutePath: string): string {
   );
 }
 
-app.whenReady().then(() => {
+void app.whenReady().then(() => {
   protocol.handle(APP_NAME, (request) => {
     const url = new URL(request.url);
     if (url.hostname !== "slide") {
@@ -173,7 +173,7 @@ ipcMain.handle("get-video-save-path", async () => {
 // ==========================================
 // PowerPoint Lifecycle Handlers
 // ==========================================
-ipcMain.handle("convert-pptx", async (_, filePath) => {
+ipcMain.handle("convert-pptx", async (_, filePath: string) => {
   console.log("Convert request for (raw):", filePath);
   const absolutePath = path.resolve(filePath);
   console.log("Convert request for (absolute):", absolutePath);
@@ -232,16 +232,16 @@ ipcMain.handle("generate-video", async (_, { filePath, videoOutputPath }: Genera
 // ==========================================
 // Settings Handlers
 // ==========================================
-ipcMain.handle("get-speaker-mappings", async () => {
+ipcMain.handle("get-speaker-mappings", () => {
   return store.get("speakerMappings") || {};
 });
 
-ipcMain.handle("set-speaker-mappings", async (_, mappings) => {
+ipcMain.handle("set-speaker-mappings", (_, mappings: Record<string, unknown>) => {
   store.set("speakerMappings", mappings);
   return { success: true };
 });
 
-ipcMain.handle("get-gcp-key-path", async () => {
+ipcMain.handle("get-gcp-key-path", () => {
   return store.get("gcpKeyPath");
 });
 
@@ -258,7 +258,7 @@ ipcMain.handle("set-gcp-key", async () => {
 
   // Basic validation
   try {
-    const content = JSON.parse(fs.readFileSync(keyPath, "utf8"));
+    const content = JSON.parse(fs.readFileSync(keyPath, "utf8")) as { type?: string };
     if (!content.type || content.type !== "service_account") {
       return { success: false, message: "Invalid Service Account Key JSON" };
     }
@@ -274,11 +274,11 @@ ipcMain.handle("set-gcp-key", async () => {
   return { success: true, path: keyPath };
 });
 
-ipcMain.handle("get-xml-cli-enabled", async () => {
+ipcMain.handle("get-xml-cli-enabled", () => {
   return store.get("xmlCliEnabled") || false;
 });
 
-ipcMain.handle("set-xml-cli-enabled", async (_, enabled) => {
+ipcMain.handle("set-xml-cli-enabled", (_, enabled: boolean) => {
   store.set("xmlCliEnabled", enabled);
   return { success: true };
 });

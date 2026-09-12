@@ -54,11 +54,11 @@ async function renderSpeakerChoicePreview({
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
     value: {
-      prepareNarrationPreview: async (request: PreviewNarrationRequest) => {
+      prepareNarrationPreview: (request: PreviewNarrationRequest) => {
         previewRequests.push(request);
-        return { audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" };
+        return Promise.resolve({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
       },
-    } as unknown as typeof window.electronAPI,
+    },
   });
   if (captureAudio) {
     const NativeAudio = window.Audio;
@@ -69,7 +69,7 @@ async function renderSpeakerChoicePreview({
     });
   }
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
-  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
   const screen = await render(
     <PreviewProviders>
@@ -80,7 +80,7 @@ async function renderSpeakerChoicePreview({
         slideNotes={slideNotes}
         section={section}
         mappings={{ Narrator: narratorVoice }}
-        onFocus={() => undefined}
+        onFocus={() => {}}
       />
     </PreviewProviders>,
   );
@@ -95,10 +95,10 @@ async function renderConcurrentSectionPreviews() {
     value: {
       prepareNarrationPreview: ({ sectionIndex }: PreviewNarrationRequest) =>
         new Promise<NarrationPreviewResult>((resolve) => finishPreview.set(sectionIndex, resolve)),
-    } as unknown as typeof window.electronAPI,
+    },
   });
   const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
-  const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
   const screen = await render(
     <PreviewProviders>
@@ -114,7 +114,7 @@ async function renderConcurrentSectionPreviews() {
           slideNotes={`${speaker} section`}
           section={{ speaker, text: `${speaker} section` }}
           mappings={{ [speaker]: narratorVoice }}
-          onFocus={() => undefined}
+          onFocus={() => {}}
         />
       ))}
     </PreviewProviders>,
@@ -128,14 +128,14 @@ test("previews only the text selected in the live notes editor", async () => {
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
     value: {
-      prepareNarrationPreview: async (request: PreviewNarrationRequest) => {
+      prepareNarrationPreview: (request: PreviewNarrationRequest) => {
         previewRequests.push(request);
-        return { audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" };
+        return Promise.resolve({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
       },
-    } as unknown as typeof window.electronAPI,
+    },
   });
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
-  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
 
   function PreviewHarness() {
     const editorRef = useRef<HTMLTextAreaElement | null>(null);
@@ -150,7 +150,7 @@ test("previews only the text selected in the live notes editor", async () => {
           slideNotes="Stale section text"
           section={{ speaker: "Narrator", text: "Stale section text" }}
           mappings={{ Narrator: narratorVoice }}
-          onFocus={() => undefined}
+          onFocus={() => {}}
           getTextarea={() => editorRef.current}
         />
       </PreviewProviders>
@@ -254,10 +254,10 @@ test("stopping a pending preview suppresses its late audio result", async () => 
         new Promise<NarrationPreviewResult>((resolve) => {
           finishPreview = resolve;
         }),
-    } as unknown as typeof window.electronAPI,
+    },
   });
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
-  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   const createObjectUrl = vi.spyOn(URL, "createObjectURL");
   const screen = await render(
     <PreviewProviders>
@@ -268,7 +268,7 @@ test("stopping a pending preview suppresses its late audio result", async () => 
         slideNotes="Delayed preview"
         section={{ speaker: "Narrator", text: "Delayed preview" }}
         mappings={{ Narrator: narratorVoice }}
-        onFocus={() => undefined}
+        onFocus={() => {}}
       />
     </PreviewProviders>,
   );
@@ -324,14 +324,15 @@ test("creates MP3 playback for a narration preview", async () => {
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
     value: {
-      prepareNarrationPreview: async () => ({
-        audio: new Uint8Array([1, 2, 3]),
-        mediaType: "audio/mpeg",
-      }),
-    } as unknown as typeof window.electronAPI,
+      prepareNarrationPreview: () =>
+        Promise.resolve({
+          audio: new Uint8Array([1, 2, 3]),
+          mediaType: "audio/mpeg",
+        }),
+    },
   });
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
-  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
   const screen = await render(
     <PreviewProviders>
@@ -342,7 +343,7 @@ test("creates MP3 playback for a narration preview", async () => {
         slideNotes="[Narrator]\nLocal narration"
         section={{ speaker: "Narrator", text: "Local narration" }}
         mappings={{ Narrator: narratorVoice }}
-        onFocus={() => undefined}
+        onFocus={() => {}}
       />
     </PreviewProviders>,
   );
