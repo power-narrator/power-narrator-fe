@@ -26,8 +26,8 @@ async function renderPlayback() {
     audioElements.push(audio);
     return audio;
   });
-  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
-  const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   const screen = await render(
     <AudioProvider>
       <PlaybackControls />
@@ -35,7 +35,7 @@ async function renderPlayback() {
   );
 
   /** Earlier elements had their listeners removed, so the newest is the live one. */
-  const activeAudio = () => audioElements[audioElements.length - 1];
+  const activeAudio = () => audioElements.at(-1);
 
   return { activeAudio, revokeObjectUrl, screen };
 }
@@ -61,7 +61,7 @@ test("releases the preview URL when playback ends", async () => {
 });
 
 test("releases the preview URL when playback fails to start", async () => {
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, "play").mockRejectedValue(new Error("audio failed"));
   const { revokeObjectUrl, screen } = await renderPlayback();
 

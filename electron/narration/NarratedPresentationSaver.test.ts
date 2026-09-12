@@ -4,7 +4,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BasicPptResult, SlideAudioEntry, SlideNotesEntry } from "../platform/types.js";
 import { TtsManager } from "../tts/TtsManager.js";
-import type { TtsProvider, Voice } from "../tts/TtsProvider.js";
+import type { SynthesizedSpeech, TtsProvider, Voice } from "../tts/TtsProvider.js";
+import type { NarrationPreparationProgress } from "../../shared/types/narration.js";
 import { NarrationPreparation } from "./NarrationPreparation.js";
 import { NarratedPresentationSaver } from "./NarratedPresentationSaver.js";
 
@@ -30,36 +31,42 @@ class FakePowerPointAdapter {
   audioResults: BasicPptResult[] = [{ success: true }];
   removeResult: BasicPptResult = { success: true };
 
-  readonly saveNotes = vi.fn(async (_filePath: string, slides: SlideNotesEntry[]) => {
+  readonly saveNotes = vi.fn<
+    (filePath: string, slides: SlideNotesEntry[]) => Promise<BasicPptResult>
+  >((_filePath, slides) => {
     if (this.notesResult.success) {
       for (const slide of slides) {
         this.committedNotes.set(slide.index, slide.notes);
       }
     }
-    return this.notesResult;
+    return Promise.resolve(this.notesResult);
   });
 
-  readonly insertAudio = vi.fn(async (_filePath: string, slidesAudio: SlideAudioEntry[]) => {
+  readonly insertAudio = vi.fn<
+    (filePath: string, slidesAudio: SlideAudioEntry[]) => Promise<BasicPptResult>
+  >((_filePath, slidesAudio) => {
     const result = this.audioResults.shift() ?? { success: true as const };
     if (result.success) {
       for (const audio of slidesAudio) {
-        const slideAudio = this.insertedAudio.get(audio.index) ?? new Map();
+        const slideAudio = this.insertedAudio.get(audio.index) ?? new Map<number, Uint8Array>();
         slideAudio.set(audio.sectionIndex, audio.audioData);
         this.insertedAudio.set(audio.index, slideAudio);
         this.removedAudio.delete(audio.index);
       }
     }
-    return result;
+    return Promise.resolve(result);
   });
 
-  readonly removeAudio = vi.fn(async (_filePath: string, slideIndices: number[]) => {
+  readonly removeAudio = vi.fn<
+    (filePath: string, slideIndices: number[]) => Promise<BasicPptResult>
+  >((_filePath, slideIndices) => {
     if (this.removeResult.success) {
       for (const slideIndex of slideIndices) {
         this.removedAudio.add(slideIndex);
         this.insertedAudio.delete(slideIndex);
       }
     }
-    return this.removeResult;
+    return Promise.resolve(this.removeResult);
   });
 }
 
@@ -79,7 +86,7 @@ afterEach(() => {
 
 function createSaver(
   generateSpeech = vi
-    .fn()
+    .fn<(text: string, voice: Voice) => Promise<SynthesizedSpeech>>()
     .mockResolvedValue({ audio: new Uint8Array([1]), mediaType: "audio/mpeg" }),
 ) {
   const preparation = new NarrationPreparation(
@@ -100,9 +107,13 @@ function createCachedRetrySaver(
 ) {
   const cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "power-narrator-save-retry-"));
   temporaryDirectories.push(cacheDirectory);
-  const synthesize = vi.fn().mockResolvedValue(new Uint8Array([4, 5, 6]));
+  const synthesize = vi
+    .fn<() => Promise<Uint8Array>>()
+    .mockResolvedValue(new Uint8Array([4, 5, 6]));
   const provider: TtsProvider = {
-    getVoices: vi.fn().mockResolvedValue([narratorVoice, alternateNarratorVoice]),
+    getVoices: vi
+      .fn<() => Promise<Voice[]>>()
+      .mockResolvedValue([narratorVoice, alternateNarratorVoice]),
     prepareSpeech: (text, voice) => ({
       cacheIdentity: { text, voice: voice.name },
       synthesize,
@@ -188,14 +199,14 @@ describe("NarratedPresentationSaver", () => {
 
   it("reports eligible completion while preserving request order after parallel synthesis", async () => {
     const pending = new Map<string, (audio: Uint8Array) => void>();
-    const generateSpeech = vi.fn(
-      (text: string) =>
+    const generateSpeech = vi.fn<(text: string, voice: Voice) => Promise<SynthesizedSpeech>>(
+      (text) =>
         new Promise<{ audio: Uint8Array; mediaType: string }>((resolve) => {
           pending.set(text, (audio) => resolve({ audio, mediaType: "audio/mpeg" }));
         }),
     );
     const { powerpoint, saver } = createSaver(generateSpeech);
-    const onProgress = vi.fn();
+    const onProgress = vi.fn<(progress: NarrationPreparationProgress) => void>();
     const request = {
       filePath: "/slides/talk.pptx",
       slides: [
@@ -265,7 +276,10 @@ describe("NarratedPresentationSaver", () => {
           throw new Error("settings unavailable");
         },
       },
-      { supportsProvider: () => true, generateSpeech: vi.fn() },
+      {
+        supportsProvider: () => true,
+        generateSpeech: vi.fn<(text: string, voice: Voice) => Promise<SynthesizedSpeech>>(),
+      },
     );
     const powerpoint = new FakePowerPointAdapter();
     const saver = new NarratedPresentationSaver(preparation, () => powerpoint);

@@ -99,7 +99,7 @@ function App() {
         >
           <IconSettings size={24} />
         </ActionIcon>
-        <LandingPage onSelectFile={handleManualSelect} />
+        <LandingPage onSelectFile={() => void handleManualSelect()} />
       </>
     );
   }

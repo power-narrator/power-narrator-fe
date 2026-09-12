@@ -1,8 +1,8 @@
-import fs from "fs";
-import os from "os";
-import path from "path";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import type { TtsProvider, Voice } from "../tts/TtsProvider.js";
+import type { SynthesizedSpeech, TtsProvider, Voice } from "../tts/TtsProvider.js";
 import { TtsManager } from "../tts/TtsManager.js";
 import { NarrationPreparation, NarrationPreparationError } from "./NarrationPreparation.js";
 
@@ -31,9 +31,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function createPreparation(mappings: Record<string, Voice> = { Narrator: narratorVoice }) {
+const defaultMappings: Record<string, Voice> = { Narrator: narratorVoice };
+
+function createPreparation(mappings: Record<string, Voice> = defaultMappings) {
   const generateSpeech = vi
-    .fn()
+    .fn<(text: string, voice: Voice) => Promise<SynthesizedSpeech>>()
     .mockResolvedValue({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
   const preparation = new NarrationPreparation(
     { getSpeakerMappings: () => mappings },
@@ -50,9 +52,11 @@ describe("NarrationPreparation", () => {
   it("reuses cached narration for a repeated prepared request", async () => {
     const cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "power-narrator-preparation-"));
     onTestFinished(() => fs.rmSync(cacheDirectory, { recursive: true, force: true }));
-    const synthesize = vi.fn().mockResolvedValue(new Uint8Array([7, 8, 9]));
+    const synthesize = vi
+      .fn<() => Promise<Uint8Array>>()
+      .mockResolvedValue(new Uint8Array([7, 8, 9]));
     const provider: TtsProvider = {
-      getVoices: vi.fn().mockResolvedValue([]),
+      getVoices: vi.fn<() => Promise<Voice[]>>().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
         cacheIdentity: { text, voice: voice.name },
         synthesize,
@@ -81,8 +85,8 @@ describe("NarrationPreparation", () => {
 
   it("returns batch audio in slide and section order regardless of synthesis order", async () => {
     const pending = new Map<string, (audio: { audio: Uint8Array; mediaType: string }) => void>();
-    const generateSpeech = vi.fn(
-      (text: string) =>
+    const generateSpeech = vi.fn<(text: string, voice: Voice) => Promise<SynthesizedSpeech>>(
+      (text) =>
         new Promise<{ audio: Uint8Array; mediaType: string }>((resolve) => {
           pending.set(text, resolve);
         }),
@@ -236,8 +240,10 @@ describe("NarrationPreparation", () => {
   });
 
   it("rejects whitespace-only preview text before loading mappings or synthesis", async () => {
-    const getSpeakerMappings = vi.fn().mockReturnValue({ Narrator: narratorVoice });
-    const generateSpeech = vi.fn();
+    const getSpeakerMappings = vi
+      .fn<() => Record<string, Voice>>()
+      .mockReturnValue({ Narrator: narratorVoice });
+    const generateSpeech = vi.fn<(text: string, voice: Voice) => Promise<SynthesizedSpeech>>();
     const preparation = new NarrationPreparation(
       { getSpeakerMappings },
       { supportsProvider: () => true, generateSpeech },

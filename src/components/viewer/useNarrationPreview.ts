@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -62,11 +63,15 @@ export function NarrationPreviewProvider({ children }: { children: ReactNode }) 
     setRequest((current) => (current?.ownerId === ownerId ? null : current));
   }, []);
 
-  return createElement(
-    NarrationPreviewContext.Provider,
-    { value: { request, claim, isCurrent, finish, clear } },
-    children,
+  const coordinator = useMemo(
+    () => ({ request, claim, isCurrent, finish, clear }),
+    [request, claim, isCurrent, finish, clear],
   );
+
+  // The coordinator only exposes callbacks; the refs it closes over are never read
+  // during render, so the taint the rule reports here is a false positive.
+  // oxlint-disable-next-line react/refs
+  return createElement(NarrationPreviewContext.Provider, { value: coordinator }, children);
 }
 
 function usePreviewRequestCoordinator() {
@@ -106,7 +111,9 @@ export function useNarrationPreview(options: NarrationPreviewOptions) {
   const [lastPlayedSpeaker, setLastPlayedSpeaker] = useState<string | null>(null);
   const ownedTokenRef = useRef<number | null>(null);
   const activeAudioIdRef = useRef(activeId);
-  activeAudioIdRef.current = activeId;
+  useEffect(() => {
+    activeAudioIdRef.current = activeId;
+  });
   const isCurrentAudio = activeId === options.id;
   const ownsVisibleRequest = request?.ownerId === options.id;
   const activeTarget = ownsVisibleRequest
@@ -157,7 +164,7 @@ export function useNarrationPreview(options: NarrationPreviewOptions) {
       const text = textarea
         ? textarea.selectionStart === textarea.selectionEnd
           ? textarea.value
-          : textarea.value.substring(textarea.selectionStart, textarea.selectionEnd)
+          : textarea.value.slice(textarea.selectionStart, textarea.selectionEnd)
         : options.section.text;
       if (!text.trim()) {
         alert("No text to preview.");

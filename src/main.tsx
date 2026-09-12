@@ -8,7 +8,7 @@ import { NarrationPreviewProvider } from "./components/viewer/useNarrationPrevie
 import "@mantine/core/styles.css";
 import "@gfazioli/mantine-split-pane/styles.css";
 
-createRoot(document.getElementById("root")!).render(
+createRoot(document.querySelector("#root")!).render(
   <StrictMode>
     <MantineProvider defaultColorScheme="dark">
       <SettingsProvider>

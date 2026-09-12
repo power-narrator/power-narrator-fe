@@ -3,9 +3,16 @@ import type { Voice } from "./TtsProvider.js";
 import { GcpTtsProvider } from "./GcpTtsProvider.js";
 
 const { clientConstructor, listVoices, synthesizeSpeech } = vi.hoisted(() => ({
-  clientConstructor: vi.fn(),
-  listVoices: vi.fn(),
-  synthesizeSpeech: vi.fn(),
+  clientConstructor: vi.fn<(options: unknown) => void>(),
+  listVoices: vi.fn<() => Promise<[{ voices?: unknown[] }]>>(),
+  synthesizeSpeech:
+    vi.fn<
+      (request: {
+        input?: unknown;
+        voice?: unknown;
+        audioConfig?: unknown;
+      }) => Promise<[{ audioContent?: Uint8Array | string | null }]>
+    >(),
 }));
 
 vi.mock("@google-cloud/text-to-speech", () => ({
@@ -41,7 +48,7 @@ describe("GcpTtsProvider", () => {
   it("returns no voices without constructing a client when credentials are missing", async () => {
     const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    await expect(new GcpTtsProvider(() => undefined).getVoices()).resolves.toEqual([]);
+    await expect(new GcpTtsProvider(() => {}).getVoices()).resolves.toEqual([]);
     expect(clientConstructor).not.toHaveBeenCalled();
     expect(warning).toHaveBeenCalledOnce();
   });

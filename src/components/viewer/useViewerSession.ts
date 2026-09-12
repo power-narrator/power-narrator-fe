@@ -13,7 +13,9 @@ export function useViewerSession(
 ) {
   const [state, dispatch] = useReducer(reduceViewerSession, initialSlides, loadViewerSession);
   const reportUnsavedChangesRef = useRef(onUnsavedChangesChange);
-  reportUnsavedChangesRef.current = onUnsavedChangesChange;
+  useEffect(() => {
+    reportUnsavedChangesRef.current = onUnsavedChangesChange;
+  });
   const hasUnsavedChanges = state.dirtySlideIndices.size > 0;
 
   useEffect(() => {

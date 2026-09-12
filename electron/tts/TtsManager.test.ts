@@ -1,6 +1,7 @@
-import fs from "fs";
-import os from "os";
-import path from "path";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { Mock } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TtsProvider, TtsProviderRegistry, Voice } from "./TtsProvider.js";
 import { getNarrationCacheDirectory, TtsManager } from "./TtsManager.js";
@@ -17,9 +18,8 @@ vi.mock("electron", () => ({
 // Lets one cache publication fail the way a crash or power loss would.
 vi.mock("fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("fs")>();
-  return {
+  const mocked = {
     ...actual,
-    default: actual,
     renameSync: (from: string, to: string) => {
       if (interruptNextCachePublish.value) {
         interruptNextCachePublish.value = false;
@@ -28,6 +28,9 @@ vi.mock("fs", async (importOriginal) => {
       actual.renameSync(from, to);
     },
   };
+  // `default` must carry the overrides too, so the mock applies whether the
+  // subject uses a namespace import or a default import.
+  return { ...mocked, default: mocked };
 });
 
 let tempDir: string;
@@ -45,10 +48,12 @@ afterEach(() => {
 
 function createProvider(
   voices: Voice[] = [],
-): TtsProvider & { generateSpeech: ReturnType<typeof vi.fn> } {
-  const generateSpeech = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]));
+): TtsProvider & { generateSpeech: Mock<(text: string, voice: Voice) => Promise<Uint8Array>> } {
+  const generateSpeech = vi
+    .fn<(text: string, voice: Voice) => Promise<Uint8Array>>()
+    .mockResolvedValue(new Uint8Array([1, 2, 3]));
   return {
-    getVoices: vi.fn().mockResolvedValue(voices),
+    getVoices: vi.fn<() => Promise<Voice[]>>().mockResolvedValue(voices),
     prepareSpeech: (text, voice) => ({
       cacheIdentity: { text, voice: voice.name },
       synthesize: () => generateSpeech(text, voice),
@@ -129,10 +134,10 @@ describe("TtsManager", () => {
 
   it("stores output from every registered provider as PowerPoint-compatible MP3", async () => {
     const futureProvider: TtsProvider = {
-      getVoices: vi.fn().mockResolvedValue([]),
+      getVoices: vi.fn<() => Promise<Voice[]>>().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
         cacheIdentity: { text, voice: voice.name },
-        synthesize: async () => new Uint8Array([1, 2, 3]),
+        synthesize: () => Promise.resolve(new Uint8Array([1, 2, 3])),
       }),
     };
     const cacheDirectory = path.join(tempDir, "narration");
@@ -202,9 +207,11 @@ describe("TtsManager", () => {
   });
 
   it("identifies cache entries from the normalized provider request", async () => {
-    const synthesize = vi.fn().mockResolvedValue(new Uint8Array([3, 2, 1]));
+    const synthesize = vi
+      .fn<() => Promise<Uint8Array>>()
+      .mockResolvedValue(new Uint8Array([3, 2, 1]));
     const provider: TtsProvider = {
-      getVoices: vi.fn().mockResolvedValue([]),
+      getVoices: vi.fn<() => Promise<Voice[]>>().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
         cacheIdentity: {
           input: { ssml: text.startsWith("<speak>") ? text : `<speak>${text}</speak>` },
@@ -224,9 +231,11 @@ describe("TtsManager", () => {
 
   it("does not reuse an entry when the prepared request changes", async () => {
     let speakingRate = 1;
-    const synthesize = vi.fn().mockResolvedValue(new Uint8Array([1]));
+    const synthesize = vi
+      .fn<(speakingRate: number) => Promise<Uint8Array>>()
+      .mockResolvedValue(new Uint8Array([1]));
     const provider: TtsProvider = {
-      getVoices: vi.fn().mockResolvedValue([]),
+      getVoices: vi.fn<() => Promise<Voice[]>>().mockResolvedValue([]),
       prepareSpeech: (text, voice) => {
         const preparedSpeakingRate = speakingRate;
         return {
@@ -252,14 +261,14 @@ describe("TtsManager", () => {
 
   it("combines simultaneous requests for the same narration", async () => {
     let finishSynthesis: (audio: Uint8Array) => void = () => {};
-    const synthesize = vi.fn(
+    const synthesize = vi.fn<() => Promise<Uint8Array>>(
       () =>
         new Promise<Uint8Array>((resolve) => {
           finishSynthesis = resolve;
         }),
     );
     const provider: TtsProvider = {
-      getVoices: vi.fn().mockResolvedValue([]),
+      getVoices: vi.fn<() => Promise<Voice[]>>().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
         cacheIdentity: { text, voice: voice.name },
         synthesize,
@@ -310,7 +319,7 @@ describe("TtsManager", () => {
     const pending = new Map<string, (audio: Uint8Array) => void>();
     const starts: string[] = [];
     const provider: TtsProvider = {
-      getVoices: vi.fn().mockResolvedValue([]),
+      getVoices: vi.fn<() => Promise<Voice[]>>().mockResolvedValue([]),
       prepareSpeech: (text) => ({
         cacheIdentity: { text },
         synthesize: () =>

@@ -13,63 +13,74 @@ import type {
 } from "./types.js";
 
 export class WindowsPptProvider implements PptProvider, NativePlatformProvider {
-  async convertPptx(_filePath: string, _outputDir: string): Promise<SlidesPptResult> {
-    return { success: false, message: "convertPptx not supported on Windows yet" };
+  convertPptx(_filePath: string, _outputDir: string): Promise<SlidesPptResult> {
+    return Promise.resolve({ success: false, message: "convertPptx not supported on Windows yet" });
   }
 
-  async insertAudio(_filePath: string, _slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult> {
-    return { success: false, message: "insertAudio not supported on Windows yet" };
+  insertAudio(_filePath: string, _slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult> {
+    return Promise.resolve({ success: false, message: "insertAudio not supported on Windows yet" });
   }
 
-  async removeAudio(_filePath: string, _slideIndices: number[]): Promise<BasicPptResult> {
-    return { success: false, message: "removeAudio not supported on Windows yet" };
+  removeAudio(_filePath: string, _slideIndices: number[]): Promise<BasicPptResult> {
+    return Promise.resolve({ success: false, message: "removeAudio not supported on Windows yet" });
   }
 
-  async saveNotes(_filePath: string, _slides: SlideNotesEntry[]): Promise<BasicPptResult> {
-    return { success: false, message: "saveNotes not supported on Windows yet" };
+  saveNotes(_filePath: string, _slides: SlideNotesEntry[]): Promise<BasicPptResult> {
+    return Promise.resolve({ success: false, message: "saveNotes not supported on Windows yet" });
   }
 
-  async generateVideo(_filePath: string, _videoOutputPath: string): Promise<VideoPptResult> {
-    return { success: false, message: "generateVideo not supported on Windows yet" };
+  generateVideo(_filePath: string, _videoOutputPath: string): Promise<VideoPptResult> {
+    return Promise.resolve({
+      success: false,
+      message: "generateVideo not supported on Windows yet",
+    });
   }
 
-  async playSlide(_filePath: string, _slideIndex: number): Promise<BasicPptResult> {
-    return { success: false, message: "playSlide not supported on Windows yet" };
+  playSlide(_filePath: string, _slideIndex: number): Promise<BasicPptResult> {
+    return Promise.resolve({ success: false, message: "playSlide not supported on Windows yet" });
   }
 
-  async exportSlideImages(_filePath: string, _outputDir: string): Promise<ExportSlideImagesResult> {
-    return { success: false, message: "exportSlideImages not supported on Windows yet" };
+  exportSlideImages(_filePath: string, _outputDir: string): Promise<ExportSlideImagesResult> {
+    return Promise.resolve({
+      success: false,
+      message: "exportSlideImages not supported on Windows yet",
+    });
   }
 
-  async reloadSlideImage(
+  reloadSlideImage(
     _filePath: string,
     _slideIndex: number,
     _outputDir: string,
   ): Promise<ReloadSlideImageResult> {
-    return { success: false, message: "reloadSlideImage not supported on Windows yet" };
+    return Promise.resolve({
+      success: false,
+      message: "reloadSlideImage not supported on Windows yet",
+    });
   }
 
-  async closePresentation(_filePath: string): Promise<number> {
-    return 1;
+  closePresentation(_filePath: string): Promise<number> {
+    return Promise.resolve(1);
   }
 
-  async reopenPresentation(_filePath: string, _slideIndex: number): Promise<void> {
-    return;
+  reopenPresentation(_filePath: string, _slideIndex: number): Promise<void> {
+    return Promise.resolve();
   }
 
-  async readAllSlideNotes(_filePath: string): Promise<ReadAllSlideNotesResult> {
-    return { success: false, message: "readAllSlideNotes not supported on Windows yet" };
+  readAllSlideNotes(_filePath: string): Promise<ReadAllSlideNotesResult> {
+    return Promise.resolve({
+      success: false,
+      message: "readAllSlideNotes not supported on Windows yet",
+    });
   }
 
-  async readSlideNotes(_filePath: string, _slideIndex: number): Promise<ReadSlideNotesResult> {
-    return { success: false, message: "readSlideNotes not supported on Windows yet" };
+  readSlideNotes(_filePath: string, _slideIndex: number): Promise<ReadSlideNotesResult> {
+    return Promise.resolve({
+      success: false,
+      message: "readSlideNotes not supported on Windows yet",
+    });
   }
 
-  async reloadSlide(
-    _filePath: string,
-    _slideIndex: number,
-    _outputDir: string,
-  ): Promise<SlidePptResult> {
-    return { success: false, message: "reloadSlide not supported on Windows yet" };
+  reloadSlide(_filePath: string, _slideIndex: number, _outputDir: string): Promise<SlidePptResult> {
+    return Promise.resolve({ success: false, message: "reloadSlide not supported on Windows yet" });
   }
 }

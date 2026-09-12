@@ -34,6 +34,19 @@ const EMPTY_SLIDE: Slide = {
   notes: "",
 };
 
+function alertError(label: string, error: unknown) {
+  const message = getErrorMessage(error);
+  console.error(`${label}:`, error);
+  alert(`${label}: ${message}`);
+}
+
+function reportNarratedSaveFailure(result: { partial: boolean; message: string }) {
+  const partialMessage = result.partial
+    ? "PowerPoint notes were saved, but narration audio was not committed."
+    : result.message;
+  alert(`Save error: ${partialMessage}${result.partial ? ` ${result.message}` : ""}`);
+}
+
 export function ViewerPage({
   slides: initialSlides,
   filePath,
@@ -49,6 +62,13 @@ export function ViewerPage({
   const slides = viewerSession.slides;
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
+  // Reset the active section while rendering the newly selected slide rather than
+  // in an effect, which would render the stale section index first.
+  const [sectionResetSlideIndex, setSectionResetSlideIndex] = useState(0);
+  if (sectionResetSlideIndex !== activeSlideIndex) {
+    setSectionResetSlideIndex(activeSlideIndex);
+    setActiveSectionIndex(0);
+  }
   const operation = useViewerOperation();
 
   const textareasRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
@@ -84,19 +104,6 @@ export function ViewerPage({
     }
   }
 
-  function alertError(label: string, error: unknown) {
-    const message = getErrorMessage(error);
-    console.error(`${label}:`, error);
-    alert(`${label}: ${message}`);
-  }
-
-  function reportNarratedSaveFailure(result: { partial: boolean; message: string }) {
-    const partialMessage = result.partial
-      ? "PowerPoint notes were saved, but narration audio was not committed."
-      : result.message;
-    alert(`Save error: ${partialMessage}${result.partial ? ` ${result.message}` : ""}`);
-  }
-
   async function confirmDiscardChanges(slideIndices?: readonly number[]) {
     return (
       !viewerSession.wouldDiscard(slideIndices) || electronAPI.confirmDiscardNarrationChanges()
@@ -106,12 +113,12 @@ export function ViewerPage({
   function updateActiveSlideSections(updater: (sections: NarrationSection[]) => boolean) {
     const currentSlide = slides[activeSlideIndex];
     if (!currentSlide) {
-      return undefined;
+      return;
     }
 
     const sections = parseNarrationSections(currentSlide.notes || "");
     if (!updater(sections)) {
-      return undefined;
+      return;
     }
 
     const nextSlides = [...slides];
@@ -164,7 +171,6 @@ export function ViewerPage({
   }
 
   useEffect(() => {
-    setActiveSectionIndex(0);
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
@@ -232,9 +238,9 @@ export function ViewerPage({
       }
 
       const text = activeSection.text || "";
-      const before = text.substring(0, selectionStart);
-      const selection = text.substring(selectionStart, selectionEnd);
-      const after = text.substring(selectionEnd);
+      const before = text.slice(0, selectionStart);
+      const selection = text.slice(selectionStart, selectionEnd);
+      const after = text.slice(selectionEnd);
       activeSection.text = before + startTag + selection + endTag + after;
       return true;
     });
@@ -535,18 +541,20 @@ export function ViewerPage({
   return (
     <Stack gap="0" h="100%" mih={0} onKeyDown={handleHistoryKeyDown}>
       <ViewerHeader
-        onBack={async () => {
-          if (await confirmDiscardChanges()) {
-            onBack();
-          }
+        onBack={() => {
+          void confirmDiscardChanges().then((confirmed) => {
+            if (confirmed) {
+              onBack();
+            }
+          });
         }}
         onOpenSettings={onOpenSettings}
         actionStates={headerActionStates}
         handlers={{
-          reloadAllSlides: handleReloadAllSlides,
-          saveAllSlides: handleSaveAllSlides,
-          removeAllAudio: handleRemoveAllAudio,
-          generateVideo: handleGenerateVideo,
+          reloadAllSlides: () => void handleReloadAllSlides(),
+          saveAllSlides: () => void handleSaveAllSlides(),
+          removeAllAudio: () => void handleRemoveAllAudio(),
+          generateVideo: () => void handleGenerateVideo(),
         }}
       />
 
@@ -574,10 +582,10 @@ export function ViewerPage({
                 <SlideActionsBar
                   actionStates={slideActionStates}
                   handlers={{
-                    reloadSlide: handleReloadSlide,
-                    saveSlide: handleSaveSlide,
-                    playSlide: handlePlaySlide,
-                    removeAudio: handleRemoveAudio,
+                    reloadSlide: () => void handleReloadSlide(),
+                    saveSlide: () => void handleSaveSlide(),
+                    playSlide: () => void handlePlaySlide(),
+                    removeAudio: () => void handleRemoveAudio(),
                   }}
                 />
 

@@ -1,6 +1,6 @@
 import { TextToSpeechClient } from "@google-cloud/text-to-speech";
 import type { PreparedSpeechRequest, TtsProvider, Voice } from "./TtsProvider.js";
-import { SsmlUtil } from "./SsmlUtil.js";
+import { ensureSpeakElement, isSsml } from "./SsmlUtil.js";
 
 type GcpVoice = {
   name?: string | null;
@@ -76,7 +76,7 @@ export class GcpTtsProvider implements TtsProvider {
           [response] = await client.synthesizeSpeech(request);
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : "Unknown synthesis error";
-          throw new Error(`GCP TTS failed: ${message}`);
+          throw new Error(`GCP TTS failed: ${message}`, { cause: error });
         }
 
         if (!response.audioContent || response.audioContent.length === 0) {
@@ -91,6 +91,6 @@ export class GcpTtsProvider implements TtsProvider {
   }
 
   private formatInput(text: string): { text: string } | { ssml: string } {
-    return SsmlUtil.isSsml(text) ? { ssml: SsmlUtil.ensureSpeakElement(text) } : { text };
+    return isSsml(text) ? { ssml: ensureSpeakElement(text) } : { text };
   }
 }

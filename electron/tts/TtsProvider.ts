@@ -21,8 +21,8 @@ export interface SynthesizedSpeech {
 }
 
 export interface TtsProvider {
-  getVoices(): Promise<Voice[]>;
-  prepareSpeech(text: string, voice: Voice): PreparedSpeechRequest;
+  getVoices: () => Promise<Voice[]>;
+  prepareSpeech: (text: string, voice: Voice) => PreparedSpeechRequest;
 }
 
 export type TtsProviderRegistry = ReadonlyMap<TtsProviderId, TtsProvider>;

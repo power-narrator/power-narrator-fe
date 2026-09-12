@@ -1,18 +1,18 @@
-import fs from "fs";
-import os from "os";
-import path from "path";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { app } from "electron";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MacPptProvider } from "./MacPptProvider.js";
 
 vi.mock("electron", () => ({
   app: {
-    getAppPath: vi.fn(() => process.cwd()),
-    getPath: vi.fn(),
+    getAppPath: vi.fn<() => string>(() => process.cwd()),
+    getPath: vi.fn<(name: string) => string>(),
     isPackaged: false,
   },
   BrowserWindow: {
-    getAllWindows: vi.fn(() => []),
+    getAllWindows: vi.fn<() => unknown[]>(() => []),
   },
 }));
 
@@ -25,6 +25,8 @@ let tempDir: string | undefined;
 
 beforeEach(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "power-narrator-mac-provider-"));
+  // `app.getPath` is an Electron-owned method; mocking it requires an unbound reference.
+  // oxlint-disable-next-line typescript/unbound-method
   vi.mocked(app.getPath).mockReturnValue(tempDir);
 });
 

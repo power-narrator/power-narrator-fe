@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from "electron";
-import path from "path";
-import fs from "fs";
-import { spawn } from "child_process";
+import path from "node:path";
+import fs from "node:fs";
+import { spawn } from "node:child_process";
 import type { NativePlatformProvider, PptProvider } from "./PptProvider.js";
 import { getErrorMessage } from "./errors.js";
 import {
@@ -55,8 +55,8 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
 
   private mergeSlideData(images: SlideImageMap, notes: SlideNotesMap): SlideManifestEntry[] {
     return Object.keys(images)
-      .map((index) => Number(index))
-      .sort((a, b) => a - b)
+      .map(Number)
+      .toSorted((a, b) => a - b)
       .map((index) => ({
         index,
         image: images[index]?.image || "",
@@ -220,8 +220,9 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
         let out = "";
         childClose.stdout.on("data", (d: Buffer) => (out += d.toString()));
         childClose.on("close", () => {
-          const parsed = parseInt(out.trim(), 10);
-          resolve(isNaN(parsed) ? 1 : parsed);
+          const trimmed = out.trim();
+          const parsed = trimmed === "" ? Number.NaN : Math.trunc(Number(trimmed));
+          resolve(Number.isNaN(parsed) ? 1 : parsed);
         });
       });
       return slideIndex;

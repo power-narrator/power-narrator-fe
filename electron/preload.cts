@@ -1,3 +1,5 @@
+// Electron preload scripts must be CommonJS; `import` is not supported here.
+// oxlint-disable-next-line typescript/no-require-imports
 const { contextBridge, ipcRenderer } = require("electron") as typeof import("electron");
 import type {
   BasicPptResult,
@@ -45,10 +47,10 @@ const electronAPI = {
     };
     ipcRenderer.on(progressChannel, listener);
     try {
-      return await ipcRenderer.invoke("save-narrated-presentation", {
+      return (await ipcRenderer.invoke("save-narrated-presentation", {
         ...payload,
         progressChannel,
-      });
+      })) as NarratedSaveResult;
     } finally {
       ipcRenderer.removeListener(progressChannel, listener);
     }
@@ -74,8 +76,9 @@ const electronAPI = {
   reloadSlide: (payload: ReloadSlideRequest): Promise<SlidePptResult> =>
     ipcRenderer.invoke("reload-slide", payload),
   getVideoSavePath: (): Promise<string | null> => ipcRenderer.invoke("get-video-save-path"),
-  setHasUnsavedNarrationChanges: (hasChanges: boolean): void =>
-    ipcRenderer.sendSync("set-has-unsaved-narration-changes", hasChanges),
+  setHasUnsavedNarrationChanges: (hasChanges: boolean): void => {
+    ipcRenderer.sendSync("set-has-unsaved-narration-changes", hasChanges);
+  },
   confirmDiscardNarrationChanges: (): Promise<boolean> =>
     ipcRenderer.invoke("confirm-discard-narration-changes"),
 };
