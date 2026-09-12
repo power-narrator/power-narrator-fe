@@ -326,6 +326,10 @@ PowerPoint provider behind a common interface.
 The normal test suite is deterministic and does not require Google credentials, network access,
 provider quota, or a running speech service.
 
+Static analysis uses oxlint's recommended presets for ESLint, type-checked TypeScript, React and
+JSX, React Hooks, Vite React Refresh, Node.js, and Vitest. The TypeScript projects use the ES2023
+library definitions while retaining their existing compilation targets.
+
 - **Unit profile** (`pnpm run test:unit`) runs Node-based tests for shared parsing and speaker rules,
   Viewer state, Electron narration preparation and saves, caching, provider request formatting, and
   PowerPoint adapters. Cross-module Electron tests use in-memory mappings and fake external edges.
@@ -342,7 +346,7 @@ Useful commands:
 | ------------------------- | ------------------------------------------------- |
 | `pnpm run dev`            | Run Vite and Electron in development mode         |
 | `pnpm run typecheck`      | Type-check renderer, shared, and Electron code    |
-| `pnpm run lint`           | Run oxlint                                        |
+| `pnpm run lint`           | Run the configured oxlint preset suite            |
 | `pnpm run format`         | Format the repository with oxfmt                  |
 | `pnpm run test:unit`      | Run the Node unit/integration profile             |
 | `pnpm run test:component` | Run browser component tests                       |
