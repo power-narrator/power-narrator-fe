@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { BasicPptResult, SlideAudioEntry, SlideNotesEntry } from "../platform/types.js";
 import { TtsManager } from "../tts/TtsManager.js";
 import type { TtsProvider, Voice } from "../tts/TtsProvider.js";
 import { NarrationPreparation } from "./NarrationPreparation.js";
@@ -21,6 +22,55 @@ const alternateNarratorVoice: Voice = {
 
 const temporaryDirectories: string[] = [];
 
+class FakePowerPointAdapter {
+  readonly committedNotes = new Map<number, string>();
+  readonly insertedAudio = new Map<number, Map<number, Uint8Array>>();
+  readonly removedAudio = new Set<number>();
+  notesResult: BasicPptResult = { success: true };
+  audioResults: BasicPptResult[] = [{ success: true }];
+  removeResult: BasicPptResult = { success: true };
+
+  readonly saveNotes = vi.fn(async (_filePath: string, slides: SlideNotesEntry[]) => {
+    if (this.notesResult.success) {
+      for (const slide of slides) {
+        this.committedNotes.set(slide.index, slide.notes);
+      }
+    }
+    return this.notesResult;
+  });
+
+  readonly insertAudio = vi.fn(async (_filePath: string, slidesAudio: SlideAudioEntry[]) => {
+    const result = this.audioResults.shift() ?? { success: true as const };
+    if (result.success) {
+      for (const audio of slidesAudio) {
+        const slideAudio = this.insertedAudio.get(audio.index) ?? new Map();
+        slideAudio.set(audio.sectionIndex, audio.audioData);
+        this.insertedAudio.set(audio.index, slideAudio);
+        this.removedAudio.delete(audio.index);
+      }
+    }
+    return result;
+  });
+
+  readonly removeAudio = vi.fn(async (_filePath: string, slideIndices: number[]) => {
+    if (this.removeResult.success) {
+      for (const slideIndex of slideIndices) {
+        this.removedAudio.add(slideIndex);
+        this.insertedAudio.delete(slideIndex);
+      }
+    }
+    return this.removeResult;
+  });
+}
+
+function expectNoPowerPointMutation(powerpoint: FakePowerPointAdapter) {
+  expect({
+    notes: [...powerpoint.committedNotes],
+    audio: [...powerpoint.insertedAudio],
+    removedAudio: [...powerpoint.removedAudio],
+  }).toEqual({ notes: [], audio: [], removedAudio: [] });
+}
+
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     fs.rmSync(directory, { recursive: true, force: true });
@@ -36,11 +86,7 @@ function createSaver(
     { getSpeakerMappings: () => ({ Narrator: narratorVoice }) },
     { supportsProvider: () => true, generateSpeech },
   );
-  const powerpoint = {
-    saveNotes: vi.fn().mockResolvedValue({ success: true }),
-    insertAudio: vi.fn().mockResolvedValue({ success: true }),
-    removeAudio: vi.fn().mockResolvedValue({ success: true }),
-  };
+  const powerpoint = new FakePowerPointAdapter();
 
   return {
     generateSpeech,
@@ -66,14 +112,11 @@ function createCachedRetrySaver(
     { getSpeakerMappings },
     new TtsManager(new Map([["gcp", provider]]), cacheDirectory),
   );
-  const powerpoint = {
-    saveNotes: vi.fn().mockResolvedValue({ success: true }),
-    insertAudio: vi
-      .fn()
-      .mockResolvedValueOnce({ success: false, message: "audio automation failed" })
-      .mockResolvedValueOnce({ success: true }),
-    removeAudio: vi.fn().mockResolvedValue({ success: true }),
-  };
+  const powerpoint = new FakePowerPointAdapter();
+  powerpoint.audioResults = [
+    { success: false, message: "audio automation failed" },
+    { success: true },
+  ];
 
   return {
     synthesize,
@@ -94,11 +137,9 @@ describe("NarratedPresentationSaver", () => {
     ).resolves.toEqual({ success: true });
 
     expect(generateSpeech).not.toHaveBeenCalled();
-    expect(powerpoint.saveNotes).toHaveBeenCalledWith("/slides/talk.pptx", [
-      { index: 4, notes: "[Narrator]\n  \n---\n\t" },
-    ]);
-    expect(powerpoint.removeAudio).toHaveBeenCalledWith("/slides/talk.pptx", [4]);
-    expect(powerpoint.insertAudio).not.toHaveBeenCalled();
+    expect(powerpoint.committedNotes).toEqual(new Map([[4, "[Narrator]\n  \n---\n\t"]]));
+    expect(powerpoint.removedAudio).toEqual(new Set([4]));
+    expect(powerpoint.insertedAudio).toEqual(new Map());
     expect(powerpoint.saveNotes.mock.invocationCallOrder[0]).toBeLessThan(
       powerpoint.removeAudio.mock.invocationCallOrder[0]!,
     );
@@ -106,7 +147,7 @@ describe("NarratedPresentationSaver", () => {
 
   it("reports a partial PowerPoint failure when stale narration cannot be removed", async () => {
     const { powerpoint, saver } = createSaver();
-    powerpoint.removeAudio.mockResolvedValue({ success: false, message: "remove failed" });
+    powerpoint.removeResult = { success: false, message: "remove failed" };
 
     await expect(
       saver.savePresentation({
@@ -120,8 +161,9 @@ describe("NarratedPresentationSaver", () => {
       message: "remove failed",
     });
 
-    expect(powerpoint.saveNotes).toHaveBeenCalledOnce();
-    expect(powerpoint.insertAudio).not.toHaveBeenCalled();
+    expect(powerpoint.committedNotes).toEqual(new Map([[4, "  "]]));
+    expect(powerpoint.removedAudio).toEqual(new Set());
+    expect(powerpoint.insertedAudio).toEqual(new Map());
   });
 
   it("preflights every requested slide before synthesis or PowerPoint mutation", async () => {
@@ -141,8 +183,7 @@ describe("NarratedPresentationSaver", () => {
       partial: false,
     });
     expect(generateSpeech).not.toHaveBeenCalled();
-    expect(powerpoint.saveNotes).not.toHaveBeenCalled();
-    expect(powerpoint.insertAudio).not.toHaveBeenCalled();
+    expectNoPowerPointMutation(powerpoint);
   });
 
   it("reports eligible completion while preserving request order after parallel synthesis", async () => {
@@ -169,7 +210,7 @@ describe("NarratedPresentationSaver", () => {
     const saving = saver.savePresentation(request, onProgress);
     await vi.waitFor(() => expect(pending.size).toBe(3));
     expect(generateSpeech).toHaveBeenCalledTimes(3);
-    expect(powerpoint.saveNotes).not.toHaveBeenCalled();
+    expectNoPowerPointMutation(powerpoint);
 
     pending.get("Three first")?.(new Uint8Array([3]));
     await vi.waitFor(() => expect(onProgress).toHaveBeenLastCalledWith({ completed: 1, total: 3 }));
@@ -183,15 +224,24 @@ describe("NarratedPresentationSaver", () => {
       [{ completed: 2, total: 3 }],
       [{ completed: 3, total: 3 }],
     ]);
-    expect(powerpoint.saveNotes).toHaveBeenCalledWith("/slides/talk.pptx", [
-      { index: 9, notes: request.slides[0]!.notes },
-      { index: 3, notes: request.slides[1]!.notes },
-    ]);
-    expect(powerpoint.insertAudio).toHaveBeenCalledWith("/slides/talk.pptx", [
-      { index: 9, sectionIndex: 0, audioData: new Uint8Array([1]) },
-      { index: 9, sectionIndex: 2, audioData: new Uint8Array([2]) },
-      { index: 3, sectionIndex: 0, audioData: new Uint8Array([3]) },
-    ]);
+    expect(powerpoint.committedNotes).toEqual(
+      new Map([
+        [9, request.slides[0]!.notes],
+        [3, request.slides[1]!.notes],
+      ]),
+    );
+    expect(powerpoint.insertedAudio).toEqual(
+      new Map([
+        [
+          9,
+          new Map([
+            [0, new Uint8Array([1])],
+            [2, new Uint8Array([2])],
+          ]),
+        ],
+        [3, new Map([[0, new Uint8Array([3])]])],
+      ]),
+    );
   });
 
   it("reports a structured synthesis failure without mutating PowerPoint", async () => {
@@ -205,8 +255,7 @@ describe("NarratedPresentationSaver", () => {
         slides: [{ slideIndex: 5, notes: "[Narrator]\nHello" }],
       }),
     ).resolves.toMatchObject({ success: false, stage: "synthesis", partial: false });
-    expect(powerpoint.saveNotes).not.toHaveBeenCalled();
-    expect(powerpoint.insertAudio).not.toHaveBeenCalled();
+    expectNoPowerPointMutation(powerpoint);
   });
 
   it("reports a structured preparation failure when speaker mappings cannot be read", async () => {
@@ -218,11 +267,7 @@ describe("NarratedPresentationSaver", () => {
       },
       { supportsProvider: () => true, generateSpeech: vi.fn() },
     );
-    const powerpoint = {
-      saveNotes: vi.fn(),
-      insertAudio: vi.fn(),
-      removeAudio: vi.fn(),
-    };
+    const powerpoint = new FakePowerPointAdapter();
     const saver = new NarratedPresentationSaver(preparation, () => powerpoint);
 
     await expect(
@@ -236,19 +281,18 @@ describe("NarratedPresentationSaver", () => {
       partial: false,
       message: "settings unavailable",
     });
-    expect(powerpoint.saveNotes).not.toHaveBeenCalled();
-    expect(powerpoint.insertAudio).not.toHaveBeenCalled();
+    expectNoPowerPointMutation(powerpoint);
   });
 
   it.each([
-    ["notes", { success: false, message: "notes failed" }, { success: true }, false],
-    ["audio", { success: true }, { success: false, message: "audio failed" }, true],
+    ["notes", { success: false, message: "notes failed" }, { success: true }, false] as const,
+    ["audio", { success: true }, { success: false, message: "audio failed" }, true] as const,
   ])(
     "reports a structured PowerPoint failure while committing %s",
     async (_, notesResult, audioResult, partial) => {
       const { powerpoint, saver } = createSaver();
-      powerpoint.saveNotes.mockResolvedValue(notesResult);
-      powerpoint.insertAudio.mockResolvedValue(audioResult);
+      powerpoint.notesResult = notesResult;
+      powerpoint.audioResults = [audioResult];
 
       await expect(
         saver.savePresentation({
@@ -261,7 +305,11 @@ describe("NarratedPresentationSaver", () => {
         partial,
         message: partial ? "audio failed" : "notes failed",
       });
-      expect(powerpoint.insertAudio).toHaveBeenCalledTimes(partial ? 1 : 0);
+      expect(powerpoint.committedNotes).toEqual(
+        partial ? new Map([[2, "[Narrator]\nHello"]]) : new Map(),
+      );
+      expect(powerpoint.insertedAudio).toEqual(new Map());
+      expect(powerpoint.removedAudio).toEqual(new Set());
     },
   );
 
@@ -326,11 +374,7 @@ describe("NarratedPresentationSaver", () => {
       }),
     ).resolves.toEqual({ success: true });
 
-    expect(powerpoint.saveNotes).toHaveBeenCalledWith("/slides/talk.pptx", [
-      { index: 7, notes: "[Narrator]\nOnly slide" },
-    ]);
-    expect(powerpoint.insertAudio).toHaveBeenCalledWith("/slides/talk.pptx", [
-      { index: 7, sectionIndex: 0, audioData: new Uint8Array([1]) },
-    ]);
+    expect(powerpoint.committedNotes).toEqual(new Map([[7, "[Narrator]\nOnly slide"]]));
+    expect(powerpoint.insertedAudio).toEqual(new Map([[7, new Map([[0, new Uint8Array([1])]])]]));
   });
 });

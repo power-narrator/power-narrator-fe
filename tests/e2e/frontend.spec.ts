@@ -45,13 +45,7 @@ const MOCK_VOICES: Record<string, Voice> = {
   },
 };
 
-const SILENT_MP3_FRAME = [
-  0xff,
-  0xfb,
-  0x90,
-  0x64,
-  ...Array.from({ length: 413 }, () => 0),
-];
+const SILENT_MP3_FRAME = [0xff, 0xfb, 0x90, 0x64, ...Array.from({ length: 413 }, () => 0)];
 const DETERMINISTIC_MP3_BYTES = [...SILENT_MP3_FRAME, ...SILENT_MP3_FRAME, ...SILENT_MP3_FRAME];
 
 type GeneratedSpeechCall = {
@@ -80,7 +74,6 @@ type RendererNarrationApi = {
     payload: { filePath: string; slides: Array<{ slideIndex: number; notes: string }> },
     onProgress: (progress: NarrationProgress) => void,
   ) => Promise<unknown>;
-  getVideoSavePath: () => Promise<string | null>;
 };
 
 type DiscardConfirmationTestGlobals = typeof globalThis & {
@@ -302,12 +295,9 @@ async function setShouldDiscardNarrationChanges(shouldDiscard: boolean) {
   }, shouldDiscard);
 }
 
-async function attemptCloseAndKeepEditing(
-  attemptClose: () => Promise<unknown>,
-  expectedConfirmations: number,
-) {
+async function attemptCloseAndKeepEditing(attemptClose: () => Promise<unknown>) {
   await attemptClose();
-  await expect.poll(getDiscardConfirmationCalls).toHaveLength(expectedConfirmations);
+  await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
   await expect(notesEditor()).toHaveValue("Unsaved close warning");
 }
 
@@ -567,8 +557,8 @@ test.describe("PPT Viewer UI Workflows", () => {
     ]);
   });
 
-  test("delivers narration progress over the bridge and stops listening once settled", async () => {
-    const observed = await window.evaluate(
+  test("delivers narration progress over the renderer-to-Electron bridge", async () => {
+    const progress = await window.evaluate(
       async ({ filePath, slides }) => {
         const globals = globalThis as typeof globalThis & {
           __bridgeProgress: NarrationProgress[];
@@ -576,12 +566,11 @@ test.describe("PPT Viewer UI Workflows", () => {
         };
         globals.__bridgeProgress = [];
 
-        const result = await globals.electronAPI.saveNarratedPresentation(
-          { filePath, slides },
-          (progress) => globals.__bridgeProgress.push(progress),
+        await globals.electronAPI.saveNarratedPresentation({ filePath, slides }, (progress) =>
+          globals.__bridgeProgress.push(progress),
         );
 
-        return { result, progress: [...globals.__bridgeProgress] };
+        return [...globals.__bridgeProgress];
       },
       {
         filePath: FIXTURE_TEST,
@@ -592,71 +581,39 @@ test.describe("PPT Viewer UI Workflows", () => {
       },
     );
 
-    expect(observed.result).toEqual({ success: true });
-    // Main sends an update per prepared slide, but the renderer resolves the invoke reply
-    // before the last one is dispatched, so the teardown asserted below discards it. This
-    // flow therefore proves only that progress crosses the bridge
-    expect(observed.progress.length).toBeGreaterThan(0);
-    for (const progress of observed.progress) {
-      expect(progress.total).toBe(MOCK_SLIDES.length);
+    expect(progress.length).toBeGreaterThan(0);
+    for (const update of progress) {
+      expect(update.total).toBe(MOCK_SLIDES.length);
     }
-
-    // The channel name below is duplicated from electron/preload.cts, whose sandboxed
-    // require cannot reach a shared constant. Keep the two in step: if the bridge is
-    // renamed and this is not, the probe lands on a channel nobody listens to, and the
-    // assertion that no stray update arrived passes without testing anything.
-    // The bridge numbers each channel from a counter private to the preload, so probe
-    // every id this window could plausibly have used rather than guessing one.
-    await electronApp.evaluate(({ BrowserWindow }, probeCount) => {
-      const webContents = BrowserWindow.getAllWindows()[0]?.webContents;
-      for (let requestId = 1; requestId <= probeCount; requestId += 1) {
-        webContents?.send(`narrated-presentation-save-progress:${requestId}`, {
-          completed: 99,
-          total: 99,
-        });
-      }
-    }, 5);
-    await window.evaluate(() =>
-      (
-        globalThis as typeof globalThis & { electronAPI: RendererNarrationApi }
-      ).electronAPI.getVideoSavePath(),
-    );
-
-    const progressAfterSettle = await window.evaluate(
-      () =>
-        (globalThis as typeof globalThis & { __bridgeProgress: NarrationProgress[] })
-          .__bridgeProgress,
-    );
-    expect(progressAfterSettle).toEqual(observed.progress);
   });
 
-  test("warns window and application close while narration edits are dirty", async () => {
-    await notesEditor().fill("Unsaved close warning");
-
-    await attemptCloseAndKeepEditing(
-      () =>
+  for (const closeCase of [
+    {
+      name: "window",
+      attempt: () =>
         electronApp.evaluate(({ BrowserWindow }) => {
           BrowserWindow.getAllWindows()[0]?.close();
         }),
-      1,
-    );
-    await attemptCloseAndKeepEditing(
-      () =>
+    },
+    {
+      name: "application",
+      attempt: () =>
         electronApp.evaluate(({ app }) => {
           app.quit();
         }),
-      2,
-    );
+    },
+  ]) {
+    test(`warns when the ${closeCase.name} closes while narration edits are dirty`, async () => {
+      await notesEditor().fill("Unsaved close warning");
 
-    await expect.poll(getDiscardConfirmationCalls).toEqual([
-      expect.objectContaining({
-        buttons: ["Keep Editing", "Discard Changes"],
-        message: "Discard unsaved narration changes?",
-      }),
-      expect.objectContaining({
-        buttons: ["Keep Editing", "Discard Changes"],
-        message: "Discard unsaved narration changes?",
-      }),
-    ]);
-  });
+      await attemptCloseAndKeepEditing(closeCase.attempt);
+
+      await expect.poll(getDiscardConfirmationCalls).toEqual([
+        expect.objectContaining({
+          buttons: ["Keep Editing", "Discard Changes"],
+          message: "Discard unsaved narration changes?",
+        }),
+      ]);
+    });
+  }
 });

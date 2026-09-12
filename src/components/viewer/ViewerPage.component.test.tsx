@@ -214,7 +214,7 @@ test("keeps narration edited during a save dirty after that save completes", asy
   expect(onBack).not.toHaveBeenCalled();
 });
 
-test("allows only the active Viewer operation to report progress", async () => {
+test("disables conflicting Viewer operations while a save is active", async () => {
   let finishSave: ((result: NarratedSaveResult) => void) | undefined;
   const saveNarratedSlide = vi.fn(
     () => new Promise<NarratedSaveResult>((resolve) => (finishSave = resolve)),
