@@ -172,8 +172,6 @@ describe("NarrationPreparation", () => {
   });
 
   it("falls back to the default speaker when no mapping carries the tagged name", async () => {
-    // A name no mapping knows is not a speaker tag at all, so it stays in the
-    // narrated text and the section is narrated by the default speaker.
     const { preparation, generateSpeech } = createPreparation({});
 
     await expect(
@@ -259,8 +257,6 @@ describe("NarrationPreparation", () => {
   });
 
   it("fails a mapping left unconfigured without reaching a provider", async () => {
-    // A voice exists only once voice, model, and language are all chosen, so an
-    // unmade language reads here as no voice at all.
     const { preparation, generateSpeech } = createPreparation({ Narrator: {} });
 
     await expect(
@@ -354,8 +350,6 @@ describe("NarrationPreparation prompts", () => {
       speakerChoice: { kind: "effective" },
     });
 
-    // The provider drops what the model cannot use; preparation does not
-    // second-guess a prompt the author may have parked deliberately.
     expect(generateSpeech).toHaveBeenCalledWith("First", narratorVoice, "whisper");
   });
 });

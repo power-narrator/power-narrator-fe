@@ -332,9 +332,11 @@ library definitions while retaining their existing compilation targets.
 
 - **Unit profile** (`pnpm run test:unit`) runs Node-based tests for shared parsing and speaker rules,
   Viewer state, Electron narration preparation and saves, caching, provider request formatting, and
-  PowerPoint adapters. Cross-module Electron tests use in-memory mappings and fake external edges.
+  PowerPoint adapters.
 - **Component profile** (`pnpm run test:component`) runs React interaction tests in headless Chromium,
   including settings, selection-aware preview, playback lifecycle, and Viewer save behavior.
+- **Integration profile** (`pnpm run test:integration`) runs cross-module contracts with fake external
+  edges, including compatibility between stored mapping migrations and providers.
 - **End-to-end profile** (`pnpm run test:e2e`) builds and launches the real Electron app. With
   `NODE_ENV=test`, `powerNarratorTestHarness` replaces narration and PowerPoint edges with injected
   deterministic adapters. The fake TTS adapter returns valid fixed MP3 frames while requests still
@@ -342,18 +344,19 @@ library definitions while retaining their existing compilation targets.
 
 Useful commands:
 
-| Command                   | Purpose                                           |
-| ------------------------- | ------------------------------------------------- |
-| `pnpm run dev`            | Run Vite and Electron in development mode         |
-| `pnpm run typecheck`      | Type-check renderer, shared, and Electron code    |
-| `pnpm run lint`           | Run the configured oxlint preset suite            |
-| `pnpm run format`         | Format the repository with oxfmt                  |
-| `pnpm run test:unit`      | Run the Node unit/integration profile             |
-| `pnpm run test:component` | Run browser component tests                       |
-| `pnpm run test:e2e`       | Build and run Playwright Electron tests           |
-| `pnpm run test`           | Run all three test profiles                       |
-| `pnpm run build`          | Type-check and build renderer and Electron output |
-| `pnpm run dist`           | Build distributable application packages          |
+| Command                     | Purpose                                           |
+| --------------------------- | ------------------------------------------------- |
+| `pnpm run dev`              | Run Vite and Electron in development mode         |
+| `pnpm run typecheck`        | Type-check renderer, shared, and Electron code    |
+| `pnpm run lint`             | Run the configured oxlint preset suite            |
+| `pnpm run format`           | Format the repository with oxfmt                  |
+| `pnpm run test:unit`        | Run the Node unit profile                         |
+| `pnpm run test:component`   | Run browser component tests                       |
+| `pnpm run test:integration` | Run cross-module contract tests                   |
+| `pnpm run test:e2e`         | Build and run Playwright Electron tests           |
+| `pnpm run test`             | Run all four test profiles                        |
+| `pnpm run build`            | Type-check and build renderer and Electron output |
+| `pnpm run dist`             | Build distributable application packages          |
 
 ## Troubleshooting
 

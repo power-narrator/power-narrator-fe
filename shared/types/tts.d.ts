@@ -12,7 +12,6 @@ export interface VoiceModel {
   languages: VoiceLanguage[];
 }
 
-/** A catalogue entry offered to the picker. Never persisted. */
 export interface VoiceOption {
   provider: TtsProviderId;
   name: string;
@@ -20,7 +19,6 @@ export interface VoiceOption {
   models: VoiceModel[];
 }
 
-/** A fully made voice choice: persisted, and handed to a provider verbatim. */
 export interface Voice {
   provider: TtsProviderId;
   voiceId: string;
@@ -29,10 +27,6 @@ export interface Voice {
   supportsPrompt: boolean;
 }
 
-/**
- * Incompleteness is the absence of a voice, never a voice with holes in it, so
- * a partly made selection cannot be stored.
- */
 export interface SpeakerMapping {
   voice?: Voice;
   prompt?: string;

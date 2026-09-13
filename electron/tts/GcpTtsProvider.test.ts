@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Voice } from "./TtsProvider.js";
 import { decomposeGcpVoiceName, GcpTtsProvider } from "./GcpTtsProvider.js";
 import { GEMINI_LANGUAGES } from "./gcpLanguages.js";
-import { migrateSpeakerMappings } from "../settings/speakerMappingMigration.js";
 
 const { clientConstructor, listVoices, synthesizeSpeech } = vi.hoisted(() => ({
   clientConstructor: vi.fn<(options: unknown) => void>(),
@@ -279,8 +278,6 @@ describe("GcpTtsProvider", () => {
       })
       .synthesize();
 
-    // The catalogue advertises Gemini voices under en-US alone, so a chosen
-    // language reaching the request is the whole of the feature.
     expect(synthesizeSpeech.mock.calls[0]?.[0].voice).toEqual({
       languageCode: "fr-FR",
       name: "Kore",
@@ -320,22 +317,6 @@ describe("GcpTtsProvider", () => {
     expect(synthesizeSpeech.mock.calls[0]?.[0].voice).toEqual({
       languageCode: "en-GB",
       name: "en-GB-Chirp3-HD-Aoede",
-    });
-  });
-
-  it("narrates a migrated legacy mapping with the identifier it used before", async () => {
-    const legacyName = "en-US-Chirp3-HD-Charon";
-    const migrated = migrateSpeakerMappings({
-      Narrator: { name: legacyName, languageCodes: ["en-US"], ssmlGender: "MALE", provider: "gcp" },
-    });
-
-    await new GcpTtsProvider(() => "/keys/gcp.json")
-      .prepareSpeech("Hello", migrated.Narrator!.voice!)
-      .synthesize();
-
-    expect(synthesizeSpeech.mock.calls[0]?.[0].voice).toEqual({
-      languageCode: "en-US",
-      name: legacyName,
     });
   });
 

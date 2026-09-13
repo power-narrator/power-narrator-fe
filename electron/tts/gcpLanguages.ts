@@ -101,10 +101,6 @@ const GEMINI_PREVIEW_LANGUAGE_CODES = [
   "ur-PK",
 ];
 
-/**
- * A label is the locale itself, so the app never renames what a provider
- * published; the preview marker is the one thing added to it.
- */
 function toLanguages(codes: string[], suffix = ""): VoiceLanguage[] {
   return codes.map((code) => ({ code, label: `${code}${suffix}` }));
 }

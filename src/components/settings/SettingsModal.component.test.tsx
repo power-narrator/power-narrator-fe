@@ -67,29 +67,61 @@ afterEach(() => {
   Reflect.deleteProperty(window, "electronAPI");
 });
 
-test("creates a mapping from the voices exposed by the provider registry", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
+interface SettingsSetup {
+  mappings?: Record<string, SpeakerMapping>;
+  voiceOptions?: VoiceOption[];
+  electronApi?: Partial<typeof window.electronAPI>;
+}
+
+function renderSettings(
+  { mappings = { Narrator: {} }, voiceOptions = [], electronApi = {} }: SettingsSetup = {},
+  savedMappings: Record<string, SpeakerMapping>[] = [],
+) {
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
     value: {
-      getSpeakerMappings: () => Promise.resolve({}),
-      setSpeakerMappings: (mappings: Record<string, SpeakerMapping>) => {
-        savedMappings.push(mappings);
+      getSpeakerMappings: () => Promise.resolve(mappings),
+      setSpeakerMappings: (nextMappings: Record<string, SpeakerMapping>) => {
+        savedMappings.push(nextMappings);
         return Promise.resolve({ success: true });
       },
       getGcpKeyPath: () => Promise.resolve(null),
-      getVoices: () => Promise.resolve([registryOption]),
+      getVoices: () => Promise.resolve(voiceOptions),
       getXmlCliEnabled: () => Promise.resolve(false),
       setXmlCliEnabled: () => Promise.resolve({ success: true }),
+      ...electronApi,
     },
   });
 
-  const screen = await render(
+  return render(
     <MantineProvider>
       <SettingsProvider>
         <SettingsModal opened onClose={() => {}} />
       </SettingsProvider>
     </MantineProvider>,
+  );
+}
+
+type SettingsScreen = Awaited<ReturnType<typeof renderSettings>>;
+
+async function waitForMapping(screen: SettingsScreen, alias = "Narrator") {
+  await vi.waitFor(() => expect(screen.getByText(`[${alias}]`).query()).not.toBeNull());
+}
+
+async function choose(
+  screen: SettingsScreen,
+  controlName: string,
+  optionName: string | RegExp,
+) {
+  await screen.getByRole("combobox", { name: controlName }).click();
+  await screen.getByRole("option", { name: optionName }).click();
+}
+
+test("creates a mapping from the voices exposed by the provider registry", async () => {
+  const savedMappings: Record<string, SpeakerMapping>[] = [];
+  const screen = await renderSettings(
+    { mappings: {}, voiceOptions: [registryOption] },
+    savedMappings,
   );
 
   await vi.waitFor(() =>
@@ -114,72 +146,28 @@ test("replaces a persisted mapping whose provider is no longer registered", asyn
       supportsPrompt: false,
     },
   };
-  Object.defineProperty(window, "electronAPI", {
-    configurable: true,
-    value: {
-      getSpeakerMappings: () => Promise.resolve({ Narrator: staleMapping }),
-      setSpeakerMappings: (mappings: Record<string, SpeakerMapping>) => {
-        savedMappings.push(mappings);
-        return Promise.resolve({ success: true });
-      },
-      getGcpKeyPath: () => Promise.resolve(null),
-      getVoices: () => Promise.resolve([gcpOption]),
-      getXmlCliEnabled: () => Promise.resolve(false),
-      setXmlCliEnabled: () => Promise.resolve({ success: true }),
-    },
-  });
-
-  const screen = await render(
-    <MantineProvider>
-      <SettingsProvider>
-        <SettingsModal opened onClose={() => {}} />
-      </SettingsProvider>
-    </MantineProvider>,
+  const screen = await renderSettings(
+    { mappings: { Narrator: staleMapping }, voiceOptions: [gcpOption] },
+    savedMappings,
   );
 
-  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
-  await screen.getByRole("combobox", { name: "Voice for Narrator" }).click();
-  await screen.getByRole("option", { name: /Aoede/ }).click();
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", /Aoede/);
 
   await vi.waitFor(() => expect(savedMappings).toContainEqual({ Narrator: { voice: gcpVoice } }));
 });
 
 test("withholds a voice until its model is chosen, then saves the pair", async () => {
   const savedMappings: Record<string, SpeakerMapping>[] = [];
-  Object.defineProperty(window, "electronAPI", {
-    configurable: true,
-    value: {
-      getSpeakerMappings: () => Promise.resolve({ Narrator: {} }),
-      setSpeakerMappings: (mappings: Record<string, SpeakerMapping>) => {
-        savedMappings.push(mappings);
-        return Promise.resolve({ success: true });
-      },
-      getGcpKeyPath: () => Promise.resolve(null),
-      getVoices: () => Promise.resolve([multiModelOption]),
-      getXmlCliEnabled: () => Promise.resolve(false),
-      setXmlCliEnabled: () => Promise.resolve({ success: true }),
-    },
-  });
+  const screen = await renderSettings({ voiceOptions: [multiModelOption] }, savedMappings);
 
-  const screen = await render(
-    <MantineProvider>
-      <SettingsProvider>
-        <SettingsModal opened onClose={() => {}} />
-      </SettingsProvider>
-    </MantineProvider>,
-  );
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
 
-  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
-  await screen.getByRole("combobox", { name: "Voice for Narrator" }).click();
-  await screen.getByRole("option", { name: "Kore (FEMALE)" }).click();
-
-  // A voice offering several models leaves the mapping unconfigured until one
-  // is chosen, so nothing partial is ever stored.
   expect(savedMappings.length).toBeGreaterThan(0);
   expect(savedMappings.every((mappings) => !mappings.Narrator?.voice)).toBe(true);
 
-  await screen.getByRole("combobox", { name: "Model for Narrator" }).click();
-  await screen.getByRole("option", { name: "Gemini 2.5 Flash" }).click();
+  await choose(screen, "Model for Narrator", "Gemini 2.5 Flash");
 
   await vi.waitFor(() =>
     expect(savedMappings).toContainEqual({
@@ -196,34 +184,18 @@ test("withholds a voice until its model is chosen, then saves the pair", async (
   );
 });
 
-test("preselects the sole model of a voice that offers one", async () => {
-  Object.defineProperty(window, "electronAPI", {
-    configurable: true,
-    value: {
-      getSpeakerMappings: () => Promise.resolve({ Narrator: {} }),
-      setSpeakerMappings: () => Promise.resolve({ success: true }),
-      getGcpKeyPath: () => Promise.resolve(null),
-      getVoices: () => Promise.resolve([gcpOption]),
-      getXmlCliEnabled: () => Promise.resolve(false),
-      setXmlCliEnabled: () => Promise.resolve({ success: true }),
-    },
-  });
+test("preselects the sole model and language of a voice that offers one", async () => {
+  const screen = await renderSettings({ voiceOptions: [gcpOption] });
 
-  const screen = await render(
-    <MantineProvider>
-      <SettingsProvider>
-        <SettingsModal opened onClose={() => {}} />
-      </SettingsProvider>
-    </MantineProvider>,
-  );
-
-  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
-  await screen.getByRole("combobox", { name: "Voice for Narrator" }).click();
-  await screen.getByRole("option", { name: "Aoede (FEMALE)" }).click();
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", "Aoede (FEMALE)");
 
   await expect
     .element(screen.getByRole("combobox", { name: "Model for Narrator" }))
     .toHaveValue("Chirp 3 HD");
+  await expect
+    .element(screen.getByRole("combobox", { name: "Language for Narrator" }))
+    .toHaveValue("en-US");
 });
 
 const bilingualOption: VoiceOption = {
@@ -252,48 +224,18 @@ const bilingualOption: VoiceOption = {
   ],
 };
 
-function renderSettings(options: VoiceOption[], savedMappings: Record<string, SpeakerMapping>[]) {
-  Object.defineProperty(window, "electronAPI", {
-    configurable: true,
-    value: {
-      getSpeakerMappings: () => Promise.resolve({ Narrator: {} }),
-      setSpeakerMappings: (mappings: Record<string, SpeakerMapping>) => {
-        savedMappings.push(mappings);
-        return Promise.resolve({ success: true });
-      },
-      getGcpKeyPath: () => Promise.resolve(null),
-      getVoices: () => Promise.resolve(options),
-      getXmlCliEnabled: () => Promise.resolve(false),
-      setXmlCliEnabled: () => Promise.resolve({ success: true }),
-    },
-  });
-
-  return render(
-    <MantineProvider>
-      <SettingsProvider>
-        <SettingsModal opened onClose={() => {}} />
-      </SettingsProvider>
-    </MantineProvider>,
-  );
-}
-
 test("withholds a voice until its language is chosen, then saves it", async () => {
   const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings([bilingualOption], savedMappings);
+  const screen = await renderSettings({ voiceOptions: [bilingualOption] }, savedMappings);
 
-  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
-  await screen.getByRole("combobox", { name: "Voice for Narrator" }).click();
-  await screen.getByRole("option", { name: "Kore (FEMALE)" }).click();
-  await screen.getByRole("combobox", { name: "Model for Narrator" }).click();
-  await screen.getByRole("option", { name: "Gemini 2.5 Pro" }).click();
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
+  await choose(screen, "Model for Narrator", "Gemini 2.5 Pro");
 
-  // A model speaking several languages leaves the mapping unconfigured until
-  // one is chosen, so narration never reaches a provider in a guessed language.
   expect(savedMappings.length).toBeGreaterThan(0);
   expect(savedMappings.every((mappings) => !mappings.Narrator?.voice)).toBe(true);
 
-  await screen.getByRole("combobox", { name: "Language for Narrator" }).click();
-  await screen.getByRole("option", { name: "fr-FR" }).click();
+  await choose(screen, "Language for Narrator", "fr-FR");
 
   await vi.waitFor(() =>
     expect(savedMappings).toContainEqual({
@@ -310,18 +252,6 @@ test("withholds a voice until its language is chosen, then saves it", async () =
   );
 });
 
-test("preselects the sole language of a model that offers one", async () => {
-  const screen = await renderSettings([gcpOption], []);
-
-  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
-  await screen.getByRole("combobox", { name: "Voice for Narrator" }).click();
-  await screen.getByRole("option", { name: "Aoede (FEMALE)" }).click();
-
-  await expect
-    .element(screen.getByRole("combobox", { name: "Language for Narrator" }))
-    .toHaveValue("en-US");
-});
-
 test("keeps a language the newly chosen voice can also speak", async () => {
   const savedMappings: Record<string, SpeakerMapping>[] = [];
   const soleModelOption: VoiceOption = {
@@ -329,21 +259,17 @@ test("keeps a language the newly chosen voice can also speak", async () => {
     name: "Puck",
     models: [bilingualOption.models[1]!],
   };
-  const screen = await renderSettings([bilingualOption, soleModelOption], savedMappings);
+  const screen = await renderSettings(
+    { voiceOptions: [bilingualOption, soleModelOption] },
+    savedMappings,
+  );
 
-  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
-  await screen.getByRole("combobox", { name: "Voice for Narrator" }).click();
-  await screen.getByRole("option", { name: "Kore (FEMALE)" }).click();
-  await screen.getByRole("combobox", { name: "Model for Narrator" }).click();
-  await screen.getByRole("option", { name: "Chirp 3 HD" }).click();
-  await screen.getByRole("combobox", { name: "Language for Narrator" }).click();
-  await screen.getByRole("option", { name: "de-DE" }).click();
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
+  await choose(screen, "Model for Narrator", "Chirp 3 HD");
+  await choose(screen, "Language for Narrator", "de-DE");
+  await choose(screen, "Voice for Narrator", "Puck (FEMALE)");
 
-  await screen.getByRole("combobox", { name: "Voice for Narrator" }).click();
-  await screen.getByRole("option", { name: "Puck (FEMALE)" }).click();
-
-  // Nothing about the new voice invalidated the language, so re-picking it
-  // would be busywork.
   await vi.waitFor(() =>
     expect(savedMappings.at(-1)).toEqual({
       Narrator: {
@@ -361,19 +287,15 @@ test("keeps a language the newly chosen voice can also speak", async () => {
 
 test("clears a language the newly chosen model cannot speak", async () => {
   const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings([bilingualOption], savedMappings);
+  const screen = await renderSettings({ voiceOptions: [bilingualOption] }, savedMappings);
 
-  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
-  await screen.getByRole("combobox", { name: "Voice for Narrator" }).click();
-  await screen.getByRole("option", { name: "Kore (FEMALE)" }).click();
-  await screen.getByRole("combobox", { name: "Model for Narrator" }).click();
-  await screen.getByRole("option", { name: "Gemini 2.5 Pro" }).click();
-  await screen.getByRole("combobox", { name: "Language for Narrator" }).click();
-  await screen.getByRole("option", { name: "fr-FR" }).click();
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
+  await choose(screen, "Model for Narrator", "Gemini 2.5 Pro");
+  await choose(screen, "Language for Narrator", "fr-FR");
   await vi.waitFor(() => expect(savedMappings.length).toBeGreaterThan(1));
 
-  await screen.getByRole("combobox", { name: "Model for Narrator" }).click();
-  await screen.getByRole("option", { name: "Chirp 3 HD" }).click();
+  await choose(screen, "Model for Narrator", "Chirp 3 HD");
 
   await expect
     .element(screen.getByRole("combobox", { name: "Language for Narrator" }))
@@ -381,20 +303,51 @@ test("clears a language the newly chosen model cannot speak", async () => {
   await vi.waitFor(() => expect(savedMappings.at(-1)).toEqual({ Narrator: {} }));
 });
 
+test("selects the sole language when a newly chosen model cannot speak the current one", async () => {
+  const savedMappings: Record<string, SpeakerMapping>[] = [];
+  const option: VoiceOption = {
+    ...bilingualOption,
+    models: [
+      bilingualOption.models[0]!,
+      {
+        id: "future-model",
+        label: "Future",
+        supportsPrompt: true,
+        languages: [{ code: "de-DE", label: "de-DE" }],
+      },
+    ],
+  };
+  const screen = await renderSettings({ voiceOptions: [option] }, savedMappings);
+
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
+  await choose(screen, "Model for Narrator", "Gemini 2.5 Pro");
+  await choose(screen, "Language for Narrator", "fr-FR");
+  await choose(screen, "Model for Narrator", "Future");
+
+  await expect
+    .element(screen.getByRole("combobox", { name: "Language for Narrator" }))
+    .toHaveValue("de-DE");
+  await vi.waitFor(() =>
+    expect(savedMappings.at(-1)?.Narrator?.voice).toEqual({
+      provider: "gcp",
+      voiceId: "Kore",
+      model: "future-model",
+      languageCode: "de-DE",
+      supportsPrompt: true,
+    }),
+  );
+});
+
 test("keeps a language the newly chosen model can also speak", async () => {
   const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings([bilingualOption], savedMappings);
+  const screen = await renderSettings({ voiceOptions: [bilingualOption] }, savedMappings);
 
-  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
-  await screen.getByRole("combobox", { name: "Voice for Narrator" }).click();
-  await screen.getByRole("option", { name: "Kore (FEMALE)" }).click();
-  await screen.getByRole("combobox", { name: "Model for Narrator" }).click();
-  await screen.getByRole("option", { name: "Gemini 2.5 Pro" }).click();
-  await screen.getByRole("combobox", { name: "Language for Narrator" }).click();
-  await screen.getByRole("option", { name: "en-US" }).click();
-
-  await screen.getByRole("combobox", { name: "Model for Narrator" }).click();
-  await screen.getByRole("option", { name: "Chirp 3 HD" }).click();
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
+  await choose(screen, "Model for Narrator", "Gemini 2.5 Pro");
+  await choose(screen, "Language for Narrator", "en-US");
+  await choose(screen, "Model for Narrator", "Chirp 3 HD");
 
   await vi.waitFor(() =>
     expect(savedMappings.at(-1)).toEqual({
@@ -413,9 +366,9 @@ test("keeps a language the newly chosen model can also speak", async () => {
 
 test("saves a prompt on the speaker and clears it away entirely", async () => {
   const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings([multiModelOption], savedMappings);
+  const screen = await renderSettings({ voiceOptions: [multiModelOption] }, savedMappings);
 
-  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
+  await waitForMapping(screen);
   await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
   await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
 
@@ -423,38 +376,37 @@ test("saves a prompt on the speaker and clears it away entirely", async () => {
 
   await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("");
 
-  // An empty prompt is no prompt, so it leaves no key behind to be sent later.
   await vi.waitFor(() => expect(savedMappings.at(-1)).toEqual({ Narrator: {} }));
 });
 
-test("shows a collapsed prompt holding content as holding it", async () => {
-  const screen = await renderSettings([multiModelOption], []);
-
-  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
-  expect(screen.getByRole("button", { name: "Prompt for Narrator (set)" }).query()).toBeNull();
-
-  await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
-  await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
-  await screen.getByRole("button", { name: "Prompt for Narrator (set)" }).click();
+test("opens stored prompts after mappings load while empty prompts stay closed", async () => {
+  const screen = await renderSettings({
+    mappings: { Narrator: { prompt: "Whisper" }, Guest: {} },
+    voiceOptions: [multiModelOption],
+    electronApi: {
+      getSpeakerMappings: () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve({ Narrator: { prompt: "Whisper" }, Guest: {} }), 0);
+        }),
+    },
+  });
 
   await expect
-    .element(screen.getByRole("button", { name: "Prompt for Narrator (set)" }))
-    .toBeVisible();
+    .element(screen.getByRole("textbox", { name: "Prompt for Narrator" }))
+    .toHaveValue("Whisper");
+  expect(screen.getByRole("textbox", { name: "Prompt for Guest" }).query()).toBeNull();
 });
 
 test("keeps a prompt through a switch to a voice that ignores prompts, advising so", async () => {
   const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings([bilingualOption], savedMappings);
+  const screen = await renderSettings({ voiceOptions: [bilingualOption] }, savedMappings);
 
-  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
+  await waitForMapping(screen);
   await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
   await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
-  await screen.getByRole("combobox", { name: "Voice for Narrator" }).click();
-  await screen.getByRole("option", { name: "Kore (FEMALE)" }).click();
-  await screen.getByRole("combobox", { name: "Model for Narrator" }).click();
-  await screen.getByRole("option", { name: "Chirp 3 HD" }).click();
-  await screen.getByRole("combobox", { name: "Language for Narrator" }).click();
-  await screen.getByRole("option", { name: "de-DE" }).click();
+  await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
+  await choose(screen, "Model for Narrator", "Chirp 3 HD");
+  await choose(screen, "Language for Narrator", "de-DE");
 
   await expect.element(screen.getByText("This model ignores prompts.")).toBeVisible();
   await expect
@@ -465,30 +417,15 @@ test("keeps a prompt through a switch to a voice that ignores prompts, advising 
 
 test("keeps two speakers sharing one voice on separate prompts", async () => {
   const savedMappings: Record<string, SpeakerMapping>[] = [];
-  Object.defineProperty(window, "electronAPI", {
-    configurable: true,
-    value: {
-      getSpeakerMappings: () => Promise.resolve({ Narrator: {}, Guest: {} }),
-      setSpeakerMappings: (mappings: Record<string, SpeakerMapping>) => {
-        savedMappings.push(mappings);
-        return Promise.resolve({ success: true });
-      },
-      getGcpKeyPath: () => Promise.resolve(null),
-      getVoices: () => Promise.resolve([multiModelOption]),
-      getXmlCliEnabled: () => Promise.resolve(false),
-      setXmlCliEnabled: () => Promise.resolve({ success: true }),
+  const screen = await renderSettings(
+    {
+      mappings: { Narrator: {}, Guest: {} },
+      voiceOptions: [multiModelOption],
     },
-  });
-
-  const screen = await render(
-    <MantineProvider>
-      <SettingsProvider>
-        <SettingsModal opened onClose={() => {}} />
-      </SettingsProvider>
-    </MantineProvider>,
+    savedMappings,
   );
 
-  await vi.waitFor(() => expect(screen.getByText("[Guest]").query()).not.toBeNull());
+  await waitForMapping(screen, "Guest");
   await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
   await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
   await screen.getByRole("button", { name: "Prompt for Guest" }).click();
@@ -504,9 +441,9 @@ test("keeps two speakers sharing one voice on separate prompts", async () => {
 
 test("counts a blank prompt as no prompt rather than one set but ignored", async () => {
   const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings([multiModelOption], savedMappings);
+  const screen = await renderSettings({ voiceOptions: [multiModelOption] }, savedMappings);
 
-  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
+  await waitForMapping(screen);
   await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
   await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("   ");
 
@@ -516,27 +453,12 @@ test("counts a blank prompt as no prompt rather than one set but ignored", async
 
 test("refuses a mapping name the notes syntax cannot express", async () => {
   const savedMappings: Record<string, SpeakerMapping>[] = [];
-  Object.defineProperty(window, "electronAPI", {
-    configurable: true,
-    value: {
-      getSpeakerMappings: () => Promise.resolve({ "prompt: legacy": {} }),
-      setSpeakerMappings: (mappings: Record<string, SpeakerMapping>) => {
-        savedMappings.push(mappings);
-        return Promise.resolve({ success: true });
-      },
-      getGcpKeyPath: () => Promise.resolve(null),
-      getVoices: () => Promise.resolve([gcpOption]),
-      getXmlCliEnabled: () => Promise.resolve(false),
-      setXmlCliEnabled: () => Promise.resolve({ success: true }),
+  const screen = await renderSettings(
+    {
+      mappings: { "prompt: legacy": {} },
+      voiceOptions: [gcpOption],
     },
-  });
-
-  const screen = await render(
-    <MantineProvider>
-      <SettingsProvider>
-        <SettingsModal opened onClose={() => {}} />
-      </SettingsProvider>
-    </MantineProvider>,
+    savedMappings,
   );
 
   await vi.waitFor(() => expect(screen.getByText("[prompt: legacy]").query()).not.toBeNull());
@@ -547,7 +469,6 @@ test("refuses a mapping name the notes syntax cannot express", async () => {
     expect(screen.getByText(/reserved for note directives/).query()).not.toBeNull(),
   );
   expect(savedMappings).toHaveLength(0);
-  // An existing mapping the rule would now refuse keeps working.
   expect(screen.getByText("[prompt: legacy]").query()).not.toBeNull();
 
   await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");

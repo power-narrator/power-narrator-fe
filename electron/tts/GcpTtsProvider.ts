@@ -22,10 +22,8 @@ export const CHIRP_3_HD_MODEL = "chirp-3-hd";
 type ModelDefinition = {
   label: string;
   supportsPrompt: boolean;
-  /** The value Google's API accepts, or null where the voice identifier implies it. */
-  modelName: string | null;
-  /** The languages the model documents, or null where the catalogue advertises them. */
-  languages: VoiceLanguage[] | null;
+  requestModelName: string | null;
+  documentedLanguages: VoiceLanguage[] | null;
 };
 
 /**
@@ -37,43 +35,41 @@ const MODELS: Record<string, ModelDefinition> = {
   [CHIRP_3_HD_MODEL]: {
     label: "Chirp 3 HD",
     supportsPrompt: false,
-    modelName: null,
-    languages: null,
+    requestModelName: null,
+    documentedLanguages: null,
   },
   "gemini-2.5-pro-tts": {
     label: "Gemini 2.5 Pro",
     supportsPrompt: true,
-    modelName: "gemini-2.5-pro-tts",
-    languages: GEMINI_LANGUAGES,
+    requestModelName: "gemini-2.5-pro-tts",
+    documentedLanguages: GEMINI_LANGUAGES,
   },
   "gemini-2.5-flash-tts": {
     label: "Gemini 2.5 Flash",
     supportsPrompt: true,
-    modelName: "gemini-2.5-flash-tts",
-    languages: GEMINI_LANGUAGES,
+    requestModelName: "gemini-2.5-flash-tts",
+    documentedLanguages: GEMINI_LANGUAGES,
   },
   "gemini-2.5-flash-lite-preview-tts": {
     label: "Gemini 2.5 Flash Lite (Preview)",
     supportsPrompt: true,
-    modelName: "gemini-2.5-flash-lite-preview-tts",
-    languages: GEMINI_LANGUAGES,
+    requestModelName: "gemini-2.5-flash-lite-preview-tts",
+    documentedLanguages: GEMINI_LANGUAGES,
   },
   "gemini-3.1-flash-tts-preview": {
     label: "Gemini 3.1 Flash (Preview)",
     supportsPrompt: true,
-    modelName: "gemini-3.1-flash-tts-preview",
-    languages: GEMINI_LANGUAGES,
+    requestModelName: "gemini-3.1-flash-tts-preview",
+    documentedLanguages: GEMINI_LANGUAGES,
   },
 };
 
-/** Every model whose identity the catalogue never spells out, Chirp 3 HD being the only one it does. */
 const GEMINI_MODELS = Object.keys(MODELS).filter((id) => id !== CHIRP_3_HD_MODEL);
 
 const CHIRP_3_HD_PATTERN =
   /^(?<languageCode>[a-z]{2,3}(?:-[A-Za-z0-9]+)*)-Chirp3-HD-(?<voiceId>.+)$/;
 
-/** Gemini voices are the ones the catalogue publishes under a bare name. */
-const BARE_NAME_PATTERN = /^[^-\s]+$/;
+const GEMINI_VOICE_NAME_PATTERN = /^[^-\s]+$/;
 
 export type VoiceComposition = Omit<Voice, "provider">;
 
@@ -110,7 +106,7 @@ function decomposeCatalogueEntry(name: string, languageCode: string): VoiceCompo
     return [chirp];
   }
 
-  return BARE_NAME_PATTERN.test(name)
+  return GEMINI_VOICE_NAME_PATTERN.test(name)
     ? GEMINI_MODELS.map((model) => toComposition(name, model, languageCode))
     : [];
 }
@@ -121,12 +117,6 @@ function composeGcpVoiceName(voice: Voice): string {
     : voice.voiceId;
 }
 
-/**
- * Options are grouped by name and gender alone, both read from whatever the
- * catalogue returned: a name several models offer yields one option listing
- * them all, and a name two genders disagree over yields two the label already
- * tells apart.
- */
 function toVoiceOptions(voices: GcpVoice[]): VoiceOption[] {
   const options = new Map<string, VoiceOption>();
 
@@ -172,13 +162,13 @@ function addLanguage(option: VoiceOption, composition: VoiceComposition): void {
       id: composition.model,
       label: definition.label,
       supportsPrompt: definition.supportsPrompt,
-      languages: definition.languages ? [...definition.languages] : [],
+      languages: definition.documentedLanguages ? [...definition.documentedLanguages] : [],
     };
     option.models.push(model);
   }
 
   if (
-    !definition.languages &&
+    !definition.documentedLanguages &&
     !model.languages.some((language) => language.code === composition.languageCode)
   ) {
     model.languages.push({ code: composition.languageCode, label: composition.languageCode });
@@ -208,8 +198,6 @@ export class GcpTtsProvider implements TtsProvider {
       console.error("Failed to list GCP voices:", error);
     }
 
-    // Shaped in one pass so a name offered under both locales collapses into a
-    // single option rather than one per request.
     return toVoiceOptions(voices);
   }
 
@@ -224,7 +212,7 @@ export class GcpTtsProvider implements TtsProvider {
       voice: {
         languageCode: voice.languageCode,
         name: composeGcpVoiceName(voice),
-        ...(model.modelName ? { modelName: model.modelName } : {}),
+        ...(model.requestModelName ? { modelName: model.requestModelName } : {}),
       },
       audioConfig: { audioEncoding: "MP3" },
     } as const;

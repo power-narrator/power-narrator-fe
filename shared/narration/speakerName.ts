@@ -6,11 +6,6 @@
  */
 export const DIRECTIVE_PATTERN = /^\s*([A-Za-z]+)\s*:/;
 
-/**
- * Explains why the notes grammar cannot express this speaker name, or null when
- * it can. Shares its pattern with the parser so a name that is accepted here is
- * always one a bracketed line can carry back.
- */
 export function speakerNameProblem(name: string): string | null {
   const trimmed = name.trim();
   if (!trimmed) {

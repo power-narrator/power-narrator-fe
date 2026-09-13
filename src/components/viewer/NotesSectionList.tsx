@@ -15,10 +15,7 @@ import type { SpeakerMapping } from "../../../shared/types/tts";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
 import { IconPlus } from "@tabler/icons-react";
 import { getEffectiveSpeaker } from "../../../shared/narration/NarrationSections";
-import {
-  DEFAULT_SPEAKER_VALUE,
-  toSynthesisSpeaker,
-} from "../../../shared/narration/speaker";
+import { DEFAULT_SPEAKER_VALUE, toSynthesisSpeaker } from "../../../shared/narration/speaker";
 import { SpeakerPrompt } from "../SpeakerPrompt";
 
 interface NotesSectionListProps {
@@ -107,8 +104,8 @@ export function NotesSectionList({
                         ?.supportsPrompt
                     }
                     onChange={(prompt) => onSectionPromptChange(index, prompt)}
-                    boxWidth="100%"
-                    row={{
+                    textareaWidth="100%"
+                    rowContent={{
                       leading: (
                         <Select
                           data={speakerOptions}

@@ -13,9 +13,10 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "typecheck": "tsc -b --noEmit",
-    "test": "pnpm run test:unit && pnpm run test:component && pnpm run test:e2e",
+    "test": "pnpm run test:unit && pnpm run test:component && pnpm run test:integration && pnpm run test:e2e",
     "test:unit": "vitest run --project unit",
     "test:component": "vitest run --project component",
+    "test:integration": "vitest run --project integration",
     "test:e2e": "pnpm run build && playwright test"
   },
   "dependencies": {
