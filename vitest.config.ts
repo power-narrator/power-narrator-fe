@@ -8,7 +8,7 @@ export default defineConfig({
       {
         test: {
           name: "unit",
-          include: ["src/**/*.test.ts", "electron/**/*.test.ts", "shared/**/*.test.ts"],
+          include: ["**/*.test.ts"],
           exclude: ["**/*.integration.test.ts"],
         },
       },
@@ -20,12 +20,9 @@ export default defineConfig({
       },
       {
         plugins: [react()],
-        optimizeDeps: {
-          include: ["@gfazioli/mantine-split-pane"],
-        },
         test: {
           name: "component",
-          include: ["src/**/*.component.test.tsx"],
+          include: ["**/*.component.test.tsx"],
           browser: {
             enabled: true,
             headless: true,
