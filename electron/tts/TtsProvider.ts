@@ -29,7 +29,7 @@ export interface SynthesizedSpeech {
 
 export interface TtsProvider {
   getVoices: () => Promise<VoiceOption[]>;
-  prepareSpeech: (text: string, voice: Voice) => PreparedSpeechRequest;
+  prepareSpeech: (text: string, voice: Voice, prompt?: string) => PreparedSpeechRequest;
 }
 
 export type TtsProviderRegistry = ReadonlyMap<TtsProviderId, TtsProvider>;

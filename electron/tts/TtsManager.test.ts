@@ -195,6 +195,27 @@ describe("TtsManager", () => {
     expect(fs.readdirSync(cacheDirectory)).toEqual([expect.stringMatching(/^[a-f0-9]{64}\.mp3$/)]);
   });
 
+  it("synthesizes again for an edited prompt rather than replaying the recording", async () => {
+    const synthesize = vi.fn<() => Promise<Uint8Array>>().mockResolvedValue(new Uint8Array([1]));
+    const promptProvider: TtsProvider = {
+      getVoices: vi.fn<TtsProvider["getVoices"]>().mockResolvedValue([]),
+      prepareSpeech: (text, voice, prompt) => ({
+        cacheIdentity: { text, voice: voice.voiceId, prompt: prompt ?? null },
+        synthesize,
+      }),
+    };
+    const manager = new TtsManager(
+      new Map([["gcp", promptProvider]]),
+      path.join(tempDir, "narration"),
+    );
+
+    await manager.generateSpeech("Hello", gcpVoice, "whisper");
+    await manager.generateSpeech("Hello", gcpVoice, "whisper");
+    await manager.generateSpeech("Hello", gcpVoice, "shout");
+
+    expect(synthesize).toHaveBeenCalledTimes(2);
+  });
+
   it("reuses a cached entry instead of synthesizing a repeated request", async () => {
     const provider = createProvider();
     const cacheDirectory = path.join(tempDir, "narration");

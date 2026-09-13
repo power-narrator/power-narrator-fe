@@ -20,7 +20,7 @@ export interface SpeakerMappingSource {
 
 export interface NarrationSynthesizer {
   supportsProvider(providerId: string): boolean;
-  generateSpeech(text: string, voice: Voice): Promise<SynthesizedSpeech>;
+  generateSpeech(text: string, voice: Voice, prompt?: string): Promise<SynthesizedSpeech>;
 }
 
 type PreparedNarrationSection = {
@@ -29,6 +29,8 @@ type PreparedNarrationSection = {
   synthesisSpeaker: SynthesisSpeaker;
   text: string;
   voice: Voice;
+  /** Absent whenever the speaker holds no prompt, an empty one counting as none. */
+  prompt?: string;
 };
 
 type SynthesizedNarrationSection = PreparedNarrationSection & {
@@ -106,13 +108,15 @@ export class NarrationPreparation {
     speaker: string,
   ): PreparedNarrationSection {
     const synthesisSpeaker = toSynthesisSpeaker(speaker);
+    const mapping = mappings[synthesisSpeaker.mappingKey];
 
     return {
       slideIndex,
       sectionIndex,
       synthesisSpeaker,
       text,
-      voice: this.resolveVoice(mappings, synthesisSpeaker, slideIndex, sectionIndex),
+      voice: this.resolveVoice(mapping, synthesisSpeaker, slideIndex, sectionIndex),
+      ...(mapping?.prompt?.trim() ? { prompt: mapping.prompt } : {}),
     };
   }
 
@@ -125,7 +129,11 @@ export class NarrationPreparation {
     return Promise.all(
       sections.map(async (section) => {
         try {
-          const speech = await this.synthesizer.generateSpeech(section.text, section.voice);
+          const speech = await this.synthesizer.generateSpeech(
+            section.text,
+            section.voice,
+            section.prompt,
+          );
           completed += 1;
           onProgress?.({ completed, total: sections.length });
           return { ...section, speech };
@@ -141,12 +149,12 @@ export class NarrationPreparation {
   }
 
   private resolveVoice(
-    mappings: Record<string, SpeakerMapping>,
+    mapping: SpeakerMapping | undefined,
     speaker: SynthesisSpeaker,
     slideIndex: number,
     sectionIndex: number,
   ): Voice {
-    const voice = mappings[speaker.mappingKey]?.voice;
+    const voice = mapping?.voice;
     const validationProblem = !voice
       ? "no voice mapping is configured"
       : !this.synthesizer.supportsProvider(voice.provider)

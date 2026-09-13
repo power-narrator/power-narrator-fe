@@ -80,7 +80,7 @@ export class TtsManager {
     return this.providers.has(providerId);
   }
 
-  async generateSpeech(text: string, voice: Voice): Promise<SynthesizedSpeech> {
+  async generateSpeech(text: string, voice: Voice, prompt?: string): Promise<SynthesizedSpeech> {
     const providerId = voice.provider;
     const provider = this.providers.get(providerId);
 
@@ -93,7 +93,7 @@ export class TtsManager {
       fs.mkdirSync(cacheDir, { recursive: true });
     }
 
-    const preparedRequest = provider.prepareSpeech(text, voice);
+    const preparedRequest = provider.prepareSpeech(text, voice, prompt);
     const hash = crypto
       .createHash("sha256")
       .update(

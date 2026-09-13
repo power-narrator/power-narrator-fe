@@ -15,8 +15,9 @@ import { IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { DEFAULT_SPEAKER_KEY, DEFAULT_SPEAKER_LABEL } from "../../../shared/narration/speaker";
 import { useSettings } from "../../context/useSettings";
-import type { Voice, VoiceOption } from "../../../shared/types/tts";
+import type { SpeakerMapping, VoiceOption } from "../../../shared/types/tts";
 import { getProviderLabel } from "./providerLabels";
+import { SpeakerPrompt } from "./SpeakerPrompt";
 import { VoiceSelector } from "./VoiceSelector";
 
 interface SettingsModalProps {
@@ -53,13 +54,16 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
       });
   }, [opened]);
 
-  const updateMapping = (alias: string, voice: Voice | undefined) => {
-    // A cleared voice leaves no key behind, so an unconfigured mapping is the
-    // absence of a voice rather than a voice set to undefined.
-    const nextMapping = { ...mappings[alias] };
-    delete nextMapping.voice;
-    if (voice) {
-      nextMapping.voice = voice;
+  /**
+   * A cleared field leaves no key behind, so an unconfigured mapping is the
+   * absence of a voice or prompt rather than either set to undefined.
+   */
+  const updateMapping = (alias: string, change: Partial<SpeakerMapping>) => {
+    const nextMapping = { ...mappings[alias], ...change };
+    for (const [key, entry] of Object.entries(change)) {
+      if (entry === undefined) {
+        delete nextMapping[key as keyof SpeakerMapping];
+      }
     }
 
     void saveMappings({ ...mappings, [alias]: nextMapping });
@@ -162,12 +166,20 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
             <Text size="sm" fw={600}>
               Default Voice (No Tag)
             </Text>
-            <VoiceSelector
-              speakerLabel={DEFAULT_SPEAKER_LABEL}
-              value={mappings[DEFAULT_SPEAKER_KEY]?.voice}
-              onChange={(voice) => updateMapping(DEFAULT_SPEAKER_KEY, voice)}
-              options={voiceOptions}
-            />
+            <Stack gap={4}>
+              <VoiceSelector
+                speakerLabel={DEFAULT_SPEAKER_LABEL}
+                value={mappings[DEFAULT_SPEAKER_KEY]?.voice}
+                onChange={(voice) => updateMapping(DEFAULT_SPEAKER_KEY, { voice })}
+                options={voiceOptions}
+              />
+              <SpeakerPrompt
+                speakerLabel={DEFAULT_SPEAKER_LABEL}
+                value={mappings[DEFAULT_SPEAKER_KEY]?.prompt}
+                supportsPrompt={mappings[DEFAULT_SPEAKER_KEY]?.voice?.supportsPrompt}
+                onChange={(prompt) => updateMapping(DEFAULT_SPEAKER_KEY, { prompt })}
+              />
+            </Stack>
           </Group>
 
           {mappedSpeakers.map(([alias, mapping]) => (
@@ -179,13 +191,21 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
               style={{ border: "1px solid var(--mantine-color-dark-4)", borderRadius: 4 }}
             >
               <Code>[{alias}]</Code>
-              <Group gap="xs">
-                <VoiceSelector
-                  speakerLabel={alias}
-                  value={mapping.voice}
-                  onChange={(nextVoice) => updateMapping(alias, nextVoice)}
-                  options={voiceOptions}
-                />
+              <Group gap="xs" align="flex-start">
+                <Stack gap={4}>
+                  <VoiceSelector
+                    speakerLabel={alias}
+                    value={mapping.voice}
+                    onChange={(voice) => updateMapping(alias, { voice })}
+                    options={voiceOptions}
+                  />
+                  <SpeakerPrompt
+                    speakerLabel={alias}
+                    value={mapping.prompt}
+                    supportsPrompt={mapping.voice?.supportsPrompt}
+                    onChange={(prompt) => updateMapping(alias, { prompt })}
+                  />
+                </Stack>
                 <ActionIcon color="red" variant="subtle" onClick={() => removeMapping(alias)}>
                   <IconTrash size={16} />
                 </ActionIcon>

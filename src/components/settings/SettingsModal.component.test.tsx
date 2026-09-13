@@ -410,3 +410,94 @@ test("keeps a language the newly chosen model can also speak", async () => {
     }),
   );
 });
+
+test("saves a prompt on the speaker and clears it away entirely", async () => {
+  const savedMappings: Record<string, SpeakerMapping>[] = [];
+  const screen = await renderSettings([multiModelOption], savedMappings);
+
+  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
+  await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
+  await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
+
+  await vi.waitFor(() => expect(savedMappings.at(-1)).toEqual({ Narrator: { prompt: "Whisper" } }));
+
+  await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("");
+
+  // An empty prompt is no prompt, so it leaves no key behind to be sent later.
+  await vi.waitFor(() => expect(savedMappings.at(-1)).toEqual({ Narrator: {} }));
+});
+
+test("shows a collapsed prompt holding content as holding it", async () => {
+  const screen = await renderSettings([multiModelOption], []);
+
+  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
+  expect(screen.getByRole("button", { name: "Prompt for Narrator (set)" }).query()).toBeNull();
+
+  await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
+  await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
+  await screen.getByRole("button", { name: "Prompt for Narrator (set)" }).click();
+
+  await expect
+    .element(screen.getByRole("button", { name: "Prompt for Narrator (set)" }))
+    .toBeVisible();
+});
+
+test("keeps a prompt through a switch to a voice that ignores prompts, advising so", async () => {
+  const savedMappings: Record<string, SpeakerMapping>[] = [];
+  const screen = await renderSettings([bilingualOption], savedMappings);
+
+  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
+  await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
+  await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
+  await screen.getByRole("combobox", { name: "Voice for Narrator" }).click();
+  await screen.getByRole("option", { name: "Kore (FEMALE)" }).click();
+  await screen.getByRole("combobox", { name: "Model for Narrator" }).click();
+  await screen.getByRole("option", { name: "Chirp 3 HD" }).click();
+  await screen.getByRole("combobox", { name: "Language for Narrator" }).click();
+  await screen.getByRole("option", { name: "de-DE" }).click();
+
+  await expect.element(screen.getByText("This model ignores prompts.")).toBeVisible();
+  await expect
+    .element(screen.getByRole("textbox", { name: "Prompt for Narrator" }))
+    .toHaveValue("Whisper");
+  await vi.waitFor(() => expect(savedMappings.at(-1)?.Narrator?.prompt).toBe("Whisper"));
+});
+
+test("keeps two speakers sharing one voice on separate prompts", async () => {
+  const savedMappings: Record<string, SpeakerMapping>[] = [];
+  Object.defineProperty(window, "electronAPI", {
+    configurable: true,
+    value: {
+      getSpeakerMappings: () => Promise.resolve({ Narrator: {}, Guest: {} }),
+      setSpeakerMappings: (mappings: Record<string, SpeakerMapping>) => {
+        savedMappings.push(mappings);
+        return Promise.resolve({ success: true });
+      },
+      getGcpKeyPath: () => Promise.resolve(null),
+      getVoices: () => Promise.resolve([multiModelOption]),
+      getXmlCliEnabled: () => Promise.resolve(false),
+      setXmlCliEnabled: () => Promise.resolve({ success: true }),
+    },
+  });
+
+  const screen = await render(
+    <MantineProvider>
+      <SettingsProvider>
+        <SettingsModal opened onClose={() => {}} />
+      </SettingsProvider>
+    </MantineProvider>,
+  );
+
+  await vi.waitFor(() => expect(screen.getByText("[Guest]").query()).not.toBeNull());
+  await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
+  await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
+  await screen.getByRole("button", { name: "Prompt for Guest" }).click();
+  await screen.getByRole("textbox", { name: "Prompt for Guest" }).fill("Shout");
+
+  await vi.waitFor(() =>
+    expect(savedMappings.at(-1)).toEqual({
+      Narrator: { prompt: "Whisper" },
+      Guest: { prompt: "Shout" },
+    }),
+  );
+});
