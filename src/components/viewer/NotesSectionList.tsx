@@ -15,7 +15,11 @@ import type { SpeakerMapping } from "../../../shared/types/tts";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
 import { IconPlus } from "@tabler/icons-react";
 import { getEffectiveSpeaker } from "../../../shared/narration/NarrationSections";
-import { DEFAULT_SPEAKER_VALUE } from "../../../shared/narration/speaker";
+import {
+  DEFAULT_SPEAKER_VALUE,
+  toSynthesisSpeaker,
+} from "../../../shared/narration/speaker";
+import { SpeakerPrompt } from "../SpeakerPrompt";
 
 interface NotesSectionListProps {
   sections: NarrationSection[];
@@ -23,6 +27,7 @@ interface NotesSectionListProps {
   onFocusSection: (index: number) => void;
   onSpeakerChange: (index: number, speaker: string | null) => void;
   onSectionTextChange: (index: number, value: string) => void;
+  onSectionPromptChange: (index: number, prompt: string | undefined) => void;
   onDeleteSection: (index: number) => void;
   onAddSection: () => void;
   assignTextareaRef: (index: number, element: HTMLTextAreaElement | null) => void;
@@ -61,6 +66,7 @@ export function NotesSectionList({
   onFocusSection,
   onSpeakerChange,
   onSectionTextChange,
+  onSectionPromptChange,
   onDeleteSection,
   onAddSection,
   assignTextareaRef,
@@ -92,23 +98,39 @@ export function NotesSectionList({
                 key={index} // oxlint-disable-line react/no-array-index-key cannot be unique with data to refocus
                 bdrs="4"
               >
-                <Group justify="space-between" p="xs">
-                  <Select
-                    data={speakerOptions}
-                    value={section.speaker}
-                    onChange={(value) => onSpeakerChange(index, value)}
-                    size="xs"
-                    placeholder={placeholder}
-                    allowDeselect={true}
+                <Group p="xs">
+                  <SpeakerPrompt
+                    speakerLabel={`slide ${slideIndex} section ${index + 1}`}
+                    value={section.prompt}
+                    supportsPrompt={
+                      mappings[toSynthesisSpeaker(effectiveSpeaker).mappingKey]?.voice
+                        ?.supportsPrompt
+                    }
+                    onChange={(prompt) => onSectionPromptChange(index, prompt)}
+                    boxWidth="100%"
+                    row={{
+                      leading: (
+                        <Select
+                          data={speakerOptions}
+                          value={section.speaker}
+                          onChange={(value) => onSpeakerChange(index, value)}
+                          size="xs"
+                          placeholder={placeholder}
+                          allowDeselect={true}
+                        />
+                      ),
+                      trailing: (
+                        <Button
+                          variant="subtle"
+                          color="red"
+                          size="xs"
+                          onClick={() => onDeleteSection(index)}
+                        >
+                          Remove Section
+                        </Button>
+                      ),
+                    }}
                   />
-                  <Button
-                    variant="subtle"
-                    color="red"
-                    size="xs"
-                    onClick={() => onDeleteSection(index)}
-                  >
-                    Remove Section
-                  </Button>
                 </Group>
                 <Divider />
                 <SectionPreviewButtons
