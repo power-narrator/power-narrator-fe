@@ -9,6 +9,7 @@ import type {
 } from "./TtsProvider.js";
 import { ensureSpeakElement, isSsml } from "./SsmlUtil.js";
 import { GEMINI_LANGUAGES } from "./gcpLanguages.js";
+import { toSpeakerPrompt } from "../../shared/narration/prompt.js";
 
 type GcpVoice = {
   name?: string | null;
@@ -267,6 +268,8 @@ export class GcpTtsProvider implements TtsProvider {
    * synthesis, since the author may have parked it deliberately (ADR 0001).
    */
   private formatPrompt(model: ModelDefinition, prompt: string | undefined): { prompt?: string } {
-    return model.supportsPrompt && prompt?.trim() ? { prompt } : {};
+    const speakerPrompt = model.supportsPrompt ? toSpeakerPrompt(prompt) : undefined;
+
+    return speakerPrompt ? { prompt: speakerPrompt } : {};
   }
 }

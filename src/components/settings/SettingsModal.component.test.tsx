@@ -501,3 +501,15 @@ test("keeps two speakers sharing one voice on separate prompts", async () => {
     }),
   );
 });
+
+test("counts a blank prompt as no prompt rather than one set but ignored", async () => {
+  const savedMappings: Record<string, SpeakerMapping>[] = [];
+  const screen = await renderSettings([multiModelOption], savedMappings);
+
+  await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
+  await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
+  await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("   ");
+
+  await vi.waitFor(() => expect(savedMappings.at(-1)).toEqual({ Narrator: {} }));
+  expect(screen.getByRole("button", { name: "Prompt for Narrator (set)" }).query()).toBeNull();
+});

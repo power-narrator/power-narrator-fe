@@ -13,6 +13,7 @@ import {
   toSynthesisSpeaker,
   type SynthesisSpeaker,
 } from "../../shared/narration/speaker.js";
+import { toSpeakerPrompt } from "../../shared/narration/prompt.js";
 
 export interface SpeakerMappingSource {
   getSpeakerMappings(): Record<string, SpeakerMapping> | Promise<Record<string, SpeakerMapping>>;
@@ -29,7 +30,6 @@ type PreparedNarrationSection = {
   synthesisSpeaker: SynthesisSpeaker;
   text: string;
   voice: Voice;
-  /** Absent whenever the speaker holds no prompt, an empty one counting as none. */
   prompt?: string;
 };
 
@@ -116,7 +116,7 @@ export class NarrationPreparation {
       synthesisSpeaker,
       text,
       voice: this.resolveVoice(mapping, synthesisSpeaker, slideIndex, sectionIndex),
-      ...(mapping?.prompt?.trim() ? { prompt: mapping.prompt } : {}),
+      prompt: toSpeakerPrompt(mapping?.prompt),
     };
   }
 
