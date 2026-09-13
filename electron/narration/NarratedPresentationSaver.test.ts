@@ -213,7 +213,7 @@ describe("NarratedPresentationSaver", () => {
       slides: [
         {
           slideIndex: 9,
-          notes: "[Narrator]\nNine first\n---\n[Missing]\n  \n---\n[Narrator]\nNine third",
+          notes: "[Narrator]\nNine first\n---\n[Narrator]\n  \n---\n[Narrator]\nNine third",
         },
         { slideIndex: 3, notes: "[Narrator]\nThree first" },
       ],

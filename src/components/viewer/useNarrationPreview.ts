@@ -87,6 +87,8 @@ interface NarrationPreviewOptions {
   slideIndex: number;
   sectionIndex: number;
   slideNotes: string;
+  /** Speaker classification is mapping-dependent, so the parser needs the names. */
+  speakerNames: readonly string[];
   section: NarrationSection;
   onFocus: () => void;
   getTextarea?: () => HTMLTextAreaElement | null;
@@ -94,7 +96,7 @@ interface NarrationPreviewOptions {
 
 export function useNarrationPreview(options: NarrationPreviewOptions) {
   const effectiveSpeaker = getEffectiveSpeaker(
-    parseNarrationSections(options.slideNotes),
+    parseNarrationSections(options.slideNotes, options.speakerNames),
     options.sectionIndex,
   );
   const {

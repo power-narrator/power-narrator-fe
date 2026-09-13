@@ -10,6 +10,7 @@ import {
 } from "../../shared/narration/NarrationSections.js";
 import {
   DEFAULT_SPEAKER_VALUE,
+  getSpeakerNames,
   toSynthesisSpeaker,
   type SynthesisSpeaker,
 } from "../../shared/narration/speaker.js";
@@ -52,16 +53,25 @@ export class NarrationPreparation {
       );
     }
 
-    const sections = parseNarrationSections(request.notes);
+    // Classification consults the mapping names, so the mappings must be in hand
+    // before the notes can be parsed.
+    const mappings = await this.mappingSource.getSpeakerMappings();
+    const sections = parseNarrationSections(request.notes, getSpeakerNames(mappings));
     const speaker =
       request.speakerChoice.kind === "effective"
         ? getEffectiveSpeaker(sections, request.sectionIndex)
         : request.speakerChoice.kind === "default"
           ? DEFAULT_SPEAKER_VALUE
           : request.speakerChoice.speaker;
-    const mappings = await this.mappingSource.getSpeakerMappings();
     const [preview] = await this.synthesizeSections([
-      this.planSection(mappings, request.slideIndex, request.sectionIndex, text, speaker),
+      this.planSection(
+        mappings,
+        request.slideIndex,
+        request.sectionIndex,
+        text,
+        speaker,
+        sections[request.sectionIndex]?.prompt,
+      ),
     ]);
 
     return preview!.speech;
@@ -73,7 +83,7 @@ export class NarrationPreparation {
   ): Promise<SlideAudioEntry[]> {
     const mappings = await this.mappingSource.getSpeakerMappings();
     const prepared = slides.flatMap((slide) => {
-      const sections = parseNarrationSections(slide.notes);
+      const sections = parseNarrationSections(slide.notes, getSpeakerNames(mappings));
 
       return sections.flatMap((section, sectionIndex) => {
         const text = section.text.trim();
@@ -83,7 +93,9 @@ export class NarrationPreparation {
 
         const speaker = getEffectiveSpeaker(sections, sectionIndex);
 
-        return [this.planSection(mappings, slide.slideIndex, sectionIndex, text, speaker)];
+        return [
+          this.planSection(mappings, slide.slideIndex, sectionIndex, text, speaker, section.prompt),
+        ];
       });
     });
 
@@ -106,6 +118,7 @@ export class NarrationPreparation {
     sectionIndex: number,
     text: string,
     speaker: string,
+    inlinePrompt: string | undefined,
   ): PreparedNarrationSection {
     const synthesisSpeaker = toSynthesisSpeaker(speaker);
     const mapping = mappings[synthesisSpeaker.mappingKey];
@@ -116,7 +129,7 @@ export class NarrationPreparation {
       synthesisSpeaker,
       text,
       voice: this.resolveVoice(mapping, synthesisSpeaker, slideIndex, sectionIndex),
-      prompt: toSpeakerPrompt(mapping?.prompt),
+      prompt: combineSpeakerPrompts(mapping?.prompt, inlinePrompt),
     };
   }
 
@@ -170,6 +183,14 @@ export class NarrationPreparation {
 
     return voice;
   }
+}
+
+/**
+ * A one-off direction extends the speaker's character rather than replacing it,
+ * so the preset leads and the inline prompt follows.
+ */
+function combineSpeakerPrompts(preset?: string, inline?: string): string | undefined {
+  return [toSpeakerPrompt(preset), toSpeakerPrompt(inline)].filter(Boolean).join("\n") || undefined;
 }
 
 export class NarrationPreparationError extends Error {
