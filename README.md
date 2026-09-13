@@ -5,14 +5,16 @@ speaker notes. It lets presentation authors edit multi-speaker notes, preview th
 save notes and synthesized audio back into a `.pptx`, and export the narrated presentation as an
 MP4.
 
-Google Cloud Text-to-Speech is the only production narration provider currently shipped. Voices
-retain a provider identifier and synthesis is routed through a provider registry, so another
-adapter can be added without changing narration preparation.
+Google Cloud Text-to-Speech is the only production narration provider currently shipped. Stored
+voices retain their provider, model, and language choices, and synthesis is routed through a
+provider registry so another adapter can be added without changing narration preparation.
 
 ## Features
 
 - Load a `.pptx` and view slide images and notes side by side.
 - Split notes into multiple narration sections and assign speaker aliases.
+- Choose a Google Cloud voice, model, and language for each speaker from a searchable catalogue.
+- Give a speaker a preset delivery prompt or add an inline prompt to one narration section.
 - Preview a whole section or the currently selected text with the effective speaker or a temporary
   speaker choice.
 - Add supported SSML markup with the editor toolbar.
@@ -51,33 +53,55 @@ precedence when both are configured.
 
 1. Open **Settings** and select a Google Cloud service-account JSON key. If Settings was already
    open before choosing the key, close and reopen it to refresh the voice catalogue.
-2. Choose a **Default Voice (No Tag)**. The application does not infer or migrate a default voice;
-   narration that needs one fails until it is explicitly configured.
-3. Add each speaker alias used by the presentation and choose a voice for it.
+2. Choose a **Default Voice (No Tag)**, then its model and language. Narration that needs a default
+   fails until every choice is made.
+3. Add each speaker alias used by the presentation and choose its voice, model, and language.
+4. Optionally add a preset prompt to a mapping. It applies to every section that speaker narrates.
 
-The voice catalogue currently contains the English (US and GB) Google Cloud Chirp 3 HD voices
-returned for the configured credentials. A stored voice is concrete and provider-tagged: it keeps
-the provider, voice name, supported language codes, and gender returned by the adapter. There is no
-separate TTS-provider preference; each mapping's voice determines its synthesis route.
+The searchable Google Cloud catalogue offers Chirp 3 HD and four Gemini models. Each voice
+name-and-gender combination appears once; model and language are separate choices. A choice with
+one available option is selected automatically, while multiple options remain unselected until the
+author chooses. Model and language labels identify choices that Google marks as preview.
+Gemini models have no free tier.
 
-Mappings and the selected key path are persisted with Electron Store. If an older mapping refers
-to an unregistered provider, it is not silently converted to Google Cloud. Replace it in Settings
-before preparing narration.
+A stored voice records its provider, provider voice key, model, language, and whether that model
+accepts prompts. There is no separate provider preference: each speaker mapping's voice determines
+its synthesis route. The mapping also stores its optional preset prompt independently of the voice,
+so changing models does not destroy the prompt. If the selected model does not accept prompts, the
+app keeps the prompt, displays an advisory, and narrates without sending it to Google.
+
+Mappings and the selected key path are persisted with Electron Store. Legacy Chirp mappings are
+migrated once to the current shape. A mapping whose old voice cannot be recovered keeps its speaker
+alias but remains unconfigured, so the author can replace that voice in Settings. Stored mappings
+remain available without credentials or network access; only opening Settings fetches the voice
+catalogue.
 
 ### Note format and effective speakers
 
 Put an optional speaker tag at the start of a section and separate sections with a line containing
-at least three hyphens:
+at least three hyphens. An optional inline prompt follows the speaker tag and applies only to that
+section:
 
 ```text
 [Narrator]
+[prompt: Warm and welcoming]
 Welcome to the presentation.
 ---
 This section inherits Narrator.
 ---
 [Reviewer]
+[p: Sound doubtful]
 Here is another point of view.
 ```
+
+Prompt markers may use `p` or `prompt`, are case-insensitive, allow whitespace around the marker
+and colon, and may span lines. A prompt can also start a section with no speaker tag. When both a
+preset and inline prompt exist, narration sends the preset first and the inline prompt second.
+Clearing an inline prompt removes its marker from the notes.
+
+Only bracketed names that match a configured speaker mapping are speaker tags. Other bracketed
+lines, including Gemini style tags such as `[sigh]` and misspelled speaker names, remain narration
+text. New speaker names cannot use syntax reserved for note directives.
 
 For every non-empty section, narration preparation resolves one effective speaker:
 
@@ -85,14 +109,13 @@ For every non-empty section, narration preparation resolves one effective speake
 2. Otherwise, the section inherits the nearest earlier explicit speaker on the same slide.
 3. If the slide has no earlier explicit speaker, the configured default voice is used.
 
-Inheritance never crosses a slide boundary. Missing defaults, incomplete mappings, unmapped
-speakers, legacy placeholder voices, and unregistered provider identifiers are validation errors
-with slide, section, and speaker context. Whitespace-only sections are skipped during a narrated
-save.
+Inheritance never crosses a slide boundary. Missing defaults, speaker mappings without a complete
+voice, and unregistered provider identifiers are validation errors with slide, section, and speaker
+context. Whitespace-only sections are skipped during a narrated save.
 
 The editor normalizes the line-ending variants PowerPoint can produce while preserving intentional
-whitespace around section dividers and speaker tags during parse-and-format round trips. Its SSML
-toolbar can insert breaks, `say-as`, emphasis, and paragraph tags.
+whitespace around section dividers, speaker tags, and prompt markers during parse-and-format round
+trips. Its SSML toolbar can insert breaks, `say-as`, emphasis, and paragraph tags.
 
 ## Architecture
 
@@ -144,12 +167,12 @@ flowchart TB
 
 `NarrationPreparation` is the deep module behind two use cases:
 
-- `preparePreview` plans one section from the live slide context and passes it through the shared
-  array-based synthesis path.
+- `preparePreview` plans one section from the live slide context, resolves its preset and inline
+  prompts, and passes it through the shared array-based synthesis path.
 - `prepareBatch` parses all requested slides, skips empty text, resolves every effective speaker,
-  and validates every concrete voice before synthesis starts. Valid sections synthesize in
-  parallel, results retain source order, and progress reports completed sections over total
-  eligible sections.
+  combines its prompts, and validates every concrete voice before synthesis starts. Valid sections
+  synthesize in parallel, results retain source order, and progress reports completed sections over
+  total eligible sections.
 
 Both paths trim surrounding text consistently and produce contextual validation or synthesis
 errors. Preview cancellation only detaches the renderer request, preventing late playback; it does
@@ -173,7 +196,7 @@ sequenceDiagram
   Author->>UI: Preview section or selected text
   UI->>IPC: Slide context, section position, text, speaker choice
   IPC->>Prep: preparePreview(request)
-  Prep->>Prep: Resolve effective speaker and concrete voice
+  Prep->>Prep: Resolve effective speaker, voice, and prompts
   Prep->>TTS: Generate or reuse prepared request
   TTS-->>Prep: MP3 bytes and audio/mpeg
   Prep-->>IPC: Synthesized speech
@@ -232,8 +255,9 @@ application-cache location. On macOS it is:
 Each entry is a SHA-256-named `.mp3` file. The identity is a deterministic serialization of the
 provider identifier and the provider's prepared request—the same normalized request used for the
 actual provider call. For Google Cloud that request contains the plain-text or normalized SSML
-input, concrete voice information, and MP3 output configuration. Any audio-affecting change creates
-a different identity.
+input, usable speaker prompt, concrete voice information, and MP3 output configuration. Any
+audio-affecting change creates a different identity. A prompt ignored by a non-promptable model is
+also omitted from the cache identity.
 
 Simultaneous requests with the same identity share one pending provider call and publish one cache
 entry. Unrelated requests remain parallel. A failed pending request is removed so the next request
@@ -279,10 +303,12 @@ removal. Slide rendering and video export still require the native macOS provide
 shared/
   narration/
     NarrationSections.ts       Note parsing, formatting, and effective speakers
+    prompt.ts                  Empty-prompt normalization
     speaker.ts                 Shared default-speaker and synthesis-speaker values
+    speakerName.ts             Speaker-name and directive syntax rules
   types/
     narration.d.ts             Preview, save, progress, and failure contracts
-    tts.d.ts                   Provider-tagged concrete voice contract
+    tts.d.ts                   Voice catalogue, stored voice, and mapping contracts
 
 electron/
   main.ts                      Application bootstrap and non-narration IPC
@@ -292,10 +318,13 @@ electron/
     NarratedPresentationSaver.ts
                                Prepare-before-mutate narrated save workflow
     registerNarrationIpc.ts    Adapter composition and narration IPC registration
+  settings/
+    speakerMappingMigration.ts One-shot conversion of legacy mappings
   tts/
     TtsProvider.ts             Provider and prepared-request interfaces
     TtsManager.ts              Provider registry, request identity, and disk cache
     GcpTtsProvider.ts          Google Cloud voice catalogue and MP3 synthesis
+    gcpLanguages.ts            Documented Gemini language catalogue
     SsmlUtil.ts                Google Cloud SSML input normalization
   platform/
     PptProvider.ts             Presentation adapter contracts
@@ -308,6 +337,7 @@ electron/
   scripts/                     AppleScript, VBA/PPAM, and bundled XML CLI assets
 
 src/
+  components/SpeakerPrompt.tsx Shared preset and inline prompt control
   components/settings/         Credentials, mappings, voices, and XML CLI settings
   components/viewer/           Slide viewer, notes editor, preview, and save UI
   context/                     Renderer settings and audio ownership
@@ -375,6 +405,11 @@ Useful commands:
 The error identifies the affected slide, section, and speaker. Configure the Default Voice for an
 untagged section, add the named speaker mapping, or replace an incomplete or unavailable-provider
 mapping in Settings.
+
+### A speaker prompt has no effect
+
+Check the advisory beside the prompt control. Chirp 3 HD does not accept speaker prompts, so the app
+retains the prompt but omits it from synthesis. Choose a promptable Gemini model to apply it.
 
 ### PowerPoint macros fail
 
