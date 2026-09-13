@@ -53,8 +53,6 @@ export class NarrationPreparation {
       );
     }
 
-    // Classification consults the mapping names, so the mappings must be in hand
-    // before the notes can be parsed.
     const mappings = await this.mappingSource.getSpeakerMappings();
     const sections = parseNarrationSections(request.notes, getSpeakerNames(mappings));
     const speaker =
@@ -108,10 +106,6 @@ export class NarrationPreparation {
     }));
   }
 
-  /**
-   * Resolves one section's selected synthesis speaker and voice, so preview and
-   * batch preparation share a single parse-to-synthesizable-section shape.
-   */
   private planSection(
     mappings: Record<string, SpeakerMapping>,
     slideIndex: number,

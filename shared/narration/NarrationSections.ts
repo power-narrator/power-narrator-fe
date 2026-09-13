@@ -12,7 +12,6 @@ const SECTION_DIVIDER_PATTERN = /^[ \t]*-{3,}[ \t]*(?:\n)?$/;
 const BRACKETED_LINE_PATTERN = /^((?:[ \t]*\n)*[ \t]*)\[([^\]]*)\]([ \t]*)(?:\n|$)/;
 const PROMPT_MARKERS = new Set(["p", "prompt"]);
 const SAME_LINE_PADDING = { leading: /^[ \t]*/, trailing: /[ \t]*$/ };
-/** A prompt may span lines, so its padding includes the newlines between them. */
 const ANY_PADDING = { leading: /^\s*/, trailing: /\s*$/ };
 
 export interface NarrationSection {
@@ -89,7 +88,6 @@ function matchBracketedLine(text: string): BracketedLine | null {
   };
 }
 
-/** Splits text into the padding a save must give back and the value in between. */
 function splitPadding(text: string, padding: { leading: RegExp; trailing: RegExp }) {
   return {
     leading: text.match(padding.leading)?.[0] || "",

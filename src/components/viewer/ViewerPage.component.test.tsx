@@ -472,8 +472,6 @@ test("shows the inline prompt a section already carries", async () => {
     { ...loadedSlide, notes: "[p: excited]\nLoaded narration" },
   ]);
 
-  await screen.getByRole("button", { name: `${promptButton} (set)` }).click();
-
   await expect.element(screen.getByRole("textbox", { name: promptButton })).toHaveValue("excited");
 });
 
@@ -483,7 +481,6 @@ test("removes the marker from the notes when the prompt is cleared", async () =>
     { ...loadedSlide, notes: "[p: excited]\nLoaded narration" },
   ]);
 
-  await screen.getByRole("button", { name: `${promptButton} (set)` }).click();
   await screen.getByRole("textbox", { name: promptButton }).fill("");
   await screen.getByRole("button", { name: "Save Slide", exact: true }).click();
 

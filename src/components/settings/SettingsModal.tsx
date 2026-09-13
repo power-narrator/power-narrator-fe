@@ -6,6 +6,7 @@ import {
   Divider,
   Group,
   Modal,
+  Paper,
   Stack,
   Switch,
   Text,
@@ -25,6 +26,38 @@ import { VoiceSelector } from "./VoiceSelector";
 interface SettingsModalProps {
   opened: boolean;
   onClose: () => void;
+}
+
+interface SpeakerMappingControlsProps {
+  speakerLabel: string;
+  mapping: SpeakerMapping | undefined;
+  voiceOptions: VoiceOption[];
+  onChange: (change: Partial<SpeakerMapping>) => void;
+}
+
+function SpeakerMappingControls({
+  speakerLabel,
+  mapping,
+  voiceOptions,
+  onChange,
+}: SpeakerMappingControlsProps) {
+  return (
+    <Stack gap={4} flex={1} miw={0}>
+      <VoiceSelector
+        speakerLabel={speakerLabel}
+        value={mapping?.voice}
+        onChange={(voice) => onChange({ voice })}
+        options={voiceOptions}
+      />
+      <SpeakerPrompt
+        speakerLabel={speakerLabel}
+        value={mapping?.prompt}
+        supportsPrompt={mapping?.voice?.supportsPrompt}
+        onChange={(prompt) => onChange({ prompt })}
+        textareaWidth="100%"
+      />
+    </Stack>
+  );
 }
 
 export function SettingsModal({ opened, onClose }: SettingsModalProps) {
@@ -57,10 +90,6 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
       });
   }, [opened]);
 
-  /**
-   * A cleared field leaves no key behind, so an unconfigured mapping is the
-   * absence of a voice or prompt rather than either set to undefined.
-   */
   const updateMapping = (alias: string, change: Partial<SpeakerMapping>) => {
     const nextMapping: SpeakerMapping = { ...mappings[alias], ...change };
     if (!nextMapping.voice) {
@@ -121,28 +150,26 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
           Account JSON key.
         </Text>
 
-        <Group
-          justify="space-between"
-          align="center"
-          p="xs"
-          style={{ border: "1px solid var(--mantine-color-gray-8)", borderRadius: 4 }}
-        >
-          <Text size="sm" fw={700}>
-            Current Key:
-          </Text>
-          {keyPath ? (
-            <Code
-              color="green"
-              style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}
-            >
-              {keyPath}
-            </Code>
-          ) : (
-            <Text size="sm" c="red">
-              Not Configured
+        <Paper withBorder p="xs">
+          <Group justify="space-between">
+            <Text size="sm" fw={700}>
+              Current Key:
             </Text>
-          )}
-        </Group>
+            {keyPath ? (
+              <Code
+                color="green"
+                maw={200}
+                style={{ overflow: "hidden", textOverflow: "ellipsis" }}
+              >
+                {keyPath}
+              </Code>
+            ) : (
+              <Text size="sm" c="red">
+                Not Configured
+              </Text>
+            )}
+          </Group>
+        </Paper>
 
         <Group justify="flex-end">
           <Button onClick={() => void handleSetKey()} variant="light" size="xs">
@@ -156,7 +183,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
           <Box>
             <Text fw={500}>Speaker Voices Mapping</Text>
             <Text size="sm" c="dimmed">
-              Assign voices to specific speaker aliases. Use tags like <code>[speaker 1]</code> in
+              Assign voices to specific speaker aliases. Use tags like <Code>[speaker 1]</Code> in
               your notes.
             </Text>
           </Box>
@@ -168,60 +195,42 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
         </Group>
 
         <Stack gap="xs">
-          <Group
-            justify="space-between"
-            align="center"
-            p="xs"
-            style={{ backgroundColor: "var(--mantine-color-dark-6)", borderRadius: 4 }}
-          >
-            <Text size="sm" fw={600}>
-              Default Voice (No Tag)
-            </Text>
-            <Stack gap={4}>
-              <VoiceSelector
+          <Paper p="xs" bg="dark.6">
+            <Group align="flex-start" wrap="nowrap">
+              <Text size="sm" fw={600} w={130} miw={130} pt={6}>
+                Default Voice (No Tag)
+              </Text>
+              <SpeakerMappingControls
                 speakerLabel={DEFAULT_SPEAKER_LABEL}
-                value={mappings[DEFAULT_SPEAKER_KEY]?.voice}
-                onChange={(voice) => updateMapping(DEFAULT_SPEAKER_KEY, { voice })}
-                options={voiceOptions}
+                mapping={mappings[DEFAULT_SPEAKER_KEY]}
+                voiceOptions={voiceOptions}
+                onChange={(change) => updateMapping(DEFAULT_SPEAKER_KEY, change)}
               />
-              <SpeakerPrompt
-                speakerLabel={DEFAULT_SPEAKER_LABEL}
-                value={mappings[DEFAULT_SPEAKER_KEY]?.prompt}
-                supportsPrompt={mappings[DEFAULT_SPEAKER_KEY]?.voice?.supportsPrompt}
-                onChange={(prompt) => updateMapping(DEFAULT_SPEAKER_KEY, { prompt })}
-              />
-            </Stack>
-          </Group>
+            </Group>
+          </Paper>
 
           {mappedSpeakers.map(([alias, mapping]) => (
-            <Group
-              key={alias}
-              justify="space-between"
-              align="center"
-              p="xs"
-              style={{ border: "1px solid var(--mantine-color-dark-4)", borderRadius: 4 }}
-            >
-              <Code>[{alias}]</Code>
-              <Group gap="xs" align="flex-start">
-                <Stack gap={4}>
-                  <VoiceSelector
-                    speakerLabel={alias}
-                    value={mapping.voice}
-                    onChange={(voice) => updateMapping(alias, { voice })}
-                    options={voiceOptions}
-                  />
-                  <SpeakerPrompt
-                    speakerLabel={alias}
-                    value={mapping.prompt}
-                    supportsPrompt={mapping.voice?.supportsPrompt}
-                    onChange={(prompt) => updateMapping(alias, { prompt })}
-                  />
-                </Stack>
-                <ActionIcon color="red" variant="subtle" onClick={() => removeMapping(alias)}>
+            <Paper key={alias} withBorder p="xs">
+              <Group align="flex-start" wrap="nowrap">
+                <Box w={100} miw={100} pt={4}>
+                  <Code>[{alias}]</Code>
+                </Box>
+                <SpeakerMappingControls
+                  speakerLabel={alias}
+                  mapping={mapping}
+                  voiceOptions={voiceOptions}
+                  onChange={(change) => updateMapping(alias, change)}
+                />
+                <ActionIcon
+                  aria-label={`Delete mapping for ${alias}`}
+                  color="red"
+                  variant="subtle"
+                  onClick={() => removeMapping(alias)}
+                >
                   <IconTrash size={16} />
                 </ActionIcon>
               </Group>
-            </Group>
+            </Paper>
           ))}
 
           <Group mt="xs">
@@ -239,7 +248,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
                   addAlias();
                 }
               }}
-              style={{ flex: 1 }}
+              flex={1}
             />
             <Button
               size="xs"

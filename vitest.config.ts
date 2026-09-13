@@ -9,6 +9,13 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["src/**/*.test.ts", "electron/**/*.test.ts", "shared/**/*.test.ts"],
+          exclude: ["**/*.integration.test.ts"],
+        },
+      },
+      {
+        test: {
+          name: "integration",
+          include: ["**/*.integration.test.ts"],
         },
       },
       {
@@ -19,9 +26,6 @@ export default defineConfig({
         test: {
           name: "component",
           include: ["src/**/*.component.test.tsx"],
-          // Browser-mode files share one page, so a suite tearing down
-          // `window.electronAPI` would rip it out from under a concurrent one.
-          fileParallelism: false,
           browser: {
             enabled: true,
             headless: true,
