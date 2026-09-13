@@ -110,7 +110,7 @@ describe("GcpTtsProvider", () => {
             id: "chirp-3-hd",
             label: "Chirp 3 HD",
             supportsPrompt: false,
-            languages: [{ code: "en-GB", label: "English (United Kingdom)" }],
+            languages: [{ code: "en-GB", label: "en-GB" }],
           },
         ],
       },
@@ -123,7 +123,7 @@ describe("GcpTtsProvider", () => {
             id: "chirp-3-hd",
             label: "Chirp 3 HD",
             supportsPrompt: false,
-            languages: [{ code: "en-US", label: "English (United States)" }],
+            languages: [{ code: "en-US", label: "en-US" }],
           },
         ],
       },
@@ -186,11 +186,8 @@ describe("GcpTtsProvider", () => {
     const languages = voices[0]!.models[0]!.languages;
 
     expect(languages).toHaveLength(87);
-    expect(languages).toContainEqual({ code: "de-DE", label: "German (Germany)" });
-    expect(languages).toContainEqual({
-      code: "cmn-CN",
-      label: "Chinese Mandarin (China) (Preview)",
-    });
+    expect(languages).toContainEqual({ code: "de-DE", label: "de-DE" });
+    expect(languages).toContainEqual({ code: "cmn-CN", label: "cmn-CN (Preview)" });
     // Generally available languages come first, so a preview choice is deliberate.
     expect(languages.findIndex((language) => language.label.includes("(Preview)"))).toBe(24);
   });
@@ -225,8 +222,8 @@ describe("GcpTtsProvider", () => {
       "gemini-3.1-flash-tts-preview",
     ]);
     expect(voices[0]?.models[0]?.languages).toEqual([
-      { code: "en-GB", label: "English (United Kingdom)" },
-      { code: "en-US", label: "English (United States)" },
+      { code: "en-GB", label: "en-GB" },
+      { code: "en-US", label: "en-US" },
     ]);
   });
 
