@@ -64,11 +64,10 @@ export function SpeakerPrompt({
           aria-label={label}
           placeholder="e.g. conspiratorial, almost whispering"
           value={value ?? ""}
-          // Kept verbatim while it holds anything, so a space being typed
-          // mid-word survives; blanking it deletes the prompt outright.
-          onChange={(event) =>
-            onChange(toSpeakerPrompt(event.currentTarget.value) && event.currentTarget.value)
-          }
+          // Kept verbatim, spacing included, so the author owns their own
+          // padding; only an empty field deletes the prompt. What a provider
+          // receives is trimmed later, by toSpeakerPrompt.
+          onChange={(event) => onChange(event.currentTarget.value || undefined)}
           autosize
           minRows={2}
           size="xs"

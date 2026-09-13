@@ -469,7 +469,7 @@ const promptButton = "Prompt for slide 1 section 1";
 test("shows the inline prompt a section already carries", async () => {
   installPromptMappings();
   const { screen } = await renderViewer(vi.fn(), [
-    { ...loadedSlide, notes: "[p: excited]\nLoaded narration" },
+    { ...loadedSlide, notes: "[p:excited]\nLoaded narration" },
   ]);
 
   await expect.element(screen.getByRole("textbox", { name: promptButton })).toHaveValue("excited");
@@ -478,7 +478,7 @@ test("shows the inline prompt a section already carries", async () => {
 test("removes the marker from the notes when the prompt is cleared", async () => {
   const electronAPI = installPromptMappings();
   const { screen } = await renderViewer(vi.fn(), [
-    { ...loadedSlide, notes: "[p: excited]\nLoaded narration" },
+    { ...loadedSlide, notes: "[p:excited]\nLoaded narration" },
   ]);
 
   await screen.getByRole("textbox", { name: promptButton }).fill("");
@@ -501,7 +501,7 @@ test("writes a marker into the notes when a prompt is added", async () => {
 
   await vi.waitFor(() =>
     expect(electronAPI.saveNarratedSlide).toHaveBeenCalledWith(
-      expect.objectContaining({ notes: "[prompt: excited]\nLoaded narration" }),
+      expect.objectContaining({ notes: "[prompt:excited]\nLoaded narration" }),
     ),
   );
 });
