@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Voice } from "./TtsProvider.js";
 import { decomposeGcpVoiceName, GcpTtsProvider } from "./GcpTtsProvider.js";
+import { GEMINI_LANGUAGES } from "./gcpLanguages.js";
 import { migrateSpeakerMappings } from "../settings/speakerMappingMigration.js";
 
 const { clientConstructor, listVoices, synthesizeSpeech } = vi.hoisted(() => ({
@@ -109,7 +110,7 @@ describe("GcpTtsProvider", () => {
             id: "chirp-3-hd",
             label: "Chirp 3 HD",
             supportsPrompt: false,
-            languages: [{ code: "en-GB", label: "en-GB" }],
+            languages: [{ code: "en-GB", label: "English (United Kingdom)" }],
           },
         ],
       },
@@ -122,7 +123,7 @@ describe("GcpTtsProvider", () => {
             id: "chirp-3-hd",
             label: "Chirp 3 HD",
             supportsPrompt: false,
-            languages: [{ code: "en-US", label: "en-US" }],
+            languages: [{ code: "en-US", label: "English (United States)" }],
           },
         ],
       },
@@ -149,29 +150,49 @@ describe("GcpTtsProvider", () => {
             id: "gemini-2.5-pro-tts",
             label: "Gemini 2.5 Pro",
             supportsPrompt: true,
-            languages: [{ code: "en-US", label: "en-US" }],
+            languages: GEMINI_LANGUAGES,
           },
           {
             id: "gemini-2.5-flash-tts",
             label: "Gemini 2.5 Flash",
             supportsPrompt: true,
-            languages: [{ code: "en-US", label: "en-US" }],
+            languages: GEMINI_LANGUAGES,
           },
           {
             id: "gemini-2.5-flash-lite-preview-tts",
             label: "Gemini 2.5 Flash Lite (Preview)",
             supportsPrompt: true,
-            languages: [{ code: "en-US", label: "en-US" }],
+            languages: GEMINI_LANGUAGES,
           },
           {
             id: "gemini-3.1-flash-tts-preview",
             label: "Gemini 3.1 Flash (Preview)",
             supportsPrompt: true,
-            languages: [{ code: "en-US", label: "en-US" }],
+            languages: GEMINI_LANGUAGES,
           },
         ],
       },
     ]);
+  });
+
+  it("offers a Gemini model every documented language, marking the preview ones", async () => {
+    listVoices
+      .mockResolvedValueOnce([{ voices: [] }])
+      .mockResolvedValueOnce([
+        { voices: [{ name: "Kore", languageCodes: ["en-US"], ssmlGender: "FEMALE" }] },
+      ]);
+
+    const voices = await new GcpTtsProvider(() => "/keys/gcp.json").getVoices();
+    const languages = voices[0]!.models[0]!.languages;
+
+    expect(languages).toHaveLength(87);
+    expect(languages).toContainEqual({ code: "de-DE", label: "German (Germany)" });
+    expect(languages).toContainEqual({
+      code: "cmn-CN",
+      label: "Chinese Mandarin (China) (Preview)",
+    });
+    // Generally available languages come first, so a preview choice is deliberate.
+    expect(languages.findIndex((language) => language.label.includes("(Preview)"))).toBe(24);
   });
 
   it("collapses one name offered by several models into a single option", async () => {
@@ -204,8 +225,8 @@ describe("GcpTtsProvider", () => {
       "gemini-3.1-flash-tts-preview",
     ]);
     expect(voices[0]?.models[0]?.languages).toEqual([
-      { code: "en-GB", label: "en-GB" },
-      { code: "en-US", label: "en-US" },
+      { code: "en-GB", label: "English (United Kingdom)" },
+      { code: "en-US", label: "English (United States)" },
     ]);
   });
 
@@ -247,6 +268,26 @@ describe("GcpTtsProvider", () => {
       languageCode: "en-US",
       name: "Kore",
       modelName: "gemini-2.5-flash-tts",
+    });
+  });
+
+  it("synthesizes a Gemini voice in the language the author chose", async () => {
+    await new GcpTtsProvider(() => "/keys/gcp.json")
+      .prepareSpeech("Bonjour", {
+        provider: "gcp",
+        voiceId: "Kore",
+        model: "gemini-2.5-pro-tts",
+        languageCode: "fr-FR",
+        supportsPrompt: true,
+      })
+      .synthesize();
+
+    // The catalogue advertises Gemini voices under en-US alone, so a chosen
+    // language reaching the request is the whole of the feature.
+    expect(synthesizeSpeech.mock.calls[0]?.[0].voice).toEqual({
+      languageCode: "fr-FR",
+      name: "Kore",
+      modelName: "gemini-2.5-pro-tts",
     });
   });
 

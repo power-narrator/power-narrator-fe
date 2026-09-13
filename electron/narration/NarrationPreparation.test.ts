@@ -242,6 +242,28 @@ describe("NarrationPreparation", () => {
     expect(generateSpeech).toHaveBeenCalledWith("Welcome", defaultVoice);
   });
 
+  it("fails a mapping left unconfigured without reaching a provider", async () => {
+    // A voice exists only once voice, model, and language are all chosen, so an
+    // unmade language reads here as no voice at all.
+    const { preparation, generateSpeech } = createPreparation({ Narrator: {} });
+
+    await expect(
+      preparation.preparePreview({
+        slideIndex: 4,
+        sectionIndex: 0,
+        notes: "[Narrator]\nHello",
+        text: "Hello",
+        speakerChoice: { kind: "effective" },
+      }),
+    ).rejects.toEqual(
+      new NarrationPreparationError(
+        "validation",
+        'Narration validation failed for slide 4, section 1, speaker "Narrator": no voice mapping is configured.',
+      ),
+    );
+    expect(generateSpeech).not.toHaveBeenCalled();
+  });
+
   it("rejects whitespace-only preview text before loading mappings or synthesis", async () => {
     const getSpeakerMappings = vi
       .fn<() => Record<string, SpeakerMapping>>()

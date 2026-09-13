@@ -3,10 +3,12 @@ import type {
   PreparedSpeechRequest,
   TtsProvider,
   Voice,
+  VoiceLanguage,
   VoiceModel,
   VoiceOption,
 } from "./TtsProvider.js";
 import { ensureSpeakElement, isSsml } from "./SsmlUtil.js";
+import { GEMINI_LANGUAGES, toCatalogueLanguage } from "./gcpLanguages.js";
 
 type GcpVoice = {
   name?: string | null;
@@ -16,35 +18,52 @@ type GcpVoice = {
 
 export const CHIRP_3_HD_MODEL = "chirp-3-hd";
 
+type ModelDefinition = {
+  label: string;
+  supportsPrompt: boolean;
+  /** The value Google's API accepts, or null where the voice identifier implies it. */
+  modelName: string | null;
+  /** The languages the model documents, or null where the catalogue advertises them. */
+  languages: VoiceLanguage[] | null;
+};
+
 /**
- * `modelName` is the value Google's API accepts, or null where the model is
- * implied by the voice identifier instead of named in the request. A model id
- * is this app's identity for a model and is not always a legal `modelName`.
+ * A model id is this app's identity for a model and is not always a legal
+ * `modelName`: Chirp 3 HD names no model in the request and would be rejected
+ * if it did.
  */
-const MODELS: Record<string, { label: string; supportsPrompt: boolean; modelName: string | null }> =
-  {
-    [CHIRP_3_HD_MODEL]: { label: "Chirp 3 HD", supportsPrompt: false, modelName: null },
-    "gemini-2.5-pro-tts": {
-      label: "Gemini 2.5 Pro",
-      supportsPrompt: true,
-      modelName: "gemini-2.5-pro-tts",
-    },
-    "gemini-2.5-flash-tts": {
-      label: "Gemini 2.5 Flash",
-      supportsPrompt: true,
-      modelName: "gemini-2.5-flash-tts",
-    },
-    "gemini-2.5-flash-lite-preview-tts": {
-      label: "Gemini 2.5 Flash Lite (Preview)",
-      supportsPrompt: true,
-      modelName: "gemini-2.5-flash-lite-preview-tts",
-    },
-    "gemini-3.1-flash-tts-preview": {
-      label: "Gemini 3.1 Flash (Preview)",
-      supportsPrompt: true,
-      modelName: "gemini-3.1-flash-tts-preview",
-    },
-  };
+const MODELS: Record<string, ModelDefinition> = {
+  [CHIRP_3_HD_MODEL]: {
+    label: "Chirp 3 HD",
+    supportsPrompt: false,
+    modelName: null,
+    languages: null,
+  },
+  "gemini-2.5-pro-tts": {
+    label: "Gemini 2.5 Pro",
+    supportsPrompt: true,
+    modelName: "gemini-2.5-pro-tts",
+    languages: GEMINI_LANGUAGES,
+  },
+  "gemini-2.5-flash-tts": {
+    label: "Gemini 2.5 Flash",
+    supportsPrompt: true,
+    modelName: "gemini-2.5-flash-tts",
+    languages: GEMINI_LANGUAGES,
+  },
+  "gemini-2.5-flash-lite-preview-tts": {
+    label: "Gemini 2.5 Flash Lite (Preview)",
+    supportsPrompt: true,
+    modelName: "gemini-2.5-flash-lite-preview-tts",
+    languages: GEMINI_LANGUAGES,
+  },
+  "gemini-3.1-flash-tts-preview": {
+    label: "Gemini 3.1 Flash (Preview)",
+    supportsPrompt: true,
+    modelName: "gemini-3.1-flash-tts-preview",
+    languages: GEMINI_LANGUAGES,
+  },
+};
 
 /** Every model whose identity the catalogue never spells out, Chirp 3 HD being the only one it does. */
 const GEMINI_MODELS = Object.keys(MODELS).filter((id) => id !== CHIRP_3_HD_MODEL);
@@ -58,7 +77,12 @@ const BARE_NAME_PATTERN = /^[^-\s]+$/;
 export type VoiceComposition = Omit<Voice, "provider">;
 
 function toComposition(voiceId: string, model: string, languageCode: string): VoiceComposition {
-  return { voiceId, model, languageCode, supportsPrompt: MODELS[model]!.supportsPrompt };
+  return {
+    voiceId,
+    model,
+    languageCode,
+    supportsPrompt: MODELS[model]!.supportsPrompt,
+  };
 }
 
 /**
@@ -77,7 +101,7 @@ export function decomposeGcpVoiceName(name: string): VoiceComposition | null {
 /**
  * Every voice a single catalogue entry stands for. A Chirp 3 HD identifier
  * names one model; a bare Gemini name names none, so it stands for every
- * Gemini model in the language the catalogue advertised it under.
+ * Gemini model, each of which supplies its own documented languages.
  */
 function decomposeCatalogueEntry(name: string, languageCode: string): VoiceComposition[] {
   const chirp = decomposeGcpVoiceName(name);
@@ -116,7 +140,12 @@ function toVoiceOptions(voices: GcpVoice[]): VoiceOption[] {
       const key = JSON.stringify([composition.voiceId, ssmlGender]);
       let option = options.get(key);
       if (!option) {
-        option = { provider: "gcp", name: composition.voiceId, ssmlGender, models: [] };
+        option = {
+          provider: "gcp",
+          name: composition.voiceId,
+          ssmlGender,
+          models: [],
+        };
         options.set(key, option);
       }
 
@@ -127,6 +156,11 @@ function toVoiceOptions(voices: GcpVoice[]): VoiceOption[] {
   return [...options.values()];
 }
 
+/**
+ * A model documenting its own languages carries all of them, since the
+ * catalogue advertises Gemini voices under one locale that says nothing about
+ * what they can speak.
+ */
 function addLanguage(option: VoiceOption, composition: VoiceComposition): void {
   const definition = MODELS[composition.model]!;
   let model: VoiceModel | undefined = option.models.find(
@@ -137,13 +171,16 @@ function addLanguage(option: VoiceOption, composition: VoiceComposition): void {
       id: composition.model,
       label: definition.label,
       supportsPrompt: definition.supportsPrompt,
-      languages: [],
+      languages: definition.languages ? [...definition.languages] : [],
     };
     option.models.push(model);
   }
 
-  if (!model.languages.some((language) => language.code === composition.languageCode)) {
-    model.languages.push({ code: composition.languageCode, label: composition.languageCode });
+  if (
+    !definition.languages &&
+    !model.languages.some((language) => language.code === composition.languageCode)
+  ) {
+    model.languages.push(toCatalogueLanguage(composition.languageCode));
   }
 }
 
