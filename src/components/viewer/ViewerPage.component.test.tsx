@@ -16,6 +16,7 @@ const loadedSlide: Slide = {
 };
 
 interface ViewerElectronOverrides {
+  getSpeakerMappings?: typeof window.electronAPI.getSpeakerMappings;
   confirmDiscardNarrationChanges?: () => Promise<boolean>;
   reloadSlide?: typeof window.electronAPI.reloadSlide;
   saveNarratedSlide?: typeof window.electronAPI.saveNarratedSlide;
@@ -445,4 +446,72 @@ test("reloads every slide when the reload-all discard warning is accepted", asyn
   await screen.getByRole("button", { name: "Reload All Slides", exact: true }).click();
 
   await vi.waitFor(() => expect(editor.element()).toHaveValue("Reloaded narration"));
+});
+
+const promptableVoice = {
+  provider: "gcp",
+  voiceId: "Achernar",
+  model: "gemini-2.5-flash-tts",
+  languageCode: "en-US",
+  supportsPrompt: true,
+};
+
+function installPromptMappings(supportsPrompt = true) {
+  return installElectronApi({
+    getSpeakerMappings: vi.fn<typeof window.electronAPI.getSpeakerMappings>(() =>
+      Promise.resolve({ _default_: { voice: { ...promptableVoice, supportsPrompt } } }),
+    ),
+  });
+}
+
+const promptButton = "Prompt for slide 1 section 1";
+
+test("shows the inline prompt a section already carries", async () => {
+  installPromptMappings();
+  const { screen } = await renderViewer(vi.fn(), [
+    { ...loadedSlide, notes: "[p: excited]\nLoaded narration" },
+  ]);
+
+  await screen.getByRole("button", { name: `${promptButton} (set)` }).click();
+
+  await expect.element(screen.getByRole("textbox", { name: promptButton })).toHaveValue("excited");
+});
+
+test("removes the marker from the notes when the prompt is cleared", async () => {
+  const electronAPI = installPromptMappings();
+  const { screen } = await renderViewer(vi.fn(), [
+    { ...loadedSlide, notes: "[p: excited]\nLoaded narration" },
+  ]);
+
+  await screen.getByRole("button", { name: `${promptButton} (set)` }).click();
+  await screen.getByRole("textbox", { name: promptButton }).fill("");
+  await screen.getByRole("button", { name: "Save Slide", exact: true }).click();
+
+  await vi.waitFor(() =>
+    expect(electronAPI.saveNarratedSlide).toHaveBeenCalledWith(
+      expect.objectContaining({ notes: "Loaded narration" }),
+    ),
+  );
+});
+
+test("writes a marker into the notes when a prompt is added", async () => {
+  const electronAPI = installPromptMappings();
+  const { screen } = await renderViewer();
+
+  await screen.getByRole("button", { name: promptButton }).click();
+  await screen.getByRole("textbox", { name: promptButton }).fill("excited");
+  await screen.getByRole("button", { name: "Save Slide", exact: true }).click();
+
+  await vi.waitFor(() =>
+    expect(electronAPI.saveNarratedSlide).toHaveBeenCalledWith(
+      expect.objectContaining({ notes: "[prompt: excited]\nLoaded narration" }),
+    ),
+  );
+});
+
+test("advises when the section's effective speaker ignores prompts", async () => {
+  installPromptMappings(false);
+  const { screen } = await renderViewer();
+
+  await expect.element(screen.getByText("This model ignores prompts.")).toBeVisible();
 });

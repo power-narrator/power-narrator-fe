@@ -19,7 +19,7 @@ import { speakerNameProblem } from "../../../shared/narration/speakerName";
 import { useSettings } from "../../context/useSettings";
 import type { SpeakerMapping, VoiceOption } from "../../../shared/types/tts";
 import { getProviderLabel } from "./providerLabels";
-import { SpeakerPrompt } from "./SpeakerPrompt";
+import { SpeakerPrompt } from "../SpeakerPrompt";
 import { VoiceSelector } from "./VoiceSelector";
 
 interface SettingsModalProps {

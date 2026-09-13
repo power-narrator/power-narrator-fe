@@ -264,14 +264,15 @@ export function ViewerPage({
     insertWrappedTag(tag);
   }
 
-  const handleSectionTextChange = (index: number, value: string) => {
+  /** Typing commits once the author pauses, so a keystroke is not an undo step. */
+  function editSectionWhileTyping(index: number, edit: (section: NarrationSection) => void) {
     const nextSlides = updateActiveSlideSections((sections) => {
       const section = sections[index];
       if (!section) {
         return false;
       }
 
-      section.text = value;
+      edit(section);
       return true;
     });
 
@@ -284,6 +285,18 @@ export function ViewerPage({
       viewerSession.commitSlides(nextSlides, [activeSlideIndex]);
       debounceRef.current = null;
     }, 800);
+  }
+
+  const handleSectionTextChange = (index: number, value: string) => {
+    editSectionWhileTyping(index, (section) => {
+      section.text = value;
+    });
+  };
+
+  const handleSectionPromptChange = (index: number, prompt: string | undefined) => {
+    editSectionWhileTyping(index, (section) => {
+      section.prompt = prompt;
+    });
   };
 
   const handleSpeakerChange = (index: number, speaker: string | null) => {
@@ -608,6 +621,7 @@ export function ViewerPage({
                   onFocusSection={setActiveSectionIndex}
                   onSpeakerChange={handleSpeakerChange}
                   onSectionTextChange={handleSectionTextChange}
+                  onSectionPromptChange={handleSectionPromptChange}
                   onDeleteSection={handleDeleteSection}
                   onAddSection={handleAddSection}
                   assignTextareaRef={assignTextareaRef}
