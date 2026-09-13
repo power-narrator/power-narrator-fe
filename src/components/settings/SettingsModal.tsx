@@ -14,6 +14,7 @@ import {
 import { IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { DEFAULT_SPEAKER_KEY, DEFAULT_SPEAKER_LABEL } from "../../../shared/narration/speaker";
+import { toSpeakerPrompt } from "../../../shared/narration/prompt";
 import { useSettings } from "../../context/useSettings";
 import type { SpeakerMapping, VoiceOption } from "../../../shared/types/tts";
 import { getProviderLabel } from "./providerLabels";
@@ -59,11 +60,12 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
    * absence of a voice or prompt rather than either set to undefined.
    */
   const updateMapping = (alias: string, change: Partial<SpeakerMapping>) => {
-    const nextMapping = { ...mappings[alias], ...change };
-    for (const [key, entry] of Object.entries(change)) {
-      if (entry === undefined) {
-        delete nextMapping[key as keyof SpeakerMapping];
-      }
+    const nextMapping: SpeakerMapping = { ...mappings[alias], ...change };
+    if (!nextMapping.voice) {
+      delete nextMapping.voice;
+    }
+    if (!toSpeakerPrompt(nextMapping.prompt)) {
+      delete nextMapping.prompt;
     }
 
     void saveMappings({ ...mappings, [alias]: nextMapping });

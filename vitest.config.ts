@@ -19,6 +19,9 @@ export default defineConfig({
         test: {
           name: "component",
           include: ["src/**/*.component.test.tsx"],
+          // Browser-mode files share one page, so a suite tearing down
+          // `window.electronAPI` would rip it out from under a concurrent one.
+          fileParallelism: false,
           browser: {
             enabled: true,
             headless: true,
