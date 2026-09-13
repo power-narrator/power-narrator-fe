@@ -4,6 +4,7 @@ import {
   getEffectiveSpeaker,
   parseNarrationSections,
 } from "./NarrationSections.js";
+import { toSpeakerPrompt } from "./prompt.js";
 
 describe("narration section formatting", () => {
   it("round-trips distinct separator, speaker tag, and body formatting", () => {
@@ -82,16 +83,24 @@ describe("inline prompts in slide notes", () => {
     ["long marker", "[prompt: whisper it]"],
     ["capitalised", "[P: whisper it]"],
     ["mixed case", "[PrOmPt: whisper it]"],
-    ["padded marker", "[  prompt  :   whisper it  ]"],
+    ["padded marker", "[  prompt  : whisper it]"],
   ])("recognises a %s prompt", (_spelling, tag) => {
     const [section] = parse(`[Narrator]\n${tag}\nHello`);
 
-    expect(section).toMatchObject({ speaker: "Narrator", prompt: "whisper it", text: "Hello" });
+    // The marker's own padding is punctuation; everything past the colon,
+    // the space included, is the prompt the author wrote.
+    expect(section).toMatchObject({ speaker: "Narrator", prompt: " whisper it", text: "Hello" });
+  });
+
+  it("keeps the spacing an author put around a prompt", () => {
+    const [section] = parse("[Narrator]\n[prompt:  whisper it  ]\nHello");
+
+    expect(section).toMatchObject({ prompt: "  whisper it  ", text: "Hello" });
   });
 
   it("reads a prompt spanning several lines", () => {
     const [section] = parse(
-      "[Narrator]\n[prompt: whisper it,\nthen pause\nbefore the last word]\nHello",
+      "[Narrator]\n[prompt:whisper it,\nthen pause\nbefore the last word]\nHello",
     );
 
     expect(section).toMatchObject({
@@ -101,13 +110,13 @@ describe("inline prompts in slide notes", () => {
   });
 
   it("reads a prompt in a section with no speaker tag", () => {
-    const [section] = parse("[prompt: whisper it]\nHello");
+    const [section] = parse("[prompt:whisper it]\nHello");
 
     expect(section).toMatchObject({ speaker: "", prompt: "whisper it", text: "Hello" });
   });
 
   it("applies a prompt only to its own section", () => {
-    const sections = parse("[Narrator]\n[p: whisper]\nFirst\n---\nSecond");
+    const sections = parse("[Narrator]\n[p:whisper]\nFirst\n---\nSecond");
 
     expect(sections.map((section) => section.prompt)).toEqual(["whisper", undefined]);
     expect(getEffectiveSpeaker(sections, 1)).toBe("Narrator");
@@ -129,11 +138,11 @@ describe("inline prompts in slide notes", () => {
     const [section] = parse("[Narrator]\n[p:   ]\nHello");
 
     expect(section).toMatchObject({ speaker: "Narrator", text: "Hello" });
-    expect(section?.prompt).toBeUndefined();
+    expect(toSpeakerPrompt(section?.prompt)).toBeUndefined();
   });
 
   it("leaves a second prompt-shaped line in the narration text", () => {
-    const [section] = parse("[Narrator]\n[p: whisper]\n[p: shout]\nHello");
+    const [section] = parse("[Narrator]\n[p:whisper]\n[p: shout]\nHello");
 
     expect(section).toMatchObject({ prompt: "whisper", text: "[p: shout]\nHello" });
   });
@@ -149,9 +158,22 @@ describe("inline prompts in slide notes", () => {
     expect(formatNarrationSections(parse(notes))).toBe(notes);
   });
 
+  it.each([
+    ["[prompt: whisper]", " whisper it"],
+    ["[prompt: whisper]", "whisper it "],
+    ["[prompt: whisper]", "whisper  it"],
+    ["[prompt:whisper]", " whisper it"],
+    ["[p:]", " "],
+  ])("keeps an edit to %s as %o through the round-trip a keystroke performs", (tag, prompt) => {
+    const sections = parse(`[Narrator]\n${tag}\nHello`);
+    sections[0]!.prompt = prompt;
+
+    expect(parse(formatNarrationSections(sections))[0]?.prompt).toBe(prompt);
+  });
+
   it("uses canonical formatting for a prompt without format metadata", () => {
     expect(
       formatNarrationSections([{ speaker: "Narrator", prompt: "whisper", text: "Hello" }]),
-    ).toBe("[Narrator]\n[prompt: whisper]\nHello");
+    ).toBe("[Narrator]\n[prompt:whisper]\nHello");
   });
 });

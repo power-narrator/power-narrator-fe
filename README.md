@@ -95,7 +95,9 @@ Here is another point of view.
 ```
 
 Prompt markers may use `p` or `prompt`, are case-insensitive, allow whitespace around the marker
-and colon, and may span lines. A prompt can also start a section with no speaker tag. When both a
+and colon, and may span lines. Everything after the colon is the prompt exactly as written, spacing
+included, so the editor never rewrites spacing an author typed; surrounding whitespace is trimmed
+only on the way to a provider. A prompt can also start a section with no speaker tag. When both a
 preset and inline prompt exist, narration sends the preset first and the inline prompt second.
 Clearing an inline prompt removes its marker from the notes.
 

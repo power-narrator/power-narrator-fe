@@ -1,7 +1,7 @@
 import { DIRECTIVE_PATTERN } from "./speakerName.js";
 
 const DEFAULT_SECTION_SEPARATOR = "\n---\n";
-const DEFAULT_PROMPT_PREFIX = "[prompt: ";
+const DEFAULT_PROMPT_PREFIX = "[prompt:";
 const DEFAULT_PROMPT_SUFFIX = "]";
 const SECTION_DIVIDER_PATTERN = /^[ \t]*-{3,}[ \t]*(?:\n)?$/;
 /**
@@ -12,7 +12,6 @@ const SECTION_DIVIDER_PATTERN = /^[ \t]*-{3,}[ \t]*(?:\n)?$/;
 const BRACKETED_LINE_PATTERN = /^((?:[ \t]*\n)*[ \t]*)\[([^\]]*)\]([ \t]*)(?:\n|$)/;
 const PROMPT_MARKERS = new Set(["p", "prompt"]);
 const SAME_LINE_PADDING = { leading: /^[ \t]*/, trailing: /[ \t]*$/ };
-const ANY_PADDING = { leading: /^\s*/, trailing: /\s*$/ };
 
 export interface NarrationSection {
   speaker: string;
@@ -114,18 +113,18 @@ function readPrompt(line: BracketedLine): Pick<NarrationSection, "prompt" | "for
     return null;
   }
 
-  const { leading, trailing, value } = splitPadding(
-    line.content.slice(marker[0].length),
-    ANY_PADDING,
-  );
+  // Everything past the marker is the author's, spacing included. Absorbing even
+  // one space as punctuation would swallow the first space typed ahead of a
+  // prompt written without one, since the editor re-parses each keystroke.
+  const value = line.content.slice(marker[0].length);
 
   return {
     // An empty prompt is no prompt, but the marker still claims the line, so a
     // direction the author emptied is never narrated as text.
     ...(value ? { prompt: value } : {}),
     format: {
-      promptPrefix: `${line.lead}[${marker[0]}${leading}`,
-      promptSuffix: `${trailing}]${line.trailing}`,
+      promptPrefix: `${line.lead}[${marker[0]}`,
+      promptSuffix: `]${line.trailing}`,
     },
   };
 }
