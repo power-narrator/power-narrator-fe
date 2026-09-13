@@ -212,14 +212,14 @@ export class GcpTtsProvider implements TtsProvider {
     return toVoiceOptions(voices);
   }
 
-  prepareSpeech(text: string, voice: Voice): PreparedSpeechRequest {
+  prepareSpeech(text: string, voice: Voice, prompt?: string): PreparedSpeechRequest {
     const model = MODELS[voice.model];
     if (!model) {
       throw new Error(`GCP TTS cannot synthesize the model '${voice.model}'`);
     }
 
     const request = {
-      input: this.formatInput(text),
+      input: { ...this.formatInput(text), ...this.formatPrompt(model, prompt) },
       voice: {
         languageCode: voice.languageCode,
         name: composeGcpVoiceName(voice),
@@ -258,5 +258,15 @@ export class GcpTtsProvider implements TtsProvider {
 
   private formatInput(text: string): { text: string } | { ssml: string } {
     return isSsml(text) ? { ssml: ensureSpeakElement(text) } : { text };
+  }
+
+  /**
+   * An unusable or absent prompt leaves the field off the request rather than
+   * sending an empty one, so the model's own default delivery still applies. A
+   * model that cannot be prompted drops it here instead of refusing the
+   * synthesis, since the author may have parked it deliberately (ADR 0001).
+   */
+  private formatPrompt(model: ModelDefinition, prompt: string | undefined): { prompt?: string } {
+    return model.supportsPrompt && prompt?.trim() ? { prompt } : {};
   }
 }

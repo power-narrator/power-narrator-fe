@@ -38,7 +38,7 @@ const defaultMappings: Record<string, SpeakerMapping> = { Narrator: { voice: nar
 
 function createPreparation(mappings: Record<string, SpeakerMapping> = defaultMappings) {
   const generateSpeech = vi
-    .fn<(text: string, voice: Voice) => Promise<SynthesizedSpeech>>()
+    .fn<(text: string, voice: Voice, prompt?: string) => Promise<SynthesizedSpeech>>()
     .mockResolvedValue({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
   const preparation = new NarrationPreparation(
     { getSpeakerMappings: () => mappings },
@@ -128,7 +128,7 @@ describe("NarrationPreparation", () => {
         speakerChoice: { kind: "effective" },
       }),
     ).resolves.toEqual({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
-    expect(generateSpeech).toHaveBeenCalledWith("Live renderer text", narratorVoice);
+    expect(generateSpeech).toHaveBeenCalledWith("Live renderer text", narratorVoice, undefined);
   });
 
   it("adds section context when preview synthesis returns no audio", async () => {
@@ -186,7 +186,7 @@ describe("NarrationPreparation", () => {
       speakerChoice: { kind: "effective" },
     });
 
-    expect(generateSpeech).toHaveBeenCalledWith("Inherited", narratorVoice);
+    expect(generateSpeech).toHaveBeenCalledWith("Inherited", narratorVoice, undefined);
   });
 
   it("uses the default voice when the supplied slide names no speaker", async () => {
@@ -203,7 +203,7 @@ describe("NarrationPreparation", () => {
       speakerChoice: { kind: "effective" },
     });
 
-    expect(generateSpeech).toHaveBeenCalledWith("Defaulted", defaultVoice);
+    expect(generateSpeech).toHaveBeenCalledWith("Defaulted", defaultVoice, undefined);
   });
 
   it("uses a temporary preview speaker without changing the supplied notes", async () => {
@@ -221,7 +221,7 @@ describe("NarrationPreparation", () => {
 
     await preparation.preparePreview(request);
 
-    expect(generateSpeech).toHaveBeenCalledWith("Welcome", guestVoice);
+    expect(generateSpeech).toHaveBeenCalledWith("Welcome", guestVoice, undefined);
     expect(request.notes).toBe("[Narrator]\nWelcome");
   });
 
@@ -239,7 +239,7 @@ describe("NarrationPreparation", () => {
       speakerChoice: { kind: "default" },
     });
 
-    expect(generateSpeech).toHaveBeenCalledWith("Welcome", defaultVoice);
+    expect(generateSpeech).toHaveBeenCalledWith("Welcome", defaultVoice, undefined);
   });
 
   it("fails a mapping left unconfigured without reaching a provider", async () => {
@@ -290,5 +290,56 @@ describe("NarrationPreparation", () => {
     );
     expect(getSpeakerMappings).not.toHaveBeenCalled();
     expect(generateSpeech).not.toHaveBeenCalled();
+  });
+});
+
+describe("NarrationPreparation prompts", () => {
+  const promptableVoice: Voice = { ...narratorVoice, supportsPrompt: true };
+
+  it("delivers every section a speaker narrates with that speaker's prompt", async () => {
+    const { preparation, generateSpeech } = createPreparation({
+      Narrator: { voice: promptableVoice, prompt: "conspiratorial, almost whispering" },
+    });
+
+    await preparation.prepareBatch([{ slideIndex: 1, notes: "[Narrator]\nFirst\n---\nSecond" }]);
+
+    expect(generateSpeech.mock.calls).toEqual([
+      ["First", promptableVoice, "conspiratorial, almost whispering"],
+      ["Second", promptableVoice, "conspiratorial, almost whispering"],
+    ]);
+  });
+
+  it("keeps two speakers sharing one voice on their own prompts", async () => {
+    const { preparation, generateSpeech } = createPreparation({
+      Narrator: { voice: promptableVoice, prompt: "whisper" },
+      Guest: { voice: promptableVoice, prompt: "shout" },
+    });
+
+    await preparation.prepareBatch([
+      { slideIndex: 1, notes: "[Narrator]\nFirst\n---\n[Guest]\nSecond" },
+    ]);
+
+    expect(generateSpeech.mock.calls).toEqual([
+      ["First", promptableVoice, "whisper"],
+      ["Second", promptableVoice, "shout"],
+    ]);
+  });
+
+  it("narrates a prompt the chosen voice ignores rather than refusing it", async () => {
+    const { preparation, generateSpeech } = createPreparation({
+      Narrator: { voice: narratorVoice, prompt: "whisper" },
+    });
+
+    await preparation.preparePreview({
+      slideIndex: 1,
+      sectionIndex: 0,
+      notes: "[Narrator]\nFirst",
+      text: "First",
+      speakerChoice: { kind: "effective" },
+    });
+
+    // The provider drops what the model cannot use; preparation does not
+    // second-guess a prompt the author may have parked deliberately.
+    expect(generateSpeech).toHaveBeenCalledWith("First", narratorVoice, "whisper");
   });
 });

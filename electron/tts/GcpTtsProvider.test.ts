@@ -382,3 +382,52 @@ describe("GcpTtsProvider", () => {
     ).rejects.toThrow("GCP TTS failed: quota exhausted");
   });
 });
+
+describe("GcpTtsProvider prompts", () => {
+  const promptableVoice: Voice = {
+    provider: "gcp",
+    voiceId: "Kore",
+    model: "gemini-2.5-pro-tts",
+    languageCode: "en-US",
+    supportsPrompt: true,
+  };
+
+  it("sends a prompt alongside the text of a promptable model", async () => {
+    await new GcpTtsProvider(() => "/keys/gcp.json")
+      .prepareSpeech("Hello", promptableVoice, "conspiratorial, almost whispering")
+      .synthesize();
+
+    expect(synthesizeSpeech.mock.calls[0]?.[0].input).toEqual({
+      text: "Hello",
+      prompt: "conspiratorial, almost whispering",
+    });
+  });
+
+  it.each([
+    ["no prompt", undefined],
+    ["an empty prompt", ""],
+    ["a blank prompt", "   "],
+  ])("omits the field entirely for %s, leaving the provider default", async (_, prompt) => {
+    await new GcpTtsProvider(() => "/keys/gcp.json")
+      .prepareSpeech("Hello", promptableVoice, prompt)
+      .synthesize();
+
+    expect(synthesizeSpeech.mock.calls[0]?.[0].input).toEqual({ text: "Hello" });
+  });
+
+  it("drops a prompt a model cannot use rather than failing the synthesis", async () => {
+    await new GcpTtsProvider(() => "/keys/gcp.json")
+      .prepareSpeech("Hello", selectedVoice, "conspiratorial")
+      .synthesize();
+
+    expect(synthesizeSpeech.mock.calls[0]?.[0].input).toEqual({ text: "Hello" });
+  });
+
+  it("distinguishes two prompts on one voice for the cache", () => {
+    const provider = new GcpTtsProvider(() => "/keys/gcp.json");
+
+    expect(provider.prepareSpeech("Hello", promptableVoice, "whisper").cacheIdentity).not.toEqual(
+      provider.prepareSpeech("Hello", promptableVoice, "shout").cacheIdentity,
+    );
+  });
+});
