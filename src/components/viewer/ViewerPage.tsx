@@ -4,6 +4,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ActionButtonState } from "../../types/viewer";
 import type { Slide, SlideElectronResult } from "../../types/electron";
 import { useSettings } from "../../context/useSettings";
+import { getSpeakerNames } from "../../../shared/narration/speaker";
 import { getErrorMessage } from "../../utils/errors";
 import {
   formatNarrationSections,
@@ -77,6 +78,7 @@ export function ViewerPage({
     null,
   );
   const { mappings } = useSettings();
+  const speakerNames = getSpeakerNames(mappings);
   const busy = operation.busy;
 
   const headerActionStates: Record<ViewerHeaderActionKey, ActionButtonState> = {
@@ -95,7 +97,7 @@ export function ViewerPage({
 
   const activeSlide = slides[activeSlideIndex] ?? { ...EMPTY_SLIDE, index: activeSlideIndex + 1 };
   const activeSlideNumber = activeSlide.index || activeSlideIndex + 1;
-  const activeSections = parseNarrationSections(activeSlide.notes || "");
+  const activeSections = parseNarrationSections(activeSlide.notes || "", speakerNames);
 
   function clearDebounce() {
     if (debounceRef.current) {
@@ -116,7 +118,7 @@ export function ViewerPage({
       return;
     }
 
-    const sections = parseNarrationSections(currentSlide.notes || "");
+    const sections = parseNarrationSections(currentSlide.notes || "", speakerNames);
     if (!updater(sections)) {
       return;
     }

@@ -513,3 +513,45 @@ test("counts a blank prompt as no prompt rather than one set but ignored", async
   await vi.waitFor(() => expect(savedMappings.at(-1)).toEqual({ Narrator: {} }));
   expect(screen.getByRole("button", { name: "Prompt for Narrator (set)" }).query()).toBeNull();
 });
+
+test("refuses a mapping name the notes syntax cannot express", async () => {
+  const savedMappings: Record<string, SpeakerMapping>[] = [];
+  Object.defineProperty(window, "electronAPI", {
+    configurable: true,
+    value: {
+      getSpeakerMappings: () => Promise.resolve({ "prompt: legacy": {} }),
+      setSpeakerMappings: (mappings: Record<string, SpeakerMapping>) => {
+        savedMappings.push(mappings);
+        return Promise.resolve({ success: true });
+      },
+      getGcpKeyPath: () => Promise.resolve(null),
+      getVoices: () => Promise.resolve([gcpOption]),
+      getXmlCliEnabled: () => Promise.resolve(false),
+      setXmlCliEnabled: () => Promise.resolve({ success: true }),
+    },
+  });
+
+  const screen = await render(
+    <MantineProvider>
+      <SettingsProvider>
+        <SettingsModal opened onClose={() => {}} />
+      </SettingsProvider>
+    </MantineProvider>,
+  );
+
+  await vi.waitFor(() => expect(screen.getByText("[prompt: legacy]").query()).not.toBeNull());
+  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("note: aside");
+  await screen.getByRole("button", { name: "Add Mapping" }).click();
+
+  await vi.waitFor(() =>
+    expect(screen.getByText(/reserved for note directives/).query()).not.toBeNull(),
+  );
+  expect(savedMappings).toHaveLength(0);
+  // An existing mapping the rule would now refuse keeps working.
+  expect(screen.getByText("[prompt: legacy]").query()).not.toBeNull();
+
+  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
+  await screen.getByRole("button", { name: "Add Mapping" }).click();
+  await vi.waitFor(() => expect(savedMappings).toHaveLength(1));
+  expect(screen.getByText(/reserved for note directives/).query()).toBeNull();
+});

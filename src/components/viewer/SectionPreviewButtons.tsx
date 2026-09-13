@@ -1,7 +1,7 @@
 import { ActionIcon, Box, Button, Center, Group, Loader, Slider, Stack, Text } from "@mantine/core";
 import { IconHistory, IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react";
 import type { NarrationSection } from "../../../shared/narration/NarrationSections";
-import { DEFAULT_SPEAKER_VALUE } from "../../../shared/narration/speaker";
+import { DEFAULT_SPEAKER_VALUE, getSpeakerNames } from "../../../shared/narration/speaker";
 import { getSpeakerOptions } from "../../utils/viewer";
 import type { SpeakerMapping } from "../../../shared/types/tts";
 import { useNarrationPreview } from "./useNarrationPreview";
@@ -38,6 +38,7 @@ export function SectionPreviewButtons({
     slideIndex,
     sectionIndex,
     slideNotes,
+    speakerNames: getSpeakerNames(mappings),
     section,
     onFocus,
     getTextarea,

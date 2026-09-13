@@ -23,3 +23,11 @@ export function toSynthesisSpeaker(speaker: string): SynthesisSpeaker {
     ? { mappingKey: speaker, label: speaker }
     : { mappingKey: DEFAULT_SPEAKER_KEY, label: DEFAULT_SPEAKER_LABEL };
 }
+
+/**
+ * The mapping names the notes grammar can recognise as speaker tags. The
+ * default speaker is keyed, not named, so it is not one an author can write.
+ */
+export function getSpeakerNames(mappings: Readonly<Record<string, unknown>>): string[] {
+  return Object.keys(mappings).filter((key) => key !== DEFAULT_SPEAKER_KEY);
+}

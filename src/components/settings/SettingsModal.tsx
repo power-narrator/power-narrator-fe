@@ -15,6 +15,7 @@ import { IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { DEFAULT_SPEAKER_KEY, DEFAULT_SPEAKER_LABEL } from "../../../shared/narration/speaker";
 import { toSpeakerPrompt } from "../../../shared/narration/prompt";
+import { speakerNameProblem } from "../../../shared/narration/speakerName";
 import { useSettings } from "../../context/useSettings";
 import type { SpeakerMapping, VoiceOption } from "../../../shared/types/tts";
 import { getProviderLabel } from "./providerLabels";
@@ -30,6 +31,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
   const [keyPath, setKeyPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newAlias, setNewAlias] = useState("");
+  const [aliasProblem, setAliasProblem] = useState<string | null>(null);
   const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([]);
   const [xmlCliEnabled, setXmlCliEnabled] = useState(false);
   const { mappings, saveMappings } = useSettings();
@@ -79,7 +81,14 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
 
   const addAlias = () => {
     const trimmedAlias = newAlias.trim();
-    if (!trimmedAlias || mappings[trimmedAlias]) {
+    const problem = speakerNameProblem(trimmedAlias);
+    if (problem) {
+      setAliasProblem(problem);
+      return;
+    }
+
+    setAliasProblem(null);
+    if (mappings[trimmedAlias]) {
       return;
     }
 
@@ -220,7 +229,11 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
               placeholder="New alias (e.g. speaker 1)"
               size="xs"
               value={newAlias}
-              onChange={(event) => setNewAlias(event.currentTarget.value)}
+              error={aliasProblem}
+              onChange={(event) => {
+                setNewAlias(event.currentTarget.value);
+                setAliasProblem(null);
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   addAlias();

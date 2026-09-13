@@ -152,7 +152,6 @@ describe("NarrationPreparation", () => {
   });
 
   it.each<[string, SpeakerMapping | undefined]>([
-    ["missing", undefined],
     ["unconfigured", {}],
     ["prompt-only", { prompt: "Whisper" }],
     ["unknown provider", { voice: { ...narratorVoice, provider: "unknown" } }],
@@ -169,6 +168,23 @@ describe("NarrationPreparation", () => {
         speakerChoice: { kind: "effective" },
       }),
     ).rejects.toThrow(/slide 4, section 2, speaker "Narrator"/);
+    expect(generateSpeech).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the default speaker when no mapping carries the tagged name", async () => {
+    // A name no mapping knows is not a speaker tag at all, so it stays in the
+    // narrated text and the section is narrated by the default speaker.
+    const { preparation, generateSpeech } = createPreparation({});
+
+    await expect(
+      preparation.preparePreview({
+        slideIndex: 4,
+        sectionIndex: 1,
+        notes: "[Narrator]\nFirst\n---\nSecond",
+        text: "Second",
+        speakerChoice: { kind: "effective" },
+      }),
+    ).rejects.toThrow(/slide 4, section 2, speaker "Default"/);
     expect(generateSpeech).not.toHaveBeenCalled();
   });
 
@@ -341,5 +357,94 @@ describe("NarrationPreparation prompts", () => {
     // The provider drops what the model cannot use; preparation does not
     // second-guess a prompt the author may have parked deliberately.
     expect(generateSpeech).toHaveBeenCalledWith("First", narratorVoice, "whisper");
+  });
+});
+
+describe("NarrationPreparation inline prompts", () => {
+  const promptableVoice: Voice = { ...narratorVoice, supportsPrompt: true };
+
+  it("appends a section's inline prompt to the speaker's preset prompt", async () => {
+    const { preparation, generateSpeech } = createPreparation({
+      Narrator: { voice: promptableVoice, prompt: "conspiratorial" },
+    });
+
+    await preparation.prepareBatch([
+      { slideIndex: 1, notes: "[Narrator]\n[p: almost whispering]\nFirst" },
+    ]);
+
+    expect(generateSpeech).toHaveBeenCalledWith(
+      "First",
+      promptableVoice,
+      "conspiratorial\nalmost whispering",
+    );
+  });
+
+  it("narrates an inline prompt in a section with no preset prompt", async () => {
+    const { preparation, generateSpeech } = createPreparation({
+      Narrator: { voice: promptableVoice },
+    });
+
+    await preparation.prepareBatch([
+      { slideIndex: 1, notes: "[Narrator]\n[prompt: sigh first]\nFirst" },
+    ]);
+
+    expect(generateSpeech).toHaveBeenCalledWith("First", promptableVoice, "sigh first");
+  });
+
+  it("confines an inline prompt to its own section while the speaker still carries", async () => {
+    const { preparation, generateSpeech } = createPreparation({
+      Narrator: { voice: promptableVoice, prompt: "conspiratorial" },
+    });
+
+    await preparation.prepareBatch([
+      { slideIndex: 1, notes: "[Narrator]\n[p: almost whispering]\nFirst\n---\nSecond" },
+    ]);
+
+    expect(generateSpeech.mock.calls).toEqual([
+      ["First", promptableVoice, "conspiratorial\nalmost whispering"],
+      ["Second", promptableVoice, "conspiratorial"],
+    ]);
+  });
+
+  it("previews a section with the same prompts saving it would use", async () => {
+    const { preparation, generateSpeech } = createPreparation({
+      Narrator: { voice: promptableVoice, prompt: "conspiratorial" },
+    });
+
+    await preparation.preparePreview({
+      slideIndex: 1,
+      sectionIndex: 0,
+      notes: "[Narrator]\n[p: almost whispering]\nFirst",
+      text: "First",
+      speakerChoice: { kind: "effective" },
+    });
+
+    expect(generateSpeech).toHaveBeenCalledWith(
+      "First",
+      promptableVoice,
+      "conspiratorial\nalmost whispering",
+    );
+  });
+
+  it("leaves a bracketed line that names no speaker in the narrated text", async () => {
+    const { preparation, generateSpeech } = createPreparation({
+      Narrator: { voice: promptableVoice },
+    });
+
+    await preparation.prepareBatch([{ slideIndex: 1, notes: "[Narrator]\n[sigh]\nFirst" }]);
+
+    expect(generateSpeech).toHaveBeenCalledWith("[sigh]\nFirst", promptableVoice, undefined);
+  });
+
+  it("narrates an inline prompt the chosen voice ignores rather than refusing it", async () => {
+    const { preparation, generateSpeech } = createPreparation({
+      Narrator: { voice: narratorVoice },
+    });
+
+    await preparation.prepareBatch([
+      { slideIndex: 1, notes: "[Narrator]\n[p: almost whispering]\nFirst" },
+    ]);
+
+    expect(generateSpeech).toHaveBeenCalledWith("First", narratorVoice, "almost whispering");
   });
 });

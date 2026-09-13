@@ -1,16 +1,30 @@
+import { DIRECTIVE_PATTERN } from "./speakerName.js";
+
 const DEFAULT_SECTION_SEPARATOR = "\n---\n";
+const DEFAULT_PROMPT_PREFIX = "[prompt: ";
+const DEFAULT_PROMPT_SUFFIX = "]";
 const SECTION_DIVIDER_PATTERN = /^[ \t]*-{3,}[ \t]*(?:\n)?$/;
-const SPEAKER_TAG_PATTERN = /^((?:[ \t]*\n)*[ \t]*)\[([^\]\n]*)\]([ \t]*)(?:\n|$)/;
-const LEADING_WHITESPACE_PATTERN = /^[ \t]*/;
-const TRAILING_WHITESPACE_PATTERN = /[ \t]*$/;
+/**
+ * Any leading bracketed line, whatever it turns out to mean. Content may span
+ * lines so a prompt can be a paragraph, but never crosses a `]`, so a bracket
+ * left unterminated — or closed mid-line — fails to match and stays plain text.
+ */
+const BRACKETED_LINE_PATTERN = /^((?:[ \t]*\n)*[ \t]*)\[([^\]]*)\]([ \t]*)(?:\n|$)/;
+const PROMPT_MARKERS = new Set(["p", "prompt"]);
+const SAME_LINE_PADDING = { leading: /^[ \t]*/, trailing: /[ \t]*$/ };
+/** A prompt may span lines, so its padding includes the newlines between them. */
+const ANY_PADDING = { leading: /^\s*/, trailing: /\s*$/ };
 
 export interface NarrationSection {
   speaker: string;
+  prompt?: string;
   text: string;
   format?: {
     separatorBefore?: string;
     speakerPrefix?: string;
     speakerSuffix?: string;
+    promptPrefix?: string;
+    promptSuffix?: string;
   };
 }
 
@@ -54,35 +68,117 @@ function splitRawSections(text: string): RawNarrationSection[] {
   return sections;
 }
 
-function parseSection(rawSection: RawNarrationSection): NarrationSection {
-  const speakerMatch = rawSection.text.match(SPEAKER_TAG_PATTERN);
-  const format = rawSection.separatorBefore ? { separatorBefore: rawSection.separatorBefore } : {};
+type BracketedLine = {
+  length: number;
+  lead: string;
+  content: string;
+  trailing: string;
+};
 
-  if (!speakerMatch) {
-    return {
-      speaker: "",
-      text: rawSection.text,
-      ...(Object.keys(format).length > 0 ? { format } : {}),
-    };
+function matchBracketedLine(text: string): BracketedLine | null {
+  const match = text.match(BRACKETED_LINE_PATTERN);
+  if (!match) {
+    return null;
   }
 
-  const speakerText = speakerMatch[2] ?? "";
-  const leadingSpeakerWhitespace = speakerText.match(LEADING_WHITESPACE_PATTERN)?.[0] || "";
-  const trailingSpeakerWhitespace = speakerText.match(TRAILING_WHITESPACE_PATTERN)?.[0] || "";
+  return {
+    length: match[0].length,
+    lead: match[1] ?? "",
+    content: match[2] ?? "",
+    trailing: match[3] ?? "",
+  };
+}
+
+/** Splits text into the padding a save must give back and the value in between. */
+function splitPadding(text: string, padding: { leading: RegExp; trailing: RegExp }) {
+  return {
+    leading: text.match(padding.leading)?.[0] || "",
+    trailing: text.match(padding.trailing)?.[0] || "",
+    value: text.trim(),
+  };
+}
+
+function readSpeaker(line: BracketedLine): Pick<NarrationSection, "speaker" | "format"> {
+  const { leading, trailing, value } = splitPadding(line.content, SAME_LINE_PADDING);
 
   return {
-    speaker: speakerText.trim(),
-    text: rawSection.text.slice(speakerMatch[0].length),
+    speaker: value,
     format: {
-      ...format,
-      speakerPrefix: `${speakerMatch[1]}[${leadingSpeakerWhitespace}`,
-      speakerSuffix: `${trailingSpeakerWhitespace}]${speakerMatch[3]}`,
+      speakerPrefix: `${line.lead}[${leading}`,
+      speakerSuffix: `${trailing}]${line.trailing}`,
     },
   };
 }
 
-export const parseNarrationSections = (text: string): NarrationSection[] =>
-  splitRawSections(normalizeNotes(text)).map((section) => parseSection(section));
+function readPrompt(line: BracketedLine): Pick<NarrationSection, "prompt" | "format"> | null {
+  const marker = line.content.match(DIRECTIVE_PATTERN);
+  if (!marker || !PROMPT_MARKERS.has((marker[1] ?? "").toLowerCase())) {
+    return null;
+  }
+
+  const { leading, trailing, value } = splitPadding(
+    line.content.slice(marker[0].length),
+    ANY_PADDING,
+  );
+
+  return {
+    // An empty prompt is no prompt, but the marker still claims the line, so a
+    // direction the author emptied is never narrated as text.
+    ...(value ? { prompt: value } : {}),
+    format: {
+      promptPrefix: `${line.lead}[${marker[0]}${leading}`,
+      promptSuffix: `${trailing}]${line.trailing}`,
+    },
+  };
+}
+
+/**
+ * Reads the head of a section: an optional speaker tag, then at most one prompt.
+ * Anything that classifies as neither ends the run and belongs to the text, so a
+ * mistyped speaker name stays visible rather than vanishing.
+ */
+function parseSection(
+  rawSection: RawNarrationSection,
+  knownSpeakers: ReadonlySet<string>,
+): NarrationSection {
+  let remaining = rawSection.text;
+  let speaker = "";
+  let prompt: string | undefined;
+  let format: NarrationSection["format"] = rawSection.separatorBefore
+    ? { separatorBefore: rawSection.separatorBefore }
+    : {};
+
+  const speakerLine = matchBracketedLine(remaining);
+  if (speakerLine && !readPrompt(speakerLine) && knownSpeakers.has(speakerLine.content.trim())) {
+    const speakerTag = readSpeaker(speakerLine);
+    speaker = speakerTag.speaker;
+    format = { ...format, ...speakerTag.format };
+    remaining = remaining.slice(speakerLine.length);
+  }
+
+  const promptLine = matchBracketedLine(remaining);
+  const promptTag = promptLine && readPrompt(promptLine);
+  if (promptLine && promptTag) {
+    prompt = promptTag.prompt;
+    format = { ...format, ...promptTag.format };
+    remaining = remaining.slice(promptLine.length);
+  }
+
+  return {
+    speaker,
+    ...(prompt ? { prompt } : {}),
+    text: remaining,
+    ...(format && Object.keys(format).length > 0 ? { format } : {}),
+  };
+}
+
+export const parseNarrationSections = (
+  text: string,
+  knownSpeakers: Iterable<string>,
+): NarrationSection[] => {
+  const names = new Set(knownSpeakers);
+  return splitRawSections(normalizeNotes(text)).map((section) => parseSection(section, names));
+};
 
 export const getEffectiveSpeaker = (
   sections: readonly Pick<NarrationSection, "speaker">[],
@@ -101,14 +197,24 @@ export const getEffectiveSpeaker = (
 export const formatNarrationSections = (sections: NarrationSection[]): string =>
   sections.reduce((notes, section, index) => {
     const separator = index > 0 ? section.format?.separatorBefore || DEFAULT_SECTION_SEPARATOR : "";
+    const tags: string[] = [];
 
     if (section.speaker) {
-      const speakerPrefix = section.format?.speakerPrefix || "[";
-      const speakerSuffix = section.format?.speakerSuffix || "]";
-      const speakerTag = `${speakerPrefix}${section.speaker}${speakerSuffix}`;
-      const sectionText = section.text ? `${speakerTag}\n${section.text}` : speakerTag;
-      return `${notes}${separator}${sectionText}`;
+      const prefix = section.format?.speakerPrefix || "[";
+      const suffix = section.format?.speakerSuffix || "]";
+      tags.push(`${prefix}${section.speaker}${suffix}`);
     }
 
-    return `${notes}${separator}${section.text}`;
+    if (section.prompt) {
+      const prefix = section.format?.promptPrefix || DEFAULT_PROMPT_PREFIX;
+      const suffix = section.format?.promptSuffix || DEFAULT_PROMPT_SUFFIX;
+      tags.push(`${prefix}${section.prompt}${suffix}`);
+    }
+
+    const head = tags.join("\n");
+    if (!head) {
+      return `${notes}${separator}${section.text}`;
+    }
+
+    return `${notes}${separator}${section.text ? `${head}\n${section.text}` : head}`;
   }, "");

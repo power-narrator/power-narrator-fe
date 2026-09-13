@@ -23,7 +23,10 @@ The audio bytes a TTS provider returned together with the media type of its outp
 _Avoid_: Audio blob, mp3 bytes
 
 **Unmapped speaker**:
-An explicitly selected or inherited speaker that has no configured voice mapping. Narration preparation fails instead of synthesizing with an unintended voice.
+A speaker that has a mapping but no configured voice in it. Narration preparation fails instead of synthesizing with an unintended voice. A bracketed line naming no mapping at all is not a speaker tag, so it stays in the section text rather than becoming an unmapped speaker.
+
+**Speaker tag**:
+A bracketed line at the head of a slide-note section naming a speaker. Only a name a speaker mapping carries is one: notes parsing is mapping-dependent, and a bracketed line that matches neither a prompt marker nor a mapping name is narration text — which is what keeps a Gemini style tag such as `[sigh]` intact and a mistyped speaker name visible.
 
 **Voice option**:
 A catalogue entry a TTS provider publishes for the voice picker, naming one voice and the models it can be synthesized with, each model carrying the languages it offers. A catalogue is only available while the provider's credentials are configured.
