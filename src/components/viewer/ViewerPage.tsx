@@ -546,7 +546,6 @@ export function ViewerPage({
           command.clearStatus();
           return;
         }
-        alert("Successfully removed audio from all slides.");
         command.showOutcome("Removed!");
       },
       (error) => alertError("Remove audio error", error),
