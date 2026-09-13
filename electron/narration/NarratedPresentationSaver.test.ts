@@ -4,21 +4,22 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BasicPptResult, SlideAudioEntry, SlideNotesEntry } from "../platform/types.js";
 import { TtsManager } from "../tts/TtsManager.js";
-import type { SynthesizedSpeech, TtsProvider, Voice } from "../tts/TtsProvider.js";
+import type { SpeakerMapping, SynthesizedSpeech, TtsProvider, Voice } from "../tts/TtsProvider.js";
 import type { NarrationPreparationProgress } from "../../shared/types/narration.js";
 import { NarrationPreparation } from "./NarrationPreparation.js";
 import { NarratedPresentationSaver } from "./NarratedPresentationSaver.js";
 
 const narratorVoice: Voice = {
-  name: "en-US-narrator",
-  languageCodes: ["en-US"],
-  ssmlGender: "FEMALE",
   provider: "gcp",
+  voiceId: "Narrator",
+  model: "chirp-3-hd",
+  languageCode: "en-US",
+  supportsPrompt: false,
 };
 
 const alternateNarratorVoice: Voice = {
   ...narratorVoice,
-  name: "en-GB-narrator",
+  languageCode: "en-GB",
 };
 
 const temporaryDirectories: string[] = [];
@@ -90,7 +91,7 @@ function createSaver(
     .mockResolvedValue({ audio: new Uint8Array([1]), mediaType: "audio/mpeg" }),
 ) {
   const preparation = new NarrationPreparation(
-    { getSpeakerMappings: () => ({ Narrator: narratorVoice }) },
+    { getSpeakerMappings: () => ({ Narrator: { voice: narratorVoice } }) },
     { supportsProvider: () => true, generateSpeech },
   );
   const powerpoint = new FakePowerPointAdapter();
@@ -103,7 +104,9 @@ function createSaver(
 }
 
 function createCachedRetrySaver(
-  getSpeakerMappings: () => Record<string, Voice> = () => ({ Narrator: narratorVoice }),
+  getSpeakerMappings: () => Record<string, SpeakerMapping> = () => ({
+    Narrator: { voice: narratorVoice },
+  }),
 ) {
   const cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "power-narrator-save-retry-"));
   temporaryDirectories.push(cacheDirectory);
@@ -111,11 +114,9 @@ function createCachedRetrySaver(
     .fn<() => Promise<Uint8Array>>()
     .mockResolvedValue(new Uint8Array([4, 5, 6]));
   const provider: TtsProvider = {
-    getVoices: vi
-      .fn<() => Promise<Voice[]>>()
-      .mockResolvedValue([narratorVoice, alternateNarratorVoice]),
+    getVoices: vi.fn<TtsProvider["getVoices"]>().mockResolvedValue([]),
     prepareSpeech: (text, voice) => ({
-      cacheIdentity: { text, voice: voice.name },
+      cacheIdentity: { text, voice: `${voice.languageCode}-${voice.voiceId}` },
       synthesize,
     }),
   };
@@ -364,7 +365,9 @@ describe("NarratedPresentationSaver", () => {
 
   it("synthesizes a new cache identity when speaker mappings change before retry", async () => {
     let mappedVoice = narratorVoice;
-    const { saver, synthesize } = createCachedRetrySaver(() => ({ Narrator: mappedVoice }));
+    const { saver, synthesize } = createCachedRetrySaver(() => ({
+      Narrator: { voice: mappedVoice },
+    }));
     const request = {
       filePath: "/slides/talk.pptx",
       slides: [{ slideIndex: 2, notes: "[Narrator]\nSame notes" }],

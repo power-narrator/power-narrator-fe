@@ -1,16 +1,16 @@
 import { createContext, useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import type { Voice } from "../../shared/types/tts";
+import type { SpeakerMapping } from "../../shared/types/tts";
 
 interface SettingsContextValue {
-  mappings: Record<string, Voice>;
-  saveMappings: (newMappings: Record<string, Voice>) => Promise<void>;
+  mappings: Record<string, SpeakerMapping>;
+  saveMappings: (newMappings: Record<string, SpeakerMapping>) => Promise<void>;
 }
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [mappings, setMappings] = useState<Record<string, Voice>>({});
+  const [mappings, setMappings] = useState<Record<string, SpeakerMapping>>({});
 
   const loadSettings = useCallback(async () => {
     const speakerMappings = await window.electronAPI.getSpeakerMappings();
@@ -18,7 +18,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return speakerMappings ?? {};
   }, []);
 
-  const saveMappings = useCallback(async (newMappings: Record<string, Voice>) => {
+  const saveMappings = useCallback(async (newMappings: Record<string, SpeakerMapping>) => {
     setMappings(newMappings);
     await window.electronAPI.setSpeakerMappings(newMappings);
   }, []);

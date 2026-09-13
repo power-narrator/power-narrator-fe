@@ -3,7 +3,7 @@ import { IconHistory, IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react
 import type { NarrationSection } from "../../../shared/narration/NarrationSections";
 import { DEFAULT_SPEAKER_VALUE } from "../../../shared/narration/speaker";
 import { getSpeakerOptions } from "../../utils/viewer";
-import type { Voice } from "../../../shared/types/tts";
+import type { SpeakerMapping } from "../../../shared/types/tts";
 import { useNarrationPreview } from "./useNarrationPreview";
 
 interface SectionPreviewButtonsProps {
@@ -12,7 +12,7 @@ interface SectionPreviewButtonsProps {
   sectionIndex: number;
   slideNotes: string;
   section: NarrationSection;
-  mappings: Record<string, Voice>;
+  mappings: Record<string, SpeakerMapping>;
   onFocus: () => void;
   getTextarea?: () => HTMLTextAreaElement | null;
 }

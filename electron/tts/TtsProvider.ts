@@ -1,6 +1,13 @@
-import type { TtsProviderId, Voice } from "../../shared/types/tts.js";
+import type { TtsProviderId, Voice, VoiceOption } from "../../shared/types/tts.js";
 
-export type { TtsProviderId, Voice } from "../../shared/types/tts.js";
+export type {
+  SpeakerMapping,
+  TtsProviderId,
+  Voice,
+  VoiceLanguage,
+  VoiceModel,
+  VoiceOption,
+} from "../../shared/types/tts.js";
 
 export type CacheIdentityValue =
   | null
@@ -21,7 +28,7 @@ export interface SynthesizedSpeech {
 }
 
 export interface TtsProvider {
-  getVoices: () => Promise<Voice[]>;
+  getVoices: () => Promise<VoiceOption[]>;
   prepareSpeech: (text: string, voice: Voice) => PreparedSpeechRequest;
 }
 

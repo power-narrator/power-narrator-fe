@@ -1,23 +1,45 @@
 import { MantineProvider } from "@mantine/core";
 import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
-import type { Voice } from "../../../shared/types/tts";
+import type { SpeakerMapping, VoiceOption } from "../../../shared/types/tts";
 import { SettingsProvider } from "../../context/SettingsContext";
 import { SettingsModal } from "./SettingsModal";
 
-const registryVoice: Voice = {
-  name: "future-voice",
-  languageCodes: ["en-US"],
-  ssmlGender: "NEUTRAL",
+const registryOption: VoiceOption = {
   provider: "future-provider",
+  name: "future-voice",
+  ssmlGender: "NEUTRAL",
+  models: [
+    {
+      id: "future-model",
+      label: "Future",
+      supportsPrompt: true,
+      languages: [{ code: "en-US", label: "en-US" }],
+    },
+  ],
 };
 
-const gcpVoice: Voice = {
-  name: "en-US-Chirp3-HD-Aoede",
-  languageCodes: ["en-US"],
-  ssmlGender: "FEMALE",
+const gcpOption: VoiceOption = {
   provider: "gcp",
+  name: "Aoede",
+  ssmlGender: "FEMALE",
+  models: [
+    {
+      id: "chirp-3-hd",
+      label: "Chirp 3 HD",
+      supportsPrompt: false,
+      languages: [{ code: "en-US", label: "en-US" }],
+    },
+  ],
 };
+
+const gcpVoice = {
+  provider: "gcp",
+  voiceId: "Aoede",
+  model: "chirp-3-hd",
+  languageCode: "en-US",
+  supportsPrompt: false,
+} as const;
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -25,17 +47,17 @@ afterEach(() => {
 });
 
 test("creates a mapping from the voices exposed by the provider registry", async () => {
-  const savedMappings: Record<string, Voice>[] = [];
+  const savedMappings: Record<string, SpeakerMapping>[] = [];
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
     value: {
       getSpeakerMappings: () => Promise.resolve({}),
-      setSpeakerMappings: (mappings: Record<string, Voice>) => {
+      setSpeakerMappings: (mappings: Record<string, SpeakerMapping>) => {
         savedMappings.push(mappings);
         return Promise.resolve({ success: true });
       },
       getGcpKeyPath: () => Promise.resolve(null),
-      getVoices: () => Promise.resolve([registryVoice]),
+      getVoices: () => Promise.resolve([registryOption]),
       getXmlCliEnabled: () => Promise.resolve(false),
       setXmlCliEnabled: () => Promise.resolve({ success: true }),
     },
@@ -56,30 +78,31 @@ test("creates a mapping from the voices exposed by the provider registry", async
   await screen.getByRole("button", { name: "Add Mapping" }).click();
   await vi.waitFor(() => expect(savedMappings).toHaveLength(1));
 
-  expect(savedMappings[0]).toEqual({
-    Narrator: { name: "", languageCodes: [], ssmlGender: "", provider: "future-provider" },
-  });
+  expect(savedMappings[0]).toEqual({ Narrator: {} });
   expect(screen.getByText("Local TTS").query()).toBeNull();
 });
 
 test("replaces a persisted mapping whose provider is no longer registered", async () => {
-  const savedMappings: Record<string, Voice>[] = [];
-  const legacyVoice: Voice = {
-    name: "legacy-local-voice",
-    languageCodes: ["en-GB"],
-    ssmlGender: "MALE",
-    provider: "local",
+  const savedMappings: Record<string, SpeakerMapping>[] = [];
+  const staleMapping: SpeakerMapping = {
+    voice: {
+      provider: "local",
+      voiceId: "apope_low",
+      model: "local-1",
+      languageCode: "en-GB",
+      supportsPrompt: false,
+    },
   };
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
     value: {
-      getSpeakerMappings: () => Promise.resolve({ Narrator: legacyVoice }),
-      setSpeakerMappings: (mappings: Record<string, Voice>) => {
+      getSpeakerMappings: () => Promise.resolve({ Narrator: staleMapping }),
+      setSpeakerMappings: (mappings: Record<string, SpeakerMapping>) => {
         savedMappings.push(mappings);
         return Promise.resolve({ success: true });
       },
       getGcpKeyPath: () => Promise.resolve(null),
-      getVoices: () => Promise.resolve([gcpVoice]),
+      getVoices: () => Promise.resolve([gcpOption]),
       getXmlCliEnabled: () => Promise.resolve(false),
       setXmlCliEnabled: () => Promise.resolve({ success: true }),
     },
@@ -96,7 +119,7 @@ test("replaces a persisted mapping whose provider is no longer registered", asyn
   await vi.waitFor(() => expect(screen.getByText("[Narrator]").query()).not.toBeNull());
   const mappingSelector = screen.getByRole("combobox").nth(1);
   await mappingSelector.click();
-  await screen.getByRole("option", { name: /en-US-Chirp3-HD-Aoede/ }).click();
+  await screen.getByRole("option", { name: /Aoede/ }).click();
 
-  await vi.waitFor(() => expect(savedMappings).toContainEqual({ Narrator: gcpVoice }));
+  await vi.waitFor(() => expect(savedMappings).toContainEqual({ Narrator: { voice: gcpVoice } }));
 });

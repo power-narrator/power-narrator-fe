@@ -15,7 +15,7 @@ import { IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { DEFAULT_SPEAKER_KEY } from "../../../shared/narration/speaker";
 import { useSettings } from "../../context/useSettings";
-import type { Voice } from "../../../shared/types/tts";
+import type { Voice, VoiceOption } from "../../../shared/types/tts";
 import { getProviderLabel } from "./providerLabels";
 import { VoiceSelector } from "./VoiceSelector";
 
@@ -24,18 +24,14 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-function createEmptyVoice(provider: string): Voice {
-  return { name: "", languageCodes: [], ssmlGender: "", provider };
-}
-
 export function SettingsModal({ opened, onClose }: SettingsModalProps) {
   const [keyPath, setKeyPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newAlias, setNewAlias] = useState("");
-  const [voices, setVoices] = useState<Voice[]>([]);
+  const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([]);
   const [xmlCliEnabled, setXmlCliEnabled] = useState(false);
   const { mappings, saveMappings } = useSettings();
-  const mappedVoices = Object.entries(mappings).filter(([key]) => key !== DEFAULT_SPEAKER_KEY);
+  const mappedSpeakers = Object.entries(mappings).filter(([key]) => key !== DEFAULT_SPEAKER_KEY);
 
   useEffect(() => {
     if (!opened) {
@@ -49,7 +45,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
     ])
       .then(([path, loadedVoices, xmlEnabled]) => {
         setKeyPath(path || null);
-        setVoices(loadedVoices || []);
+        setVoiceOptions(loadedVoices || []);
         setXmlCliEnabled(Boolean(xmlEnabled));
       })
       .catch((loadError) => {
@@ -58,7 +54,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
   }, [opened]);
 
   const updateMapping = (alias: string, voice: Voice) => {
-    void saveMappings({ ...mappings, [alias]: voice });
+    void saveMappings({ ...mappings, [alias]: { ...mappings[alias], voice } });
   };
 
   const removeMapping = (alias: string) => {
@@ -69,12 +65,11 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
 
   const addAlias = () => {
     const trimmedAlias = newAlias.trim();
-    const provider = voices[0]?.provider;
-    if (!trimmedAlias || mappings[trimmedAlias] || !provider) {
+    if (!trimmedAlias || mappings[trimmedAlias]) {
       return;
     }
 
-    void saveMappings({ ...mappings, [trimmedAlias]: createEmptyVoice(provider) });
+    void saveMappings({ ...mappings, [trimmedAlias]: {} });
     setNewAlias("");
   };
 
@@ -143,9 +138,9 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
             </Text>
           </Box>
           <Text size="sm" fw={600} c="dimmed">
-            {Array.from(new Set(voices.map((voice) => getProviderLabel(voice.provider)))).join(
-              ", ",
-            )}
+            {Array.from(
+              new Set(voiceOptions.map((option) => getProviderLabel(option.provider))),
+            ).join(", ")}
           </Text>
         </Group>
 
@@ -160,13 +155,13 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
               Default Voice (No Tag)
             </Text>
             <VoiceSelector
-              value={mappings[DEFAULT_SPEAKER_KEY] || null}
+              value={mappings[DEFAULT_SPEAKER_KEY]?.voice}
               onChange={(voice) => updateMapping(DEFAULT_SPEAKER_KEY, voice)}
-              voices={voices}
+              options={voiceOptions}
             />
           </Group>
 
-          {mappedVoices.map(([alias, voice]) => (
+          {mappedSpeakers.map(([alias, mapping]) => (
             <Group
               key={alias}
               justify="space-between"
@@ -177,9 +172,9 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
               <Code>[{alias}]</Code>
               <Group gap="xs">
                 <VoiceSelector
-                  value={voice}
+                  value={mapping.voice}
                   onChange={(nextVoice) => updateMapping(alias, nextVoice)}
-                  voices={voices}
+                  options={voiceOptions}
                 />
                 <ActionIcon color="red" variant="subtle" onClick={() => removeMapping(alias)}>
                   <IconTrash size={16} />
@@ -201,7 +196,11 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
               }}
               style={{ flex: 1 }}
             />
-            <Button size="xs" onClick={addAlias} disabled={!newAlias.trim() || voices.length === 0}>
+            <Button
+              size="xs"
+              onClick={addAlias}
+              disabled={!newAlias.trim() || voiceOptions.length === 0}
+            >
               Add Mapping
             </Button>
           </Group>

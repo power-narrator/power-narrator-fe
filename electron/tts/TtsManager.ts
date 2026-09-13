@@ -8,6 +8,7 @@ import type {
   TtsProviderId,
   TtsProviderRegistry,
   Voice,
+  VoiceOption,
 } from "./TtsProvider.js";
 
 const MP3_MEDIA_TYPE = "audio/mpeg";
@@ -60,7 +61,7 @@ export class TtsManager {
     this.cacheDirectory = cacheDirectory ?? getNarrationCacheDirectory(app.getPath("home"));
   }
 
-  async getVoices(): Promise<Voice[]> {
+  async getVoices(): Promise<VoiceOption[]> {
     const voiceLists = await Promise.all(
       Array.from(this.providers, async ([providerId, provider]) => {
         try {
