@@ -13,7 +13,7 @@ import {
 } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
-import { DEFAULT_SPEAKER_KEY } from "../../../shared/narration/speaker";
+import { DEFAULT_SPEAKER_KEY, DEFAULT_SPEAKER_LABEL } from "../../../shared/narration/speaker";
 import { useSettings } from "../../context/useSettings";
 import type { Voice, VoiceOption } from "../../../shared/types/tts";
 import { getProviderLabel } from "./providerLabels";
@@ -53,8 +53,16 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
       });
   }, [opened]);
 
-  const updateMapping = (alias: string, voice: Voice) => {
-    void saveMappings({ ...mappings, [alias]: { ...mappings[alias], voice } });
+  const updateMapping = (alias: string, voice: Voice | undefined) => {
+    // A cleared voice leaves no key behind, so an unconfigured mapping is the
+    // absence of a voice rather than a voice set to undefined.
+    const nextMapping = { ...mappings[alias] };
+    delete nextMapping.voice;
+    if (voice) {
+      nextMapping.voice = voice;
+    }
+
+    void saveMappings({ ...mappings, [alias]: nextMapping });
   };
 
   const removeMapping = (alias: string) => {
@@ -155,6 +163,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
               Default Voice (No Tag)
             </Text>
             <VoiceSelector
+              speakerLabel={DEFAULT_SPEAKER_LABEL}
               value={mappings[DEFAULT_SPEAKER_KEY]?.voice}
               onChange={(voice) => updateMapping(DEFAULT_SPEAKER_KEY, voice)}
               options={voiceOptions}
@@ -172,6 +181,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
               <Code>[{alias}]</Code>
               <Group gap="xs">
                 <VoiceSelector
+                  speakerLabel={alias}
                   value={mapping.voice}
                   onChange={(nextVoice) => updateMapping(alias, nextVoice)}
                   options={voiceOptions}

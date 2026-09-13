@@ -41,3 +41,5 @@ __pycache__/
 playwright-report/
 test-results/
 release/
+__screenshots__/
+.vitest-attachments/
