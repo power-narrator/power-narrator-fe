@@ -1,11 +1,13 @@
 # The voice catalogue is nested, and a stored voice holds provider keys rather than provider ids
 
-A provider publishes voice options as a nested catalogue: a voice offers models, and each model offers languages. A stored voice collapses that to one of each. The nesting exists because the alternatives are worse — a flat entry per combination is roughly ten thousand rows for one provider, and a flat union of models and languages would offer combinations that do not exist, since coverage differs between models of the same voice.
+A provider publishes voice options as a nested catalogue: a voice offers models, and each model offers languages. A stored voice collapses that to one of each.
 
-The picker renders one shape for every provider and hides a level whose array holds a single entry, so a provider with no model or language choice renders as a bare voice dropdown without a second code path. Flatness is emergent, not a mode.
+The nesting exists because both flat alternatives fail. A flat entry per combination runs to five figures for a single provider. A flat union of models and languages offers combinations that do not exist, because coverage differs between models of the same voice. Nesting makes an unavailable combination unrepresentable rather than merely unselected.
 
-Consequently a stored voice holds the provider's *key* for a voice, not necessarily the identifier the provider's API accepts. Where an identifier encodes the model and language, the provider composes it at synthesis time from the stored voice, model, and language. Do not "fix" this by storing the composed identifier: it would make the stored record unable to express a voice whose language is chosen separately.
+Consequently a stored voice holds the provider's *key* for a voice, not necessarily the identifier the provider's API accepts. Where an identifier encodes the model and language, the provider composes it at synthesis from the stored voice, model, and language, and decomposes it when reading its own catalogue. Do not "fix" this by storing the composed identifier: it would make the stored record unable to express a voice whose language is chosen separately.
 
 ## Consequences
 
-Switching a speaker's model can invalidate its language, so the settings UI clamps the language to one the newly chosen model offers. Providers own two mappings the rest of the app never sees: a model's display label, and whether that model is named in the request or implied by the voice identifier.
+A voice option's label can only name what is true of the voice itself, since its model and language are not yet chosen when the option is displayed.
+
+Choosing a model constrains which languages are available, so the two choices cannot be made independently.
