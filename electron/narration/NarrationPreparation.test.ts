@@ -2,38 +2,41 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import type { SynthesizedSpeech, TtsProvider, Voice } from "../tts/TtsProvider.js";
+import type { SpeakerMapping, SynthesizedSpeech, TtsProvider, Voice } from "../tts/TtsProvider.js";
 import { TtsManager } from "../tts/TtsManager.js";
 import { NarrationPreparation, NarrationPreparationError } from "./NarrationPreparation.js";
 
 const narratorVoice: Voice = {
-  name: "en-US-narrator",
-  languageCodes: ["en-US"],
-  ssmlGender: "FEMALE",
   provider: "gcp",
+  voiceId: "Narrator",
+  model: "chirp-3-hd",
+  languageCode: "en-US",
+  supportsPrompt: false,
 };
 
 const defaultVoice: Voice = {
-  name: "en-US-default",
-  languageCodes: ["en-US"],
-  ssmlGender: "NEUTRAL",
   provider: "gcp",
+  voiceId: "Default",
+  model: "chirp-3-hd",
+  languageCode: "en-US",
+  supportsPrompt: false,
 };
 
 const guestVoice: Voice = {
-  name: "en-GB-guest",
-  languageCodes: ["en-GB"],
-  ssmlGender: "MALE",
   provider: "local",
+  voiceId: "Guest",
+  model: "local-1",
+  languageCode: "en-GB",
+  supportsPrompt: true,
 };
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const defaultMappings: Record<string, Voice> = { Narrator: narratorVoice };
+const defaultMappings: Record<string, SpeakerMapping> = { Narrator: { voice: narratorVoice } };
 
-function createPreparation(mappings: Record<string, Voice> = defaultMappings) {
+function createPreparation(mappings: Record<string, SpeakerMapping> = defaultMappings) {
   const generateSpeech = vi
     .fn<(text: string, voice: Voice) => Promise<SynthesizedSpeech>>()
     .mockResolvedValue({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
@@ -56,14 +59,14 @@ describe("NarrationPreparation", () => {
       .fn<() => Promise<Uint8Array>>()
       .mockResolvedValue(new Uint8Array([7, 8, 9]));
     const provider: TtsProvider = {
-      getVoices: vi.fn<() => Promise<Voice[]>>().mockResolvedValue([]),
+      getVoices: vi.fn<TtsProvider["getVoices"]>().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
-        cacheIdentity: { text, voice: voice.name },
+        cacheIdentity: { text, voice: voice.voiceId },
         synthesize,
       }),
     };
     const preparation = new NarrationPreparation(
-      { getSpeakerMappings: () => ({ Narrator: narratorVoice }) },
+      { getSpeakerMappings: () => ({ Narrator: { voice: narratorVoice } }) },
       new TtsManager(new Map([["gcp", provider]]), cacheDirectory),
     );
     const request = {
@@ -92,7 +95,7 @@ describe("NarrationPreparation", () => {
         }),
     );
     const preparation = new NarrationPreparation(
-      { getSpeakerMappings: () => ({ Narrator: narratorVoice }) },
+      { getSpeakerMappings: () => ({ Narrator: { voice: narratorVoice } }) },
       { supportsProvider: () => true, generateSpeech },
     );
 
@@ -148,13 +151,13 @@ describe("NarrationPreparation", () => {
     );
   });
 
-  it.each([
+  it.each<[string, SpeakerMapping | undefined]>([
     ["missing", undefined],
-    ["empty", {}],
-    ["legacy placeholder", { ...narratorVoice, name: "default" }],
-    ["unknown provider", { ...narratorVoice, provider: "unknown" }],
-  ])("rejects a %s voice before synthesis with preview context", async (_, mappedVoice) => {
-    const mappings: Record<string, Voice> = mappedVoice ? { Narrator: mappedVoice as Voice } : {};
+    ["unconfigured", {}],
+    ["prompt-only", { prompt: "Whisper" }],
+    ["unknown provider", { voice: { ...narratorVoice, provider: "unknown" } }],
+  ])("rejects a %s mapping before synthesis with preview context", async (_, mapping) => {
+    const mappings: Record<string, SpeakerMapping> = mapping ? { Narrator: mapping } : {};
     const { preparation, generateSpeech } = createPreparation(mappings);
 
     await expect(
@@ -171,8 +174,8 @@ describe("NarrationPreparation", () => {
 
   it("inherits the speaker from an earlier section in the supplied slide", async () => {
     const { preparation, generateSpeech } = createPreparation({
-      Narrator: narratorVoice,
-      _default_: defaultVoice,
+      Narrator: { voice: narratorVoice },
+      _default_: { voice: defaultVoice },
     });
 
     await preparation.preparePreview({
@@ -188,8 +191,8 @@ describe("NarrationPreparation", () => {
 
   it("uses the default voice when the supplied slide names no speaker", async () => {
     const { preparation, generateSpeech } = createPreparation({
-      Narrator: narratorVoice,
-      _default_: defaultVoice,
+      Narrator: { voice: narratorVoice },
+      _default_: { voice: defaultVoice },
     });
 
     await preparation.preparePreview({
@@ -205,8 +208,8 @@ describe("NarrationPreparation", () => {
 
   it("uses a temporary preview speaker without changing the supplied notes", async () => {
     const { preparation, generateSpeech } = createPreparation({
-      Narrator: narratorVoice,
-      Guest: guestVoice,
+      Narrator: { voice: narratorVoice },
+      Guest: { voice: guestVoice },
     });
     const request = {
       slideIndex: 1,
@@ -224,8 +227,8 @@ describe("NarrationPreparation", () => {
 
   it("treats an explicit Default preview as an override of the effective speaker", async () => {
     const { preparation, generateSpeech } = createPreparation({
-      Narrator: narratorVoice,
-      _default_: defaultVoice,
+      Narrator: { voice: narratorVoice },
+      _default_: { voice: defaultVoice },
     });
 
     await preparation.preparePreview({
@@ -241,8 +244,8 @@ describe("NarrationPreparation", () => {
 
   it("rejects whitespace-only preview text before loading mappings or synthesis", async () => {
     const getSpeakerMappings = vi
-      .fn<() => Record<string, Voice>>()
-      .mockReturnValue({ Narrator: narratorVoice });
+      .fn<() => Record<string, SpeakerMapping>>()
+      .mockReturnValue({ Narrator: { voice: narratorVoice } });
     const generateSpeech = vi.fn<(text: string, voice: Voice) => Promise<SynthesizedSpeech>>();
     const preparation = new NarrationPreparation(
       { getSpeakerMappings },

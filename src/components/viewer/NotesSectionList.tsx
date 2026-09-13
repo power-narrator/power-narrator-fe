@@ -11,7 +11,7 @@ import {
 } from "@mantine/core";
 import type { NarrationSection } from "../../../shared/narration/NarrationSections";
 import { getSpeakerOptions } from "../../utils/viewer";
-import type { Voice } from "../../../shared/types/tts";
+import type { SpeakerMapping } from "../../../shared/types/tts";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
 import { IconPlus } from "@tabler/icons-react";
 import { getEffectiveSpeaker } from "../../../shared/narration/NarrationSections";
@@ -19,7 +19,7 @@ import { DEFAULT_SPEAKER_VALUE } from "../../../shared/narration/speaker";
 
 interface NotesSectionListProps {
   sections: NarrationSection[];
-  mappings: Record<string, Voice>;
+  mappings: Record<string, SpeakerMapping>;
   onFocusSection: (index: number) => void;
   onSpeakerChange: (index: number, speaker: string | null) => void;
   onSectionTextChange: (index: number, value: string) => void;

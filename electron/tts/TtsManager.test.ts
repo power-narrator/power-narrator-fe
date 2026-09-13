@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Mock } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TtsProvider, TtsProviderRegistry, Voice } from "./TtsProvider.js";
+import type { TtsProvider, TtsProviderRegistry, Voice, VoiceOption } from "./TtsProvider.js";
 import { getNarrationCacheDirectory, TtsManager } from "./TtsManager.js";
 
 const { getUserDataPath, interruptNextCachePublish } = vi.hoisted(() => ({
@@ -47,15 +47,15 @@ afterEach(() => {
 });
 
 function createProvider(
-  voices: Voice[] = [],
+  voices: VoiceOption[] = [],
 ): TtsProvider & { generateSpeech: Mock<(text: string, voice: Voice) => Promise<Uint8Array>> } {
   const generateSpeech = vi
     .fn<(text: string, voice: Voice) => Promise<Uint8Array>>()
     .mockResolvedValue(new Uint8Array([1, 2, 3]));
   return {
-    getVoices: vi.fn<() => Promise<Voice[]>>().mockResolvedValue(voices),
+    getVoices: vi.fn<TtsProvider["getVoices"]>().mockResolvedValue(voices),
     prepareSpeech: (text, voice) => ({
-      cacheIdentity: { text, voice: voice.name },
+      cacheIdentity: { text, voice: voice.voiceId },
       synthesize: () => generateSpeech(text, voice),
     }),
     generateSpeech,
@@ -63,24 +63,48 @@ function createProvider(
 }
 
 const gcpVoice: Voice = {
-  name: "en-US-Chirp3-HD-Aoede",
-  languageCodes: ["en-US"],
-  ssmlGender: "FEMALE",
   provider: "gcp",
+  voiceId: "Aoede",
+  model: "chirp-3-hd",
+  languageCode: "en-US",
+  supportsPrompt: false,
 };
 
 const futureVoice: Voice = {
-  name: "future-voice",
-  languageCodes: ["en-US"],
-  ssmlGender: "NEUTRAL",
   provider: "future-provider",
+  voiceId: "future-voice",
+  model: "future-model",
+  languageCode: "en-US",
+  supportsPrompt: true,
+};
+
+const gcpVoiceOption: VoiceOption = {
+  provider: "gcp",
+  name: "Aoede",
+  ssmlGender: "FEMALE",
+  models: [
+    {
+      id: "chirp-3-hd",
+      label: "Chirp 3 HD",
+      supportsPrompt: false,
+      languages: [{ code: "en-US", label: "en-US" }],
+    },
+  ],
+};
+
+const futureVoiceOption: VoiceOption = {
+  provider: "future-provider",
+  name: "future-voice",
+  ssmlGender: "NEUTRAL",
+  models: [{ id: "future-model", label: "Future", supportsPrompt: true, languages: [] }],
 };
 
 const legacyLocalVoice: Voice = {
-  name: "en_UK/apope_low",
-  languageCodes: ["en-GB"],
-  ssmlGender: "MALE",
   provider: "local",
+  voiceId: "apope_low",
+  model: "local-1",
+  languageCode: "en-GB",
+  supportsPrompt: false,
 };
 
 describe("TtsManager", () => {
@@ -134,9 +158,9 @@ describe("TtsManager", () => {
 
   it("stores output from every registered provider as PowerPoint-compatible MP3", async () => {
     const futureProvider: TtsProvider = {
-      getVoices: vi.fn<() => Promise<Voice[]>>().mockResolvedValue([]),
+      getVoices: vi.fn<TtsProvider["getVoices"]>().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
-        cacheIdentity: { text, voice: voice.name },
+        cacheIdentity: { text, voice: voice.voiceId },
         synthesize: () => Promise.resolve(new Uint8Array([1, 2, 3])),
       }),
     };
@@ -211,11 +235,11 @@ describe("TtsManager", () => {
       .fn<() => Promise<Uint8Array>>()
       .mockResolvedValue(new Uint8Array([3, 2, 1]));
     const provider: TtsProvider = {
-      getVoices: vi.fn<() => Promise<Voice[]>>().mockResolvedValue([]),
+      getVoices: vi.fn<TtsProvider["getVoices"]>().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
         cacheIdentity: {
           input: { ssml: text.startsWith("<speak>") ? text : `<speak>${text}</speak>` },
-          voice: { languageCode: voice.languageCodes[0] ?? "", name: voice.name },
+          voice: { languageCode: voice.languageCode, name: voice.voiceId },
         },
         synthesize,
       }),
@@ -235,13 +259,13 @@ describe("TtsManager", () => {
       .fn<(speakingRate: number) => Promise<Uint8Array>>()
       .mockResolvedValue(new Uint8Array([1]));
     const provider: TtsProvider = {
-      getVoices: vi.fn<() => Promise<Voice[]>>().mockResolvedValue([]),
+      getVoices: vi.fn<TtsProvider["getVoices"]>().mockResolvedValue([]),
       prepareSpeech: (text, voice) => {
         const preparedSpeakingRate = speakingRate;
         return {
           cacheIdentity: {
             input: { text },
-            voice: voice.name,
+            voice: voice.voiceId,
             audioConfig: { audioEncoding: "MP3", speakingRate: preparedSpeakingRate },
           },
           synthesize: () => synthesize(preparedSpeakingRate),
@@ -268,9 +292,9 @@ describe("TtsManager", () => {
         }),
     );
     const provider: TtsProvider = {
-      getVoices: vi.fn<() => Promise<Voice[]>>().mockResolvedValue([]),
+      getVoices: vi.fn<TtsProvider["getVoices"]>().mockResolvedValue([]),
       prepareSpeech: (text, voice) => ({
-        cacheIdentity: { text, voice: voice.name },
+        cacheIdentity: { text, voice: voice.voiceId },
         synthesize,
       }),
     };
@@ -319,7 +343,7 @@ describe("TtsManager", () => {
     const pending = new Map<string, (audio: Uint8Array) => void>();
     const starts: string[] = [];
     const provider: TtsProvider = {
-      getVoices: vi.fn<() => Promise<Voice[]>>().mockResolvedValue([]),
+      getVoices: vi.fn<TtsProvider["getVoices"]>().mockResolvedValue([]),
       prepareSpeech: (text) => ({
         cacheIdentity: { text },
         synthesize: () =>
@@ -385,8 +409,8 @@ describe("TtsManager", () => {
   });
 
   it("loads providers concurrently and retains registry order", async () => {
-    let releaseGcp: (voices: Voice[]) => void = () => {};
-    let releaseFuture: (voices: Voice[]) => void = () => {};
+    let releaseGcp: (voices: VoiceOption[]) => void = () => {};
+    let releaseFuture: (voices: VoiceOption[]) => void = () => {};
     const starts: string[] = [];
     const gcp = createProvider();
     const futureProvider = createProvider();
@@ -414,15 +438,15 @@ describe("TtsManager", () => {
     const voicesPromise = manager.getVoices();
     expect(starts).toEqual(["gcp", "future-provider"]);
 
-    releaseFuture([futureVoice]);
-    releaseGcp([gcpVoice]);
-    await expect(voicesPromise).resolves.toEqual([gcpVoice, futureVoice]);
+    releaseFuture([futureVoiceOption]);
+    releaseGcp([gcpVoiceOption]);
+    await expect(voicesPromise).resolves.toEqual([gcpVoiceOption, futureVoiceOption]);
   });
 
   it("keeps healthy voices and identifies a failed provider in the log", async () => {
     const failure = new Error("credentials unavailable");
     const gcp = createProvider();
-    const futureProvider = createProvider([futureVoice]);
+    const futureProvider = createProvider([futureVoiceOption]);
     vi.mocked(gcp.getVoices).mockRejectedValue(failure);
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
     const registry: TtsProviderRegistry = new Map([
@@ -430,7 +454,7 @@ describe("TtsManager", () => {
       ["future-provider", futureProvider],
     ]);
 
-    await expect(new TtsManager(registry).getVoices()).resolves.toEqual([futureVoice]);
+    await expect(new TtsManager(registry).getVoices()).resolves.toEqual([futureVoiceOption]);
     expect(errorLog).toHaveBeenCalledWith("Failed fetching voices from provider 'gcp':", failure);
   });
 });

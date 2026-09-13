@@ -11,7 +11,8 @@ import { XmlPptProvider } from "./platform/XmlPptProvider.js";
 import { APP_NAME } from "./platform/helpers.js";
 import { TtsManager } from "./tts/TtsManager.js";
 import { GcpTtsProvider } from "./tts/GcpTtsProvider.js";
-import type { TtsProvider, TtsProviderId, Voice } from "./tts/TtsProvider.js";
+import type { SpeakerMapping, TtsProvider, TtsProviderId } from "./tts/TtsProvider.js";
+import { migrateSpeakerMappings } from "./settings/speakerMappingMigration.js";
 import type {
   GenerateVideoRequest,
   PlaySlideRequest,
@@ -39,7 +40,15 @@ protocol.registerSchemesAsPrivileged([
 dotenv.config();
 
 app.setName(APP_NAME);
-const store = new Store();
+const store = new Store({
+  migrations: {
+    "0.8.0": (migrated) => {
+      if (migrated.has("speakerMappings")) {
+        migrated.set("speakerMappings", migrateSpeakerMappings(migrated.get("speakerMappings")));
+      }
+    },
+  },
+});
 const unsavedNarrationChanges = new UnsavedNarrationChanges();
 unsavedNarrationChanges.install(ipcMain);
 
@@ -84,7 +93,8 @@ function getActiveCoreProvider(): PptProvider {
 
 registerNarrationIpc(ipcMain, {
   mappingSource: {
-    getSpeakerMappings: () => (store.get("speakerMappings") as Record<string, Voice>) || {},
+    getSpeakerMappings: () =>
+      (store.get("speakerMappings") as Record<string, SpeakerMapping>) || {},
   },
   synthesizer: ttsManager,
   getPowerPoint: getActiveCoreProvider,

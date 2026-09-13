@@ -13,10 +13,11 @@ import { SectionPreviewButtons } from "./SectionPreviewButtons";
 import { NarrationPreviewProvider } from "./useNarrationPreview";
 
 const narratorVoice: Voice = {
-  name: "narrator-test-voice",
-  languageCodes: ["en-US"],
-  ssmlGender: "FEMALE",
   provider: "gcp",
+  voiceId: "Narrator",
+  model: "chirp-3-hd",
+  languageCode: "en-US",
+  supportsPrompt: false,
 };
 
 afterEach(() => {
@@ -79,7 +80,7 @@ async function renderSpeakerChoicePreview({
         sectionIndex={sectionIndex}
         slideNotes={slideNotes}
         section={section}
-        mappings={{ Narrator: narratorVoice }}
+        mappings={{ Narrator: { voice: narratorVoice } }}
         onFocus={() => {}}
       />
     </PreviewProviders>,
@@ -113,7 +114,7 @@ async function renderConcurrentSectionPreviews() {
           sectionIndex={index}
           slideNotes={`${speaker} section`}
           section={{ speaker, text: `${speaker} section` }}
-          mappings={{ [speaker]: narratorVoice }}
+          mappings={{ [speaker]: { voice: narratorVoice } }}
           onFocus={() => {}}
         />
       ))}
@@ -149,7 +150,7 @@ test("previews only the text selected in the live notes editor", async () => {
           sectionIndex={0}
           slideNotes="Stale section text"
           section={{ speaker: "Narrator", text: "Stale section text" }}
-          mappings={{ Narrator: narratorVoice }}
+          mappings={{ Narrator: { voice: narratorVoice } }}
           onFocus={() => {}}
           getTextarea={() => editorRef.current}
         />
@@ -267,7 +268,7 @@ test("stopping a pending preview suppresses its late audio result", async () => 
         sectionIndex={0}
         slideNotes="Delayed preview"
         section={{ speaker: "Narrator", text: "Delayed preview" }}
-        mappings={{ Narrator: narratorVoice }}
+        mappings={{ Narrator: { voice: narratorVoice } }}
         onFocus={() => {}}
       />
     </PreviewProviders>,
@@ -342,7 +343,7 @@ test("creates MP3 playback for a narration preview", async () => {
         sectionIndex={0}
         slideNotes="[Narrator]\nLocal narration"
         section={{ speaker: "Narrator", text: "Local narration" }}
-        mappings={{ Narrator: narratorVoice }}
+        mappings={{ Narrator: { voice: narratorVoice } }}
         onFocus={() => {}}
       />
     </PreviewProviders>,

@@ -4,7 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { SlideWithSrc as Slide } from "../../electron/platform/types.js";
-import type { Voice } from "../../shared/types/tts.js";
+import type { SpeakerMapping, Voice } from "../../shared/types/tts.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,18 +30,24 @@ const MOCK_SLIDES: Slide[] = [
   },
 ];
 
-const MOCK_VOICES: Record<string, Voice> = {
+const MOCK_MAPPINGS: Record<string, SpeakerMapping> = {
   _default_: {
-    name: "default-test-voice",
-    languageCodes: ["en-US"],
-    ssmlGender: "NEUTRAL",
-    provider: "gcp",
+    voice: {
+      provider: "gcp",
+      voiceId: "Default",
+      model: "chirp-3-hd",
+      languageCode: "en-US",
+      supportsPrompt: false,
+    },
   },
   Narrator: {
-    name: "narrator-test-voice",
-    languageCodes: ["en-US"],
-    ssmlGender: "FEMALE",
-    provider: "gcp",
+    voice: {
+      provider: "gcp",
+      voiceId: "Narrator",
+      model: "chirp-3-hd",
+      languageCode: "en-US",
+      supportsPrompt: false,
+    },
   },
 };
 
@@ -96,7 +102,7 @@ async function launchTestApp() {
 
 async function installMockIpcHandlers(app: ElectronApplication) {
   await app.evaluate(
-    ({ ipcMain }, { testFilePath, mockSlides, mockVoices, deterministicMp3Bytes }) => {
+    ({ ipcMain }, { testFilePath, mockSlides, mockMappings, deterministicMp3Bytes }) => {
       const discardConfirmationGlobals = globalThis as DiscardConfirmationTestGlobals;
       discardConfirmationGlobals.__discardConfirmationCalls = [];
       discardConfirmationGlobals.__shouldDiscardNarrationChanges = false;
@@ -160,7 +166,7 @@ async function installMockIpcHandlers(app: ElectronApplication) {
       });
 
       ipcMain.removeHandler("get-speaker-mappings");
-      ipcMain.handle("get-speaker-mappings", () => mockVoices);
+      ipcMain.handle("get-speaker-mappings", () => mockMappings);
 
       ipcMain.removeHandler("set-speaker-mappings");
       ipcMain.handle("set-speaker-mappings", () => ({ success: true }));
@@ -171,10 +177,10 @@ async function installMockIpcHandlers(app: ElectronApplication) {
 
       (
         globalThis as typeof globalThis & {
-          __previewMappings?: Record<string, Voice>;
+          __previewMappings?: Record<string, SpeakerMapping>;
           __completedPreviewSyntheses?: number;
         }
-      ).__previewMappings = mockVoices;
+      ).__previewMappings = mockMappings;
       (
         globalThis as typeof globalThis & {
           __completedPreviewSyntheses: number;
@@ -184,7 +190,7 @@ async function installMockIpcHandlers(app: ElectronApplication) {
         getSpeakerMappings: () =>
           (
             globalThis as typeof globalThis & {
-              __previewMappings: Record<string, Voice>;
+              __previewMappings: Record<string, SpeakerMapping>;
             }
           ).__previewMappings,
       };
@@ -260,7 +266,7 @@ async function installMockIpcHandlers(app: ElectronApplication) {
     {
       testFilePath: FIXTURE_TEST,
       mockSlides: MOCK_SLIDES,
-      mockVoices: MOCK_VOICES,
+      mockMappings: MOCK_MAPPINGS,
       deterministicMp3Bytes: DETERMINISTIC_MP3_BYTES,
     },
   );
@@ -335,7 +341,7 @@ async function getInsertAudioCalls(): Promise<InsertAudioCall[]> {
 }
 
 async function resetCapturedIpcCalls() {
-  await electronApp.evaluate((_, mockVoices) => {
+  await electronApp.evaluate((_, mockMappings) => {
     const globals = globalThis as typeof globalThis & {
       __convertPptxCalls: unknown[];
       __discardConfirmationCalls: unknown[];
@@ -344,7 +350,7 @@ async function resetCapturedIpcCalls() {
       __generatedSpeechCalls: unknown[];
       __insertAudioCalls: unknown[];
       __completedPreviewSyntheses: number;
-      __previewMappings: Record<string, Voice>;
+      __previewMappings: Record<string, SpeakerMapping>;
       __failNextNarrationSynthesis?: boolean;
     };
 
@@ -355,9 +361,9 @@ async function resetCapturedIpcCalls() {
     globals.__generatedSpeechCalls = [];
     globals.__insertAudioCalls = [];
     globals.__completedPreviewSyntheses = 0;
-    globals.__previewMappings = mockVoices;
+    globals.__previewMappings = mockMappings;
     globals.__failNextNarrationSynthesis = false;
-  }, MOCK_VOICES);
+  }, MOCK_MAPPINGS);
   await window.evaluate(() => {
     const globals = globalThis as typeof globalThis & {
       __audioPlayUrls: string[];
@@ -513,7 +519,7 @@ test.describe("PPT Viewer UI Workflows", () => {
     await narratorPreview.click();
     await expect.poll(getGeneratedSpeechCalls).toContainEqual({
       text: "Delayed preview",
-      voiceOption: MOCK_VOICES.Narrator,
+      voiceOption: MOCK_MAPPINGS.Narrator!.voice,
     });
     await narratorPreview.click();
     await releaseDelayedPreview();
@@ -529,7 +535,7 @@ test.describe("PPT Viewer UI Workflows", () => {
 
     await expect.poll(getGeneratedSpeechCalls).toContainEqual({
       text: MOCK_SLIDES[0]!.notes,
-      voiceOption: MOCK_VOICES.Narrator,
+      voiceOption: MOCK_MAPPINGS.Narrator!.voice,
     });
     await expect.poll(getPlaybackActivity).toMatchObject({
       playUrls: [expect.stringMatching(/^blob:/)],

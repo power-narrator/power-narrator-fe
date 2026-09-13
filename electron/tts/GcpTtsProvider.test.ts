@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Voice } from "./TtsProvider.js";
-import { GcpTtsProvider } from "./GcpTtsProvider.js";
+import { decomposeGcpVoiceName, GcpTtsProvider } from "./GcpTtsProvider.js";
+import { migrateSpeakerMappings } from "../settings/speakerMappingMigration.js";
 
 const { clientConstructor, listVoices, synthesizeSpeech } = vi.hoisted(() => ({
   clientConstructor: vi.fn<(options: unknown) => void>(),
@@ -27,10 +28,11 @@ vi.mock("@google-cloud/text-to-speech", () => ({
 }));
 
 const selectedVoice: Voice = {
-  name: "en-GB-Chirp3-HD-Aoede",
-  languageCodes: ["en-GB", "en-US"],
-  ssmlGender: "FEMALE",
   provider: "gcp",
+  voiceId: "Aoede",
+  model: "chirp-3-hd",
+  languageCode: "en-GB",
+  supportsPrompt: false,
 };
 
 beforeEach(() => {
@@ -53,7 +55,23 @@ describe("GcpTtsProvider", () => {
     expect(warning).toHaveBeenCalledOnce();
   });
 
-  it("normalizes complete GB and US Chirp voices into owned records", async () => {
+  it("decomposes a composed identifier into a stored voice", () => {
+    expect(decomposeGcpVoiceName("en-GB-Chirp3-HD-Aoede")).toEqual({
+      voiceId: "Aoede",
+      model: "chirp-3-hd",
+      languageCode: "en-GB",
+      supportsPrompt: false,
+    });
+  });
+
+  it.each(["", "default", "en_UK/apope_low", "en-GB-Neural2-A"])(
+    "refuses to decompose %j",
+    (name) => {
+      expect(decomposeGcpVoiceName(name)).toBeNull();
+    },
+  );
+
+  it("shapes complete GB and US Chirp voices into catalogue options", async () => {
     const gbSdkVoice = {
       name: "en-GB-Chirp3-HD-Aoede",
       languageCodes: ["en-GB"],
@@ -83,20 +101,33 @@ describe("GcpTtsProvider", () => {
     expect(listVoices).toHaveBeenNthCalledWith(2, { languageCode: "en-US" });
     expect(voices).toEqual([
       {
-        name: "en-GB-Chirp3-HD-Aoede",
-        languageCodes: ["en-GB"],
-        ssmlGender: "FEMALE",
         provider: "gcp",
+        name: "Aoede",
+        ssmlGender: "FEMALE",
+        models: [
+          {
+            id: "chirp-3-hd",
+            label: "Chirp 3 HD",
+            supportsPrompt: false,
+            languages: [{ code: "en-GB", label: "en-GB" }],
+          },
+        ],
       },
       {
-        name: "en-US-Chirp3-HD-Puck",
-        languageCodes: ["en-US"],
-        ssmlGender: "MALE",
         provider: "gcp",
+        name: "Puck",
+        ssmlGender: "MALE",
+        models: [
+          {
+            id: "chirp-3-hd",
+            label: "Chirp 3 HD",
+            supportsPrompt: false,
+            languages: [{ code: "en-US", label: "en-US" }],
+          },
+        ],
       },
     ]);
     expect(voices[0]).not.toBe(gbSdkVoice);
-    expect(voices[0]?.languageCodes).not.toBe(gbSdkVoice.languageCodes);
   });
 
   it.each([
@@ -123,7 +154,7 @@ describe("GcpTtsProvider", () => {
     expect(synthesizeSpeech.mock.calls[0]?.[0].input).toEqual(input);
   });
 
-  it("uses the supplied concrete voice", async () => {
+  it("composes the provider-native identifier from the stored voice", async () => {
     await new GcpTtsProvider(() => "/keys/gcp.json")
       .prepareSpeech("Hello", selectedVoice)
       .synthesize();
@@ -132,6 +163,31 @@ describe("GcpTtsProvider", () => {
       languageCode: "en-GB",
       name: "en-GB-Chirp3-HD-Aoede",
     });
+  });
+
+  it("narrates a migrated legacy mapping with the identifier it used before", async () => {
+    const legacyName = "en-US-Chirp3-HD-Charon";
+    const migrated = migrateSpeakerMappings({
+      Narrator: { name: legacyName, languageCodes: ["en-US"], ssmlGender: "MALE", provider: "gcp" },
+    });
+
+    await new GcpTtsProvider(() => "/keys/gcp.json")
+      .prepareSpeech("Hello", migrated.Narrator!.voice!)
+      .synthesize();
+
+    expect(synthesizeSpeech.mock.calls[0]?.[0].voice).toEqual({
+      languageCode: "en-US",
+      name: legacyName,
+    });
+  });
+
+  it("refuses to synthesize a model it cannot compose an identifier for", () => {
+    expect(() =>
+      new GcpTtsProvider(() => "/keys/gcp.json").prepareSpeech("Hello", {
+        ...selectedVoice,
+        model: "gemini-3.1-flash-tts-preview",
+      }),
+    ).toThrow("GCP TTS cannot synthesize the model 'gemini-3.1-flash-tts-preview'");
   });
 
   it.each([

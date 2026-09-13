@@ -1,4 +1,4 @@
-import type { SynthesizedSpeech, Voice } from "../tts/TtsProvider.js";
+import type { SpeakerMapping, SynthesizedSpeech, Voice } from "../tts/TtsProvider.js";
 import type {
   NarrationPreparationProgress,
   PreviewNarrationRequest,
@@ -15,7 +15,7 @@ import {
 } from "../../shared/narration/speaker.js";
 
 export interface SpeakerMappingSource {
-  getSpeakerMappings(): Record<string, Voice> | Promise<Record<string, Voice>>;
+  getSpeakerMappings(): Record<string, SpeakerMapping> | Promise<Record<string, SpeakerMapping>>;
 }
 
 export interface NarrationSynthesizer {
@@ -34,27 +34,6 @@ type PreparedNarrationSection = {
 type SynthesizedNarrationSection = PreparedNarrationSection & {
   speech: SynthesizedSpeech;
 };
-
-function voiceValidationProblem(voice: Voice | undefined): string | null {
-  if (!voice) {
-    return "no voice mapping is configured";
-  }
-
-  if (
-    !voice.name?.trim() ||
-    !voice.provider ||
-    !voice.languageCodes?.length ||
-    !voice.ssmlGender?.trim()
-  ) {
-    return "the configured voice mapping is empty or incomplete";
-  }
-
-  if (voice.name.trim().toLowerCase() === "default") {
-    return "the configured voice is a legacy unresolved placeholder";
-  }
-
-  return null;
-}
 
 export class NarrationPreparation {
   constructor(
@@ -120,7 +99,7 @@ export class NarrationPreparation {
    * batch preparation share a single parse-to-synthesizable-section shape.
    */
   private planSection(
-    mappings: Record<string, Voice>,
+    mappings: Record<string, SpeakerMapping>,
     slideIndex: number,
     sectionIndex: number,
     text: string,
@@ -162,17 +141,17 @@ export class NarrationPreparation {
   }
 
   private resolveVoice(
-    mappings: Record<string, Voice>,
+    mappings: Record<string, SpeakerMapping>,
     speaker: SynthesisSpeaker,
     slideIndex: number,
     sectionIndex: number,
   ): Voice {
-    const voice = mappings[speaker.mappingKey];
-    const validationProblem =
-      voiceValidationProblem(voice) ||
-      (voice && !this.synthesizer.supportsProvider(String(voice.provider))
-        ? `voice provider "${String(voice.provider)}" is not registered`
-        : null);
+    const voice = mappings[speaker.mappingKey]?.voice;
+    const validationProblem = !voice
+      ? "no voice mapping is configured"
+      : !this.synthesizer.supportsProvider(voice.provider)
+        ? `voice provider "${voice.provider}" is not registered`
+        : null;
 
     if (validationProblem || !voice) {
       throw new NarrationPreparationError(

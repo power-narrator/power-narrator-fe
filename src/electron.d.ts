@@ -1,4 +1,4 @@
-import type { Voice } from "../shared/types/tts";
+import type { SpeakerMapping, VoiceOption } from "../shared/types/tts";
 import type {
   NarratedPresentationSaveRequest,
   NarratedSaveResult,
@@ -35,15 +35,17 @@ declare global {
         payload: NarratedPresentationSaveRequest,
         onProgress: (progress: NarrationPreparationProgress) => void,
       ) => Promise<NarratedSaveResult>;
-      getVoices: () => Promise<Voice[]>;
+      getVoices: () => Promise<VoiceOption[]>;
       prepareNarrationPreview: (
         payload: PreviewNarrationRequest,
       ) => Promise<NarrationPreviewResult>;
       getGcpKeyPath: () => Promise<string | null>;
       setGcpKey: () => Promise<SetGcpKeyResult>;
       setInsertMethod: (method: string) => Promise<void>;
-      getSpeakerMappings: () => Promise<Record<string, Voice>>;
-      setSpeakerMappings: (mappings: Record<string, Voice>) => Promise<BasicElectronResult>;
+      getSpeakerMappings: () => Promise<Record<string, SpeakerMapping>>;
+      setSpeakerMappings: (
+        mappings: Record<string, SpeakerMapping>,
+      ) => Promise<BasicElectronResult>;
       getXmlCliEnabled: () => Promise<boolean>;
       setXmlCliEnabled: (enabled: boolean) => Promise<BasicElectronResult>;
       generateVideo: (payload: GenerateVideoPayload) => Promise<VideoElectronResult>;
