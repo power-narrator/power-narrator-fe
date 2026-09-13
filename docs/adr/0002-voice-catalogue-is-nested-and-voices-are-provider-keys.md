@@ -4,7 +4,7 @@ A provider publishes voice options as a nested catalogue: a voice offers models,
 
 The nesting exists because both flat alternatives fail. A flat entry per combination runs to five figures for a single provider. A flat union of models and languages offers combinations that do not exist, because coverage differs between models of the same voice. Nesting makes an unavailable combination unrepresentable rather than merely unselected.
 
-Consequently a stored voice holds the provider's *key* for a voice, not necessarily the identifier the provider's API accepts. Where an identifier encodes the model and language, the provider composes it at synthesis from the stored voice, model, and language, and decomposes it when reading its own catalogue. Do not "fix" this by storing the composed identifier: it would make the stored record unable to express a voice whose language is chosen separately.
+Consequently a stored voice holds the provider's _key_ for a voice, not necessarily the identifier the provider's API accepts. Where an identifier encodes the model and language, the provider composes it at synthesis from the stored voice, model, and language, and decomposes it when reading its own catalogue. Do not "fix" this by storing the composed identifier: it would make the stored record unable to express a voice whose language is chosen separately.
 
 ## Consequences
 
