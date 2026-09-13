@@ -108,11 +108,7 @@ async function waitForMapping(screen: SettingsScreen, alias = "Narrator") {
   await vi.waitFor(() => expect(screen.getByText(`[${alias}]`).query()).not.toBeNull());
 }
 
-async function choose(
-  screen: SettingsScreen,
-  controlName: string,
-  optionName: string | RegExp,
-) {
+async function choose(screen: SettingsScreen, controlName: string, optionName: string | RegExp) {
   await screen.getByRole("combobox", { name: controlName }).click();
   await screen.getByRole("option", { name: optionName }).click();
 }
