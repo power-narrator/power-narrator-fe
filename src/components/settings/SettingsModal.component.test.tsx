@@ -15,7 +15,7 @@ const registryOption: VoiceOption = {
       id: "future-model",
       label: "Future",
       supportsPrompt: true,
-      languages: [{ code: "en-US", label: "English (United States)" }],
+      languages: [{ code: "en-US", label: "en-US" }],
     },
   ],
 };
@@ -29,7 +29,7 @@ const gcpOption: VoiceOption = {
       id: "chirp-3-hd",
       label: "Chirp 3 HD",
       supportsPrompt: false,
-      languages: [{ code: "en-US", label: "English (United States)" }],
+      languages: [{ code: "en-US", label: "en-US" }],
     },
   ],
 };
@@ -43,13 +43,13 @@ const multiModelOption: VoiceOption = {
       id: "gemini-2.5-pro-tts",
       label: "Gemini 2.5 Pro",
       supportsPrompt: true,
-      languages: [{ code: "en-US", label: "English (United States)" }],
+      languages: [{ code: "en-US", label: "en-US" }],
     },
     {
       id: "gemini-2.5-flash-tts",
       label: "Gemini 2.5 Flash",
       supportsPrompt: true,
-      languages: [{ code: "en-US", label: "English (United States)" }],
+      languages: [{ code: "en-US", label: "en-US" }],
     },
   ],
 };
@@ -236,8 +236,8 @@ const bilingualOption: VoiceOption = {
       label: "Gemini 2.5 Pro",
       supportsPrompt: true,
       languages: [
-        { code: "en-US", label: "English (United States)" },
-        { code: "fr-FR", label: "French (France)" },
+        { code: "en-US", label: "en-US" },
+        { code: "fr-FR", label: "fr-FR" },
       ],
     },
     {
@@ -245,8 +245,8 @@ const bilingualOption: VoiceOption = {
       label: "Chirp 3 HD",
       supportsPrompt: false,
       languages: [
-        { code: "en-US", label: "English (United States)" },
-        { code: "de-DE", label: "German (Germany)" },
+        { code: "en-US", label: "en-US" },
+        { code: "de-DE", label: "de-DE" },
       ],
     },
   ],
@@ -293,7 +293,7 @@ test("withholds a voice until its language is chosen, then saves it", async () =
   expect(savedMappings.every((mappings) => !mappings.Narrator?.voice)).toBe(true);
 
   await screen.getByRole("combobox", { name: "Language for Narrator" }).click();
-  await screen.getByRole("option", { name: "French (France)" }).click();
+  await screen.getByRole("option", { name: "fr-FR" }).click();
 
   await vi.waitFor(() =>
     expect(savedMappings).toContainEqual({
@@ -319,7 +319,7 @@ test("preselects the sole language of a model that offers one", async () => {
 
   await expect
     .element(screen.getByRole("combobox", { name: "Language for Narrator" }))
-    .toHaveValue("English (United States)");
+    .toHaveValue("en-US");
 });
 
 test("keeps a language the newly chosen voice can also speak", async () => {
@@ -337,7 +337,7 @@ test("keeps a language the newly chosen voice can also speak", async () => {
   await screen.getByRole("combobox", { name: "Model for Narrator" }).click();
   await screen.getByRole("option", { name: "Chirp 3 HD" }).click();
   await screen.getByRole("combobox", { name: "Language for Narrator" }).click();
-  await screen.getByRole("option", { name: "German (Germany)" }).click();
+  await screen.getByRole("option", { name: "de-DE" }).click();
 
   await screen.getByRole("combobox", { name: "Voice for Narrator" }).click();
   await screen.getByRole("option", { name: "Puck (FEMALE)" }).click();
@@ -369,7 +369,7 @@ test("clears a language the newly chosen model cannot speak", async () => {
   await screen.getByRole("combobox", { name: "Model for Narrator" }).click();
   await screen.getByRole("option", { name: "Gemini 2.5 Pro" }).click();
   await screen.getByRole("combobox", { name: "Language for Narrator" }).click();
-  await screen.getByRole("option", { name: "French (France)" }).click();
+  await screen.getByRole("option", { name: "fr-FR" }).click();
   await vi.waitFor(() => expect(savedMappings.length).toBeGreaterThan(1));
 
   await screen.getByRole("combobox", { name: "Model for Narrator" }).click();
@@ -391,7 +391,7 @@ test("keeps a language the newly chosen model can also speak", async () => {
   await screen.getByRole("combobox", { name: "Model for Narrator" }).click();
   await screen.getByRole("option", { name: "Gemini 2.5 Pro" }).click();
   await screen.getByRole("combobox", { name: "Language for Narrator" }).click();
-  await screen.getByRole("option", { name: "English (United States)" }).click();
+  await screen.getByRole("option", { name: "en-US" }).click();
 
   await screen.getByRole("combobox", { name: "Model for Narrator" }).click();
   await screen.getByRole("option", { name: "Chirp 3 HD" }).click();

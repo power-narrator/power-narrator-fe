@@ -8,7 +8,7 @@ import type {
   VoiceOption,
 } from "./TtsProvider.js";
 import { ensureSpeakElement, isSsml } from "./SsmlUtil.js";
-import { GEMINI_LANGUAGES, toCatalogueLanguage } from "./gcpLanguages.js";
+import { GEMINI_LANGUAGES } from "./gcpLanguages.js";
 
 type GcpVoice = {
   name?: string | null;
@@ -180,7 +180,7 @@ function addLanguage(option: VoiceOption, composition: VoiceComposition): void {
     !definition.languages &&
     !model.languages.some((language) => language.code === composition.languageCode)
   ) {
-    model.languages.push(toCatalogueLanguage(composition.languageCode));
+    model.languages.push({ code: composition.languageCode, label: composition.languageCode });
   }
 }
 
