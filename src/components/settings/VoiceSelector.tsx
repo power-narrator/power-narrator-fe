@@ -1,28 +1,36 @@
-import { Select } from "@mantine/core";
-import type { Voice, VoiceOption } from "../../../shared/types/tts";
-import { getProviderLabel } from "./providerLabels";
+import { Select, Stack } from "@mantine/core";
+import { useState } from "react";
+import type { Voice, VoiceModel, VoiceOption } from "../../../shared/types/tts";
 
 interface VoiceSelectorProps {
+  /** Names the selects apart, since a row's label is the only thing that does. */
+  speakerLabel: string;
   value: Voice | undefined;
-  onChange: (voice: Voice) => void;
+  onChange: (voice: Voice | undefined) => void;
   options: VoiceOption[];
 }
 
-/** Identity is the whole stored choice, so a saved voice matches its option. */
-function getVoiceKey(voice: Voice): string {
-  return JSON.stringify([voice.provider, voice.voiceId, voice.model, voice.languageCode]);
+/** A voice is chosen by name and gender alone; its model is the next choice. */
+function getOptionKey(option: VoiceOption): string {
+  return JSON.stringify([option.provider, option.name, option.ssmlGender]);
+}
+
+function findOption(options: VoiceOption[], voice: Voice): VoiceOption | undefined {
+  return options.find(
+    (option) =>
+      option.provider === voice.provider &&
+      option.name === voice.voiceId &&
+      option.models.some((model) => model.id === voice.model),
+  );
 }
 
 /**
- * Until the picker gains model and language selects, an option offering a
- * choice at either level has no way to make it, so it is withheld rather than
- * resolved to an arbitrary one.
+ * The language stays at the provider's first advertised value until the
+ * language select arrives; a model advertising none offers no voice at all.
  */
-function toVoice(option: VoiceOption): Voice | null {
-  const model = option.models.length === 1 ? option.models[0] : undefined;
-  const language = model?.languages.length === 1 ? model.languages[0] : undefined;
-
-  if (!model || !language) {
+function toVoice(option: VoiceOption, model: VoiceModel): Voice | null {
+  const language = model.languages[0];
+  if (!language) {
     return null;
   }
 
@@ -35,31 +43,68 @@ function toVoice(option: VoiceOption): Voice | null {
   };
 }
 
-export function VoiceSelector({ value, onChange, options }: VoiceSelectorProps) {
-  const selectable = options.flatMap((option) => {
-    const voice = toVoice(option);
-    return voice ? [{ option, voice }] : [];
-  });
+export function VoiceSelector({ speakerLabel, value, onChange, options }: VoiceSelectorProps) {
+  const [draft, setDraft] = useState<{ key: string; model: string | null } | null>(null);
 
-  const handleChange = (selectedValue: string | null) => {
-    const selected = selectable.find(({ voice }) => getVoiceKey(voice) === selectedValue);
-    if (selected) {
-      onChange(selected.voice);
+  const committedOption = value ? findOption(options, value) : undefined;
+  const selectedOption = draft
+    ? options.find((option) => getOptionKey(option) === draft.key)
+    : committedOption;
+  const selectedKey = selectedOption ? getOptionKey(selectedOption) : null;
+  const selectedModelId = draft ? draft.model : (value?.model ?? null);
+
+  const select = (option: VoiceOption, modelId: string | null) => {
+    setDraft({ key: getOptionKey(option), model: modelId });
+
+    const model = option.models.find((candidate) => candidate.id === modelId);
+    onChange(model ? (toVoice(option, model) ?? undefined) : undefined);
+  };
+
+  const handleVoiceChange = (optionKey: string | null) => {
+    const option = options.find((candidate) => getOptionKey(candidate) === optionKey);
+    if (!option) {
+      return;
+    }
+
+    // A sole model is chosen for the author; several start unmade, so a billed
+    // model is never reached without having been picked.
+    select(option, option.models.length === 1 ? option.models[0]!.id : null);
+  };
+
+  const handleModelChange = (modelId: string | null) => {
+    if (selectedOption && modelId) {
+      select(selectedOption, modelId);
     }
   };
 
   return (
-    <Select
-      placeholder="Select Voice"
-      data={selectable.map(({ option, voice }) => ({
-        value: getVoiceKey(voice),
-        label: `${option.name} (${getProviderLabel(option.provider)}, ${option.ssmlGender}, ${voice.languageCode})`,
-      }))}
-      value={value ? getVoiceKey(value) : null}
-      onChange={handleChange}
-      searchable
-      size="xs"
-      w={250}
-    />
+    <Stack gap={4}>
+      <Select
+        aria-label={`Voice for ${speakerLabel}`}
+        placeholder="Select Voice"
+        data={options.map((option) => ({
+          value: getOptionKey(option),
+          label: `${option.name} (${option.ssmlGender})`,
+        }))}
+        value={selectedKey}
+        onChange={handleVoiceChange}
+        searchable
+        size="xs"
+        w={220}
+      />
+      <Select
+        aria-label={`Model for ${speakerLabel}`}
+        placeholder="Select Model"
+        data={(selectedOption?.models ?? []).map((model) => ({
+          value: model.id,
+          label: model.label,
+        }))}
+        value={selectedModelId}
+        onChange={handleModelChange}
+        disabled={!selectedOption}
+        size="xs"
+        w={220}
+      />
+    </Stack>
   );
 }

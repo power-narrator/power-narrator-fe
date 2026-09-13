@@ -130,6 +130,126 @@ describe("GcpTtsProvider", () => {
     expect(voices[0]).not.toBe(gbSdkVoice);
   });
 
+  it("offers every Gemini model for a bare catalogue name", async () => {
+    listVoices
+      .mockResolvedValueOnce([{ voices: [] }])
+      .mockResolvedValueOnce([
+        { voices: [{ name: "Kore", languageCodes: ["en-US"], ssmlGender: "FEMALE" }] },
+      ]);
+
+    const voices = await new GcpTtsProvider(() => "/keys/gcp.json").getVoices();
+
+    expect(voices).toEqual([
+      {
+        provider: "gcp",
+        name: "Kore",
+        ssmlGender: "FEMALE",
+        models: [
+          {
+            id: "gemini-2.5-pro-tts",
+            label: "Gemini 2.5 Pro",
+            supportsPrompt: true,
+            languages: [{ code: "en-US", label: "en-US" }],
+          },
+          {
+            id: "gemini-2.5-flash-tts",
+            label: "Gemini 2.5 Flash",
+            supportsPrompt: true,
+            languages: [{ code: "en-US", label: "en-US" }],
+          },
+          {
+            id: "gemini-2.5-flash-lite-preview-tts",
+            label: "Gemini 2.5 Flash Lite (Preview)",
+            supportsPrompt: true,
+            languages: [{ code: "en-US", label: "en-US" }],
+          },
+          {
+            id: "gemini-3.1-flash-tts-preview",
+            label: "Gemini 3.1 Flash (Preview)",
+            supportsPrompt: true,
+            languages: [{ code: "en-US", label: "en-US" }],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("collapses one name offered by several models into a single option", async () => {
+    listVoices
+      .mockResolvedValueOnce([
+        {
+          voices: [
+            { name: "en-GB-Chirp3-HD-Kore", languageCodes: ["en-GB"], ssmlGender: "FEMALE" },
+          ],
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          voices: [
+            { name: "en-US-Chirp3-HD-Kore", languageCodes: ["en-US"], ssmlGender: "FEMALE" },
+            { name: "Kore", languageCodes: ["en-US"], ssmlGender: "FEMALE" },
+          ],
+        },
+      ]);
+
+    const voices = await new GcpTtsProvider(() => "/keys/gcp.json").getVoices();
+
+    expect(voices).toHaveLength(1);
+    expect(voices[0]?.name).toBe("Kore");
+    expect(voices[0]?.models.map((model) => model.id)).toEqual([
+      "chirp-3-hd",
+      "gemini-2.5-pro-tts",
+      "gemini-2.5-flash-tts",
+      "gemini-2.5-flash-lite-preview-tts",
+      "gemini-3.1-flash-tts-preview",
+    ]);
+    expect(voices[0]?.models[0]?.languages).toEqual([
+      { code: "en-GB", label: "en-GB" },
+      { code: "en-US", label: "en-US" },
+    ]);
+  });
+
+  it("keeps one name under two genders distinguishable", async () => {
+    listVoices
+      .mockResolvedValueOnce([
+        {
+          voices: [
+            { name: "en-GB-Chirp3-HD-Kore", languageCodes: ["en-GB"], ssmlGender: "FEMALE" },
+          ],
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          voices: [{ name: "en-US-Chirp3-HD-Kore", languageCodes: ["en-US"], ssmlGender: "MALE" }],
+        },
+      ]);
+
+    const voices = await new GcpTtsProvider(() => "/keys/gcp.json").getVoices();
+
+    expect(voices.map((voice) => [voice.name, voice.ssmlGender])).toEqual([
+      ["Kore", "FEMALE"],
+      ["Kore", "MALE"],
+    ]);
+  });
+
+  it("names the model in the request for a model the identifier does not imply", async () => {
+    await new GcpTtsProvider(() => "/keys/gcp.json")
+      .prepareSpeech("Hello", {
+        provider: "gcp",
+        voiceId: "Kore",
+        model: "gemini-2.5-flash-tts",
+        languageCode: "en-US",
+        supportsPrompt: true,
+      })
+      .synthesize();
+
+    expect(synthesizeSpeech.mock.calls[0]?.[0].voice).toEqual({
+      languageCode: "en-US",
+      name: "Kore",
+      modelName: "gemini-2.5-flash-tts",
+    });
+  });
+
   it.each([
     {
       name: "plain text",
@@ -181,13 +301,13 @@ describe("GcpTtsProvider", () => {
     });
   });
 
-  it("refuses to synthesize a model it cannot compose an identifier for", () => {
+  it("refuses to synthesize a model it does not offer", () => {
     expect(() =>
       new GcpTtsProvider(() => "/keys/gcp.json").prepareSpeech("Hello", {
         ...selectedVoice,
-        model: "gemini-3.1-flash-tts-preview",
+        model: "chirp-4-ultra",
       }),
-    ).toThrow("GCP TTS cannot synthesize the model 'gemini-3.1-flash-tts-preview'");
+    ).toThrow("GCP TTS cannot synthesize the model 'chirp-4-ultra'");
   });
 
   it.each([

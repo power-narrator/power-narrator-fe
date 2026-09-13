@@ -16,14 +16,50 @@ type GcpVoice = {
 
 export const CHIRP_3_HD_MODEL = "chirp-3-hd";
 
-const MODELS: Record<string, { label: string; supportsPrompt: boolean }> = {
-  [CHIRP_3_HD_MODEL]: { label: "Chirp 3 HD", supportsPrompt: false },
-};
+/**
+ * `modelName` is the value Google's API accepts, or null where the model is
+ * implied by the voice identifier instead of named in the request. A model id
+ * is this app's identity for a model and is not always a legal `modelName`.
+ */
+const MODELS: Record<string, { label: string; supportsPrompt: boolean; modelName: string | null }> =
+  {
+    [CHIRP_3_HD_MODEL]: { label: "Chirp 3 HD", supportsPrompt: false, modelName: null },
+    "gemini-2.5-pro-tts": {
+      label: "Gemini 2.5 Pro",
+      supportsPrompt: true,
+      modelName: "gemini-2.5-pro-tts",
+    },
+    "gemini-2.5-flash-tts": {
+      label: "Gemini 2.5 Flash",
+      supportsPrompt: true,
+      modelName: "gemini-2.5-flash-tts",
+    },
+    "gemini-2.5-flash-lite-preview-tts": {
+      label: "Gemini 2.5 Flash Lite (Preview)",
+      supportsPrompt: true,
+      modelName: "gemini-2.5-flash-lite-preview-tts",
+    },
+    "gemini-3.1-flash-tts-preview": {
+      label: "Gemini 3.1 Flash (Preview)",
+      supportsPrompt: true,
+      modelName: "gemini-3.1-flash-tts-preview",
+    },
+  };
+
+/** Every model whose identity the catalogue never spells out, Chirp 3 HD being the only one it does. */
+const GEMINI_MODELS = Object.keys(MODELS).filter((id) => id !== CHIRP_3_HD_MODEL);
 
 const CHIRP_3_HD_PATTERN =
   /^(?<languageCode>[a-z]{2,3}(?:-[A-Za-z0-9]+)*)-Chirp3-HD-(?<voiceId>.+)$/;
 
+/** Gemini voices are the ones the catalogue publishes under a bare name. */
+const BARE_NAME_PATTERN = /^[^-\s]+$/;
+
 export type VoiceComposition = Omit<Voice, "provider">;
+
+function toComposition(voiceId: string, model: string, languageCode: string): VoiceComposition {
+  return { voiceId, model, languageCode, supportsPrompt: MODELS[model]!.supportsPrompt };
+}
 
 /**
  * Standalone so catalogue shaping and the settings migration share one grammar
@@ -35,54 +71,80 @@ export function decomposeGcpVoiceName(name: string): VoiceComposition | null {
     return null;
   }
 
-  return {
-    voiceId: groups.voiceId,
-    model: CHIRP_3_HD_MODEL,
-    languageCode: groups.languageCode,
-    supportsPrompt: MODELS[CHIRP_3_HD_MODEL]!.supportsPrompt,
-  };
+  return toComposition(groups.voiceId, CHIRP_3_HD_MODEL, groups.languageCode);
+}
+
+/**
+ * Every voice a single catalogue entry stands for. A Chirp 3 HD identifier
+ * names one model; a bare Gemini name names none, so it stands for every
+ * Gemini model in the language the catalogue advertised it under.
+ */
+function decomposeCatalogueEntry(name: string, languageCode: string): VoiceComposition[] {
+  const chirp = decomposeGcpVoiceName(name);
+  if (chirp) {
+    return [chirp];
+  }
+
+  return BARE_NAME_PATTERN.test(name)
+    ? GEMINI_MODELS.map((model) => toComposition(name, model, languageCode))
+    : [];
 }
 
 function composeGcpVoiceName(voice: Voice): string {
-  if (voice.model !== CHIRP_3_HD_MODEL) {
-    throw new Error(`GCP TTS cannot synthesize the model '${voice.model}'`);
-  }
-
-  return `${voice.languageCode}-Chirp3-HD-${voice.voiceId}`;
+  return voice.model === CHIRP_3_HD_MODEL
+    ? `${voice.languageCode}-Chirp3-HD-${voice.voiceId}`
+    : voice.voiceId;
 }
 
+/**
+ * Options are grouped by name and gender alone, both read from whatever the
+ * catalogue returned: a name several models offer yields one option listing
+ * them all, and a name two genders disagree over yields two the label already
+ * tells apart.
+ */
 function toVoiceOptions(voices: GcpVoice[]): VoiceOption[] {
-  return voices.flatMap((voice) => {
-    if (!voice.name || !voice.languageCodes?.length || voice.ssmlGender == null) {
-      return [];
+  const options = new Map<string, VoiceOption>();
+
+  for (const voice of voices) {
+    const languageCode = voice.languageCodes?.[0];
+    if (!voice.name || !languageCode || voice.ssmlGender == null) {
+      continue;
     }
 
-    const composition = decomposeGcpVoiceName(voice.name);
-    if (!composition) {
-      return [];
-    }
+    const ssmlGender = String(voice.ssmlGender);
+    for (const composition of decomposeCatalogueEntry(voice.name, languageCode)) {
+      const key = JSON.stringify([composition.voiceId, ssmlGender]);
+      let option = options.get(key);
+      if (!option) {
+        option = { provider: "gcp", name: composition.voiceId, ssmlGender, models: [] };
+        options.set(key, option);
+      }
 
-    const model = MODELS[composition.model];
-    if (!model) {
-      return [];
+      addLanguage(option, composition);
     }
+  }
 
-    const voiceModel: VoiceModel = {
+  return [...options.values()];
+}
+
+function addLanguage(option: VoiceOption, composition: VoiceComposition): void {
+  const definition = MODELS[composition.model]!;
+  let model: VoiceModel | undefined = option.models.find(
+    (candidate) => candidate.id === composition.model,
+  );
+  if (!model) {
+    model = {
       id: composition.model,
-      label: model.label,
-      supportsPrompt: model.supportsPrompt,
-      languages: [{ code: composition.languageCode, label: composition.languageCode }],
+      label: definition.label,
+      supportsPrompt: definition.supportsPrompt,
+      languages: [],
     };
+    option.models.push(model);
+  }
 
-    return [
-      {
-        provider: "gcp",
-        name: composition.voiceId,
-        ssmlGender: String(voice.ssmlGender),
-        models: [voiceModel],
-      },
-    ];
-  });
+  if (!model.languages.some((language) => language.code === composition.languageCode)) {
+    model.languages.push({ code: composition.languageCode, label: composition.languageCode });
+  }
 }
 
 export class GcpTtsProvider implements TtsProvider {
@@ -96,25 +158,36 @@ export class GcpTtsProvider implements TtsProvider {
     }
 
     const client = new TextToSpeechClient({ keyFilename: keyPath });
-    const options: VoiceOption[] = [];
+    const voices: GcpVoice[] = [];
 
     try {
       const [gbResult] = await client.listVoices({ languageCode: "en-GB" });
-      options.push(...toVoiceOptions(gbResult.voices ?? []));
+      voices.push(...(gbResult.voices ?? []));
 
       const [usResult] = await client.listVoices({ languageCode: "en-US" });
-      options.push(...toVoiceOptions(usResult.voices ?? []));
+      voices.push(...(usResult.voices ?? []));
     } catch (error) {
       console.error("Failed to list GCP voices:", error);
     }
 
-    return options;
+    // Shaped in one pass so a name offered under both locales collapses into a
+    // single option rather than one per request.
+    return toVoiceOptions(voices);
   }
 
   prepareSpeech(text: string, voice: Voice): PreparedSpeechRequest {
+    const model = MODELS[voice.model];
+    if (!model) {
+      throw new Error(`GCP TTS cannot synthesize the model '${voice.model}'`);
+    }
+
     const request = {
       input: this.formatInput(text),
-      voice: { languageCode: voice.languageCode, name: composeGcpVoiceName(voice) },
+      voice: {
+        languageCode: voice.languageCode,
+        name: composeGcpVoiceName(voice),
+        ...(model.modelName ? { modelName: model.modelName } : {}),
+      },
       audioConfig: { audioEncoding: "MP3" },
     } as const;
 
