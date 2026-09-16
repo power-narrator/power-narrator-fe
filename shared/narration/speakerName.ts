@@ -1,10 +1,8 @@
 /**
- * A bracketed line whose content opens with a word and a colon is reserved for
- * notes directives. The shape is deliberately wider than the markers the parser
- * recognises today, so a marker added later cannot strand a mapping that was
- * legal when it was created.
+ * Shared with the parser so a speaker name can never be read back as a prompt
+ * marker.
  */
-export const DIRECTIVE_PATTERN = /^\s*([A-Za-z]+)\s*:/;
+export const PROMPT_MARKER_PATTERN = /^\s*(?:p|prompt)\s*:/i;
 
 export function speakerNameProblem(name: string): string | null {
   const trimmed = name.trim();
@@ -14,8 +12,8 @@ export function speakerNameProblem(name: string): string | null {
   if (trimmed.includes("]") || trimmed.includes("\n")) {
     return 'A speaker name cannot contain "]" or a line break.';
   }
-  if (DIRECTIVE_PATTERN.test(trimmed)) {
-    return "A speaker name cannot start with a word followed by a colon; that shape is reserved for note directives such as [prompt: ...].";
+  if (PROMPT_MARKER_PATTERN.test(trimmed)) {
+    return "A speaker name cannot start with p: or prompt:; those mark an inline prompt such as [prompt: ...].";
   }
 
   return null;

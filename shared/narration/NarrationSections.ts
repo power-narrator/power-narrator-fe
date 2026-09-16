@@ -1,4 +1,4 @@
-import { DIRECTIVE_PATTERN } from "./speakerName.js";
+import { PROMPT_MARKER_PATTERN } from "./speakerName.js";
 
 const DEFAULT_SECTION_SEPARATOR = "\n---\n";
 const DEFAULT_PROMPT_PREFIX = "[prompt: ";
@@ -10,7 +10,6 @@ const SECTION_DIVIDER_PATTERN = /^[ \t]*-{3,}[ \t]*(?:\n)?$/;
  * left unterminated — or closed mid-line — fails to match and stays plain text.
  */
 const BRACKETED_LINE_PATTERN = /^((?:[ \t]*\n)*[ \t]*)\[([^\]]*)\]([ \t]*)(?:\n|$)/;
-const PROMPT_MARKERS = new Set(["p", "prompt"]);
 const SAME_LINE_PADDING = { leading: /^[ \t]*/, trailing: /[ \t]*$/ };
 
 export interface NarrationSection {
@@ -108,8 +107,8 @@ function readSpeaker(line: BracketedLine): Pick<NarrationSection, "speaker" | "f
 }
 
 function readPrompt(line: BracketedLine): Pick<NarrationSection, "prompt" | "format"> | null {
-  const marker = line.content.match(DIRECTIVE_PATTERN);
-  if (!marker || !PROMPT_MARKERS.has((marker[1] ?? "").toLowerCase())) {
+  const marker = line.content.match(PROMPT_MARKER_PATTERN);
+  if (!marker) {
     return null;
   }
 

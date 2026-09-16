@@ -458,11 +458,11 @@ test("refuses a mapping name the notes syntax cannot express", async () => {
   );
 
   await vi.waitFor(() => expect(screen.getByText("[prompt: legacy]").query()).not.toBeNull());
-  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("note: aside");
+  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("p:aside");
   await screen.getByRole("button", { name: "Add Mapping" }).click();
 
   await vi.waitFor(() =>
-    expect(screen.getByText(/reserved for note directives/).query()).not.toBeNull(),
+    expect(screen.getByText(/cannot start with p: or prompt:/).query()).not.toBeNull(),
   );
   expect(savedMappings).toHaveLength(0);
   expect(screen.getByText("[prompt: legacy]").query()).not.toBeNull();
@@ -470,5 +470,5 @@ test("refuses a mapping name the notes syntax cannot express", async () => {
   await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
   await screen.getByRole("button", { name: "Add Mapping" }).click();
   await vi.waitFor(() => expect(savedMappings).toHaveLength(1));
-  expect(screen.getByText(/reserved for note directives/).query()).toBeNull();
+  expect(screen.getByText(/cannot start with p: or prompt:/).query()).toBeNull();
 });
