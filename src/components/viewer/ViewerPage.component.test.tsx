@@ -501,7 +501,7 @@ test("writes a marker into the notes when a prompt is added", async () => {
 
   await vi.waitFor(() =>
     expect(electronAPI.saveNarratedSlide).toHaveBeenCalledWith(
-      expect.objectContaining({ notes: "[prompt:excited]\nLoaded narration" }),
+      expect.objectContaining({ notes: "[prompt: excited]\nLoaded narration" }),
     ),
   );
 });
