@@ -100,25 +100,24 @@ export function ViewerPage({
   const activeSlideNumber = activeSlide.index || activeSlideIndex + 1;
   const activeSections = parseNarrationSections(activeSlide.notes || "", speakerNames);
 
-  function cancelPendingTypingCheckpoint() {
-    if (typingCheckpointTimerRef.current) {
+  function takePendingTypingSlidePosition() {
+    if (typingCheckpointTimerRef.current !== null) {
       clearTimeout(typingCheckpointTimerRef.current);
       typingCheckpointTimerRef.current = null;
     }
+    const slidePosition = pendingTypingSlidePositionRef.current;
     pendingTypingSlidePositionRef.current = null;
+    return slidePosition;
+  }
+
+  function cancelPendingTypingCheckpoint() {
+    takePendingTypingSlidePosition();
   }
 
   function finishPendingTypingCheckpoint() {
-    if (!typingCheckpointTimerRef.current) {
-      return;
-    }
-
-    clearTimeout(typingCheckpointTimerRef.current);
-    typingCheckpointTimerRef.current = null;
-    const slidePosition = pendingTypingSlidePositionRef.current;
-    pendingTypingSlidePositionRef.current = null;
+    const slidePosition = takePendingTypingSlidePosition();
     if (slidePosition !== null) {
-      viewerSession.commitSlides([slidePosition]);
+      viewerSession.checkpointCurrentEdits([slidePosition]);
     }
   }
 
@@ -131,12 +130,12 @@ export function ViewerPage({
   function updateActiveSlideSections(updater: (sections: NarrationSection[]) => boolean) {
     const currentSlide = slides[activeSlideIndex];
     if (!currentSlide) {
-      return;
+      return false;
     }
 
     const sections = parseNarrationSections(currentSlide.notes || "", speakerNames);
     if (!updater(sections)) {
-      return;
+      return false;
     }
 
     const nextSlides = [...slides];
@@ -146,7 +145,7 @@ export function ViewerPage({
     };
 
     viewerSession.updateSlides(nextSlides, [activeSlideIndex]);
-    return nextSlides;
+    return true;
   }
 
   function resetHistoryWithSlides(nextSlides: Slide[], reloadedSlides = nextSlides) {
@@ -242,7 +241,7 @@ export function ViewerPage({
 
     const selectionStart = textarea.selectionStart;
     const selectionEnd = textarea.selectionEnd;
-    const nextSlides = updateActiveSlideSections((sections) => {
+    const didUpdate = updateActiveSlideSections((sections) => {
       const activeSection = sections[activeSectionIndex];
       if (!activeSection) {
         return false;
@@ -256,7 +255,7 @@ export function ViewerPage({
       return true;
     });
 
-    if (!nextSlides) {
+    if (!didUpdate) {
       return;
     }
 
@@ -266,7 +265,7 @@ export function ViewerPage({
       end: selectionEnd + startTag.length,
     };
 
-    viewerSession.commitSlides([activeSlideIndex]);
+    viewerSession.checkpointCurrentEdits([activeSlideIndex]);
   }
 
   function insertSelfClosingTag(tag: string) {
@@ -275,7 +274,7 @@ export function ViewerPage({
 
   /** Typing commits once the author pauses, so a keystroke is not an undo step. */
   function editSectionWhileTyping(index: number, edit: (section: NarrationSection) => void) {
-    const nextSlides = updateActiveSlideSections((sections) => {
+    const didUpdate = updateActiveSlideSections((sections) => {
       const section = sections[index];
       if (!section) {
         return false;
@@ -285,20 +284,13 @@ export function ViewerPage({
       return true;
     });
 
-    if (!nextSlides) {
+    if (!didUpdate) {
       return;
     }
 
     cancelPendingTypingCheckpoint();
     pendingTypingSlidePositionRef.current = activeSlideIndex;
-    typingCheckpointTimerRef.current = setTimeout(() => {
-      const slidePosition = pendingTypingSlidePositionRef.current;
-      typingCheckpointTimerRef.current = null;
-      pendingTypingSlidePositionRef.current = null;
-      if (slidePosition !== null) {
-        viewerSession.commitSlides([slidePosition]);
-      }
-    }, 800);
+    typingCheckpointTimerRef.current = setTimeout(finishPendingTypingCheckpoint, 800);
   }
 
   const handleSectionTextChange = (index: number, value: string) => {
@@ -315,7 +307,7 @@ export function ViewerPage({
 
   const handleSpeakerChange = (index: number, speaker: string | null) => {
     finishPendingTypingCheckpoint();
-    const nextSlides = updateActiveSlideSections((sections) => {
+    const didUpdate = updateActiveSlideSections((sections) => {
       const section = sections[index];
       if (!section) {
         return false;
@@ -325,33 +317,33 @@ export function ViewerPage({
       return true;
     });
 
-    if (!nextSlides) {
+    if (!didUpdate) {
       return;
     }
 
-    viewerSession.commitSlides([activeSlideIndex]);
+    viewerSession.checkpointCurrentEdits([activeSlideIndex]);
   };
 
   const handleAddSection = () => {
     finishPendingTypingCheckpoint();
     const newSectionIndex = activeSections.length;
-    const nextSlides = updateActiveSlideSections((sections) => {
+    const didUpdate = updateActiveSlideSections((sections) => {
       sections.push({ speaker: "", text: "" });
       return true;
     });
 
-    if (!nextSlides) {
+    if (!didUpdate) {
       return;
     }
 
-    viewerSession.commitSlides([activeSlideIndex]);
+    viewerSession.checkpointCurrentEdits([activeSlideIndex]);
     setActiveSectionIndex(newSectionIndex);
   };
 
   const handleDeleteSection = (index: number) => {
     finishPendingTypingCheckpoint();
     const nextSectionCount = Math.max(0, activeSections.length - 1);
-    const nextSlides = updateActiveSlideSections((sections) => {
+    const didUpdate = updateActiveSlideSections((sections) => {
       if (!sections[index]) {
         return false;
       }
@@ -360,11 +352,11 @@ export function ViewerPage({
       return true;
     });
 
-    if (!nextSlides) {
+    if (!didUpdate) {
       return;
     }
 
-    viewerSession.commitSlides([activeSlideIndex]);
+    viewerSession.checkpointCurrentEdits([activeSlideIndex]);
 
     if (activeSectionIndex >= nextSectionCount) {
       setActiveSectionIndex(Math.max(0, nextSectionCount - 1));
