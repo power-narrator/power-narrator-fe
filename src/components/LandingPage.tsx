@@ -7,7 +7,7 @@ interface LandingPageProps {
 export function LandingPage({ onSelectFile }: LandingPageProps) {
   return (
     <>
-      <Button onClick={onSelectFile} size="xl" variant="filled" color="blue">
+      <Button onClick={onSelectFile} size="xl">
         Select PowerPoint File
       </Button>
       <Text c="dimmed">Select a .pptx file to begin</Text>
