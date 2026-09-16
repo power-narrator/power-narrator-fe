@@ -356,8 +356,10 @@ describe("NarrationPreparation prompts", () => {
 
 describe("NarrationPreparation inline prompts", () => {
   const promptableVoice: Voice = { ...narratorVoice, supportsPrompt: true };
+  const combinedPrompt =
+    "Follow all of the instructions below. Where a later instruction conflicts with an earlier one, follow the later instruction.\nconspiratorial\nalmost whispering";
 
-  it("appends a section's inline prompt to the speaker's preset prompt", async () => {
+  it("appends a section's inline prompt to the speaker's preset prompt so it wins conflicts", async () => {
     const { preparation, generateSpeech } = createPreparation({
       Narrator: { voice: promptableVoice, prompt: "conspiratorial" },
     });
@@ -369,7 +371,7 @@ describe("NarrationPreparation inline prompts", () => {
     expect(generateSpeech).toHaveBeenCalledWith(
       "First",
       promptableVoice,
-      "conspiratorial\nalmost whispering",
+      combinedPrompt,
     );
   });
 
@@ -395,7 +397,7 @@ describe("NarrationPreparation inline prompts", () => {
     ]);
 
     expect(generateSpeech.mock.calls).toEqual([
-      ["First", promptableVoice, "conspiratorial\nalmost whispering"],
+      ["First", promptableVoice, combinedPrompt],
       ["Second", promptableVoice, "conspiratorial"],
     ]);
   });
@@ -416,7 +418,7 @@ describe("NarrationPreparation inline prompts", () => {
     expect(generateSpeech).toHaveBeenCalledWith(
       "First",
       promptableVoice,
-      "conspiratorial\nalmost whispering",
+      combinedPrompt,
     );
   });
 

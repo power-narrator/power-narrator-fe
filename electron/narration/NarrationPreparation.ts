@@ -179,12 +179,20 @@ export class NarrationPreparation {
   }
 }
 
+const PROMPT_PRECEDENCE_INSTRUCTION =
+  "Follow all of the instructions below. Where a later instruction conflicts with an earlier one, follow the later instruction.";
+
 /**
- * A one-off direction extends the speaker's character rather than replacing it,
- * so the preset leads and the inline prompt follows.
+ * A one-off direction extends the speaker's character but wins wherever the two
+ * disagree, so the preset leads and the inline prompt follows.
  */
 function combineSpeakerPrompts(preset?: string, inline?: string): string | undefined {
-  return [toSpeakerPrompt(preset), toSpeakerPrompt(inline)].filter(Boolean).join("\n") || undefined;
+  const prompts = [toSpeakerPrompt(preset), toSpeakerPrompt(inline)].filter(Boolean);
+  if (prompts.length < 2) {
+    return prompts[0];
+  }
+
+  return [PROMPT_PRECEDENCE_INSTRUCTION, ...prompts].join("\n");
 }
 
 export class NarrationPreparationError extends Error {
