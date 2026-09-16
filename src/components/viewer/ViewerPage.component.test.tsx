@@ -126,6 +126,30 @@ test("renders the notes restored by undo/redo keyboard shortcuts", async () => {
   await vi.waitFor(() => expect(editor.element()).toHaveValue("Edited narration"));
 });
 
+test("keeps typing and a later section addition as separate undo steps", async () => {
+  installElectronApi();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const { screen } = await renderViewer();
+  const editor = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });
+
+  await editor.fill("Edited narration");
+  await screen.getByRole("button", { name: "Add Section" }).click();
+  await vi.runAllTimersAsync();
+  vi.useRealTimers();
+
+  await expect.element(editor).toHaveValue("Edited narration");
+  await expect
+    .element(screen.getByRole("textbox", { name: "Slide 1 section 2 notes" }))
+    .toBeInTheDocument();
+
+  await screen.getByRole("button", { name: "Undo" }).click();
+
+  await expect.element(editor).toHaveValue("Edited narration");
+  await expect
+    .element(screen.getByRole("textbox", { name: "Slide 1 section 2 notes" }))
+    .not.toBeInTheDocument();
+});
+
 test("stays on the slide when the navigation discard warning is declined", async () => {
   installElectronApi({
     confirmDiscardNarrationChanges: vi.fn<typeof window.electronAPI.confirmDiscardNarrationChanges>(

@@ -73,7 +73,8 @@ export function ViewerPage({
   const operation = useViewerOperation();
 
   const textareasRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingCheckpointTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingTypingSlidePositionRef = useRef<number | null>(null);
   const pendingSelectionRef = useRef<{ sectionIndex: number; start: number; end: number } | null>(
     null,
   );
@@ -99,10 +100,25 @@ export function ViewerPage({
   const activeSlideNumber = activeSlide.index || activeSlideIndex + 1;
   const activeSections = parseNarrationSections(activeSlide.notes || "", speakerNames);
 
-  function clearDebounce() {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-      debounceRef.current = null;
+  function cancelPendingTypingCheckpoint() {
+    if (typingCheckpointTimerRef.current) {
+      clearTimeout(typingCheckpointTimerRef.current);
+      typingCheckpointTimerRef.current = null;
+    }
+    pendingTypingSlidePositionRef.current = null;
+  }
+
+  function finishPendingTypingCheckpoint() {
+    if (!typingCheckpointTimerRef.current) {
+      return;
+    }
+
+    clearTimeout(typingCheckpointTimerRef.current);
+    typingCheckpointTimerRef.current = null;
+    const slidePosition = pendingTypingSlidePositionRef.current;
+    pendingTypingSlidePositionRef.current = null;
+    if (slidePosition !== null) {
+      viewerSession.commitSlides([slidePosition]);
     }
   }
 
@@ -172,28 +188,20 @@ export function ViewerPage({
     return electronAPI.removeAudio({ filePath, slideIndices });
   }
 
-  useEffect(() => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-      debounceRef.current = null;
-    }
-  }, [activeSlideIndex]);
-
   useEffect(
     () => () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-        debounceRef.current = null;
-      }
+      cancelPendingTypingCheckpoint();
     },
     [],
   );
 
   const handleUndo = () => {
+    finishPendingTypingCheckpoint();
     viewerSession.undo();
   };
 
   const handleRedo = () => {
+    finishPendingTypingCheckpoint();
     viewerSession.redo();
   };
 
@@ -226,6 +234,7 @@ export function ViewerPage({
   }, [activeSectionIndex, activeSlide.notes]);
 
   function insertWrappedTag(startTag: string, endTag = "") {
+    finishPendingTypingCheckpoint();
     const textarea = textareasRefs.current[activeSectionIndex];
     if (!textarea) {
       return;
@@ -257,7 +266,7 @@ export function ViewerPage({
       end: selectionEnd + startTag.length,
     };
 
-    viewerSession.commitSlides(nextSlides, [activeSlideIndex]);
+    viewerSession.commitSlides([activeSlideIndex]);
   }
 
   function insertSelfClosingTag(tag: string) {
@@ -280,10 +289,15 @@ export function ViewerPage({
       return;
     }
 
-    clearDebounce();
-    debounceRef.current = setTimeout(() => {
-      viewerSession.commitSlides(nextSlides, [activeSlideIndex]);
-      debounceRef.current = null;
+    cancelPendingTypingCheckpoint();
+    pendingTypingSlidePositionRef.current = activeSlideIndex;
+    typingCheckpointTimerRef.current = setTimeout(() => {
+      const slidePosition = pendingTypingSlidePositionRef.current;
+      typingCheckpointTimerRef.current = null;
+      pendingTypingSlidePositionRef.current = null;
+      if (slidePosition !== null) {
+        viewerSession.commitSlides([slidePosition]);
+      }
     }, 800);
   }
 
@@ -300,6 +314,7 @@ export function ViewerPage({
   };
 
   const handleSpeakerChange = (index: number, speaker: string | null) => {
+    finishPendingTypingCheckpoint();
     const nextSlides = updateActiveSlideSections((sections) => {
       const section = sections[index];
       if (!section) {
@@ -314,10 +329,11 @@ export function ViewerPage({
       return;
     }
 
-    viewerSession.commitSlides(nextSlides, [activeSlideIndex]);
+    viewerSession.commitSlides([activeSlideIndex]);
   };
 
   const handleAddSection = () => {
+    finishPendingTypingCheckpoint();
     const newSectionIndex = activeSections.length;
     const nextSlides = updateActiveSlideSections((sections) => {
       sections.push({ speaker: "", text: "" });
@@ -328,11 +344,12 @@ export function ViewerPage({
       return;
     }
 
-    viewerSession.commitSlides(nextSlides, [activeSlideIndex]);
+    viewerSession.commitSlides([activeSlideIndex]);
     setActiveSectionIndex(newSectionIndex);
   };
 
   const handleDeleteSection = (index: number) => {
+    finishPendingTypingCheckpoint();
     const nextSectionCount = Math.max(0, activeSections.length - 1);
     const nextSlides = updateActiveSlideSections((sections) => {
       if (!sections[index]) {
@@ -347,7 +364,7 @@ export function ViewerPage({
       return;
     }
 
-    viewerSession.commitSlides(nextSlides, [activeSlideIndex]);
+    viewerSession.commitSlides([activeSlideIndex]);
 
     if (activeSectionIndex >= nextSectionCount) {
       setActiveSectionIndex(Math.max(0, nextSectionCount - 1));
@@ -361,6 +378,7 @@ export function ViewerPage({
   const getTextarea = (index: number) => textareasRefs.current[index] || null;
 
   const handleGenerateVideo = async () => {
+    finishPendingTypingCheckpoint();
     await operation.run(
       "generateVideo",
       "Preparing narration...",
@@ -392,6 +410,7 @@ export function ViewerPage({
   };
 
   const handleSaveAllSlides = async () => {
+    finishPendingTypingCheckpoint();
     await operation.run(
       "saveAllSlides",
       "Preparing narration...",
@@ -408,6 +427,7 @@ export function ViewerPage({
   };
 
   const handleSaveSlide = async () => {
+    finishPendingTypingCheckpoint();
     await operation.run(
       "saveSlide",
       `Saving slide ${activeSlide.index}...`,
@@ -476,6 +496,7 @@ export function ViewerPage({
   };
 
   const handleReloadAllSlides = async () => {
+    finishPendingTypingCheckpoint();
     if (busy) {
       return;
     }
@@ -488,6 +509,7 @@ export function ViewerPage({
   };
 
   const handleReloadSlide = async () => {
+    finishPendingTypingCheckpoint();
     if (busy) {
       return;
     }
@@ -556,13 +578,17 @@ export function ViewerPage({
     <Stack gap="0" h="100%" mih={0} onKeyDown={handleHistoryKeyDown}>
       <ViewerHeader
         onBack={() => {
+          finishPendingTypingCheckpoint();
           void confirmDiscardChanges().then((confirmed) => {
             if (confirmed) {
               onBack();
             }
           });
         }}
-        onOpenSettings={onOpenSettings}
+        onOpenSettings={() => {
+          finishPendingTypingCheckpoint();
+          onOpenSettings();
+        }}
         actionStates={headerActionStates}
         handlers={{
           reloadAllSlides: () => void handleReloadAllSlides(),
@@ -577,7 +603,10 @@ export function ViewerPage({
           <SlideThumbnailList
             slides={slides}
             activeSlideIndex={activeSlideIndex}
-            onSelectSlide={setActiveSlideIndex}
+            onSelectSlide={(slideIndex) => {
+              finishPendingTypingCheckpoint();
+              setActiveSlideIndex(slideIndex);
+            }}
           />
         </Split.Pane>
 

@@ -22,7 +22,7 @@ export interface ViewerSessionState {
 
 export type ViewerSessionAction =
   | ({ type: "edit" } & SlideChange)
-  | ({ type: "checkpoint" } & SlideChange)
+  | { type: "checkpoint"; changedSlidePositions: readonly number[] }
   | { type: "undo" }
   | { type: "redo" }
   | { type: "saved"; savedSlides: readonly SavedSlideSelection[] }
@@ -74,13 +74,12 @@ export function reduceViewerSession(
     case "edit":
       return withEditedSlides(state, action.slides, action.changedSlidePositions);
     case "checkpoint": {
-      const edited = withEditedSlides(state, action.slides, action.changedSlidePositions);
       const historyIndex = state.historyIndex + 1;
       return {
-        ...edited,
+        ...state,
         history: [
           ...state.history.slice(0, historyIndex),
-          { slides: action.slides, changedSlidePositions: action.changedSlidePositions },
+          { slides: state.slides, changedSlidePositions: action.changedSlidePositions },
         ],
         historyIndex,
       };
