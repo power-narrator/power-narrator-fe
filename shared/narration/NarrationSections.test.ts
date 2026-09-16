@@ -87,13 +87,17 @@ describe("inline prompts in slide notes", () => {
   ])("recognises a %s prompt", (_spelling, tag) => {
     const [section] = parse(`[Narrator]\n${tag}\nHello`);
 
-    // The marker's own padding is punctuation; everything past the colon,
-    // the space included, is the prompt the author wrote.
-    expect(section).toMatchObject({ speaker: "Narrator", prompt: " whisper it", text: "Hello" });
+    expect(section).toMatchObject({ speaker: "Narrator", prompt: "whisper it", text: "Hello" });
   });
 
-  it("keeps the spacing an author put around a prompt", () => {
-    const [section] = parse("[Narrator]\n[prompt:  whisper it  ]\nHello");
+  it("treats one space after the colon as part of the marker", () => {
+    const [section] = parse("[Narrator]\n[prompt:whisper it]\nHello");
+
+    expect(section).toMatchObject({ prompt: "whisper it", text: "Hello" });
+  });
+
+  it("keeps the spacing an author put past the marker's one space", () => {
+    const [section] = parse("[Narrator]\n[prompt:   whisper it  ]\nHello");
 
     expect(section).toMatchObject({ prompt: "  whisper it  ", text: "Hello" });
   });
@@ -152,8 +156,8 @@ describe("inline prompts in slide notes", () => {
       "a speaker and a padded marker",
       "\n\t[ Narrator ] \n\n  [ PROMPT :  whisper it  ]\t\nHello  ",
     ],
-    ["no speaker", "[p:whisper]\nHello"],
-    ["a multi-line prompt", "[Guest]\n[prompt:\n  whisper it\n]\nHello"],
+    ["no speaker", "[p: whisper]\nHello"],
+    ["a multi-line prompt", "[Guest]\n[prompt: \n  whisper it\n]\nHello"],
   ])("round-trips %s byte for byte", (_case, notes) => {
     expect(formatNarrationSections(parse(notes))).toBe(notes);
   });
@@ -171,9 +175,21 @@ describe("inline prompts in slide notes", () => {
     expect(parse(formatNarrationSections(sections))[0]?.prompt).toBe(prompt);
   });
 
+  it("saves a prompt read without a space after the colon with one", () => {
+    expect(formatNarrationSections(parse("[Narrator]\n[p:whisper]\nHello"))).toBe(
+      "[Narrator]\n[p: whisper]\nHello",
+    );
+  });
+
+  it("saves a prompt read without a space after the colon with one", () => {
+    expect(formatNarrationSections(parse("[Narrator]\n[p:whisper]\nHello"))).toBe(
+      "[Narrator]\n[p: whisper]\nHello",
+    );
+  });
+
   it("uses canonical formatting for a prompt without format metadata", () => {
     expect(
       formatNarrationSections([{ speaker: "Narrator", prompt: "whisper", text: "Hello" }]),
-    ).toBe("[Narrator]\n[prompt:whisper]\nHello");
+    ).toBe("[Narrator]\n[prompt: whisper]\nHello");
   });
 });
