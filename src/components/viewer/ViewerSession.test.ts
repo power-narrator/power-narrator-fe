@@ -18,23 +18,23 @@ function loadedSession(): ViewerSessionState {
   return loadViewerSession([firstSlide, secondSlide]);
 }
 
-function editSlide(
-  state: ViewerSessionState,
-  type: "edit" | "checkpoint",
-  position: number,
-  notes: string,
-): ViewerSessionState {
+function editSlide(state: ViewerSessionState, position: number, notes: string): ViewerSessionState {
   const slides = state.slides.map((existing, index) =>
     index === position ? { ...existing, notes } : existing,
   );
-  return reduceViewerSession(state, { type, slides, changedSlidePositions: [position] });
+  return reduceViewerSession(state, { type: "edit", slides, changedSlidePositions: [position] });
 }
 
 const edit = (state: ViewerSessionState, position: number, notes: string) =>
-  editSlide(state, "edit", position, notes);
+  editSlide(state, position, notes);
 
-const checkpoint = (state: ViewerSessionState, position: number, notes: string) =>
-  editSlide(state, "checkpoint", position, notes);
+function checkpoint(state: ViewerSessionState, position: number, notes: string) {
+  const edited = editSlide(state, position, notes);
+  return reduceViewerSession(edited, {
+    type: "checkpoint",
+    changedSlidePositions: [position],
+  });
+}
 
 describe("reduceViewerSession", () => {
   it("marks an edited slide dirty", () => {
@@ -54,6 +54,18 @@ describe("reduceViewerSession", () => {
 
     expect(committed.historyIndex).toBe(1);
     expect(committed.history).toHaveLength(2);
+  });
+
+  it("checkpoints the current slide edits", () => {
+    const edited = edit(loadedSession(), 0, "Current narration");
+
+    const committed = reduceViewerSession(edited, {
+      type: "checkpoint",
+      changedSlidePositions: [0],
+    });
+
+    expect(committed.slides[0]!.notes).toBe("Current narration");
+    expect(committed.history[1]!.slides[0]!.notes).toBe("Current narration");
   });
 
   it("discards redone history when a checkpoint follows an undo", () => {

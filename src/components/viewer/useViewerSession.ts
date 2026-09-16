@@ -41,8 +41,8 @@ export function useViewerSession(
     wouldDiscard,
     updateSlides: (slides: Slide[], changedSlidePositions: readonly number[]) =>
       dispatch({ type: "edit", slides, changedSlidePositions }),
-    commitSlides: (slides: Slide[], changedSlidePositions: readonly number[]) =>
-      dispatch({ type: "checkpoint", slides, changedSlidePositions }),
+    commitSlides: (changedSlidePositions: readonly number[]) =>
+      dispatch({ type: "checkpoint", changedSlidePositions }),
     undo: () => dispatch({ type: "undo" }),
     redo: () => dispatch({ type: "redo" }),
     saveCompleted: (savedSlides: readonly SavedSlideSelection[]) =>
