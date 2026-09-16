@@ -109,7 +109,7 @@ export function SsmlToolbar({
               }
             }}
           />
-          <ActionIcon variant="filled" color="blue" size="sm" onClick={submitCustomBreak}>
+          <ActionIcon size="sm" onClick={submitCustomBreak}>
             <IconPlus size={14} />
           </ActionIcon>
         </Group>

@@ -259,23 +259,21 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
 
         <Divider my="sm" />
 
-        <Group justify="space-between" align="center">
-          <Box>
-            <Text>XML CLI Engine (Experimental)</Text>
-            <Text size="sm" c="dimmed">
-              Use the Python XML CLI for PPTX operations instead of AppleScript. Less features are
-              supported but it does not require PowerPoint to be running.
-            </Text>
-          </Box>
-          <Switch
-            checked={xmlCliEnabled}
-            onChange={(event) => {
-              const enabled = event.currentTarget.checked;
-              setXmlCliEnabled(enabled);
-              void window.electronAPI.setXmlCliEnabled(enabled);
-            }}
-          />
-        </Group>
+        <Box>
+          <Text>XML CLI Engine (Experimental)</Text>
+          <Text size="sm" c="dimmed">
+            Use the Python XML CLI for PPTX operations instead of AppleScript. Less features are
+            supported but it does not require PowerPoint to be running.
+          </Text>
+        </Box>
+        <Switch
+          checked={xmlCliEnabled}
+          onChange={(event) => {
+            const enabled = event.currentTarget.checked;
+            setXmlCliEnabled(enabled);
+            void window.electronAPI.setXmlCliEnabled(enabled);
+          }}
+        />
 
         <Button onClick={onClose} style={{ alignSelf: "flex-end" }}>
           Close

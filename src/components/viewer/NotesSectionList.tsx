@@ -112,7 +112,7 @@ export function NotesSectionList({
                           onChange={(value) => onSpeakerChange(index, value)}
                           size="xs"
                           placeholder={placeholder}
-                          allowDeselect={true}
+                          allowDeselect
                         />
                       ),
                       trailing: (
