@@ -17,7 +17,7 @@ const legacyMappings = {
 };
 
 describe("migrateSpeakerMappings", () => {
-  it("decomposes a legacy identifier rather than copying it across", () => {
+  it("parses a legacy provider voice name rather than copying it across", () => {
     expect(migrateSpeakerMappings(legacyMappings)).toEqual({
       _default_: {
         voice: {
