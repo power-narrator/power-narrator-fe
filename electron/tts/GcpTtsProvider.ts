@@ -66,9 +66,9 @@ const CHIRP_3_HD_PATTERN =
 
 const GEMINI_VOICE_NAME_PATTERN = /^[^-\s]+$/;
 
-export type VoiceComposition = Omit<Voice, "provider">;
+type GcpVoiceDetails = Omit<Voice, "provider">;
 
-function toComposition(voiceId: string, model: string, languageCode: string): VoiceComposition {
+function createVoiceDetails(voiceId: string, model: string, languageCode: string): GcpVoiceDetails {
   return {
     voiceId,
     model,
@@ -77,27 +77,27 @@ function toComposition(voiceId: string, model: string, languageCode: string): Vo
   };
 }
 
-export function decomposeGcpVoiceName(name: string): VoiceComposition | null {
+export function parseGcpVoiceName(name: string): GcpVoiceDetails | null {
   const groups = CHIRP_3_HD_PATTERN.exec(name)?.groups;
   if (!groups?.voiceId || !groups.languageCode) {
     return null;
   }
 
-  return toComposition(groups.voiceId, CHIRP_3_HD_MODEL, groups.languageCode);
+  return createVoiceDetails(groups.voiceId, CHIRP_3_HD_MODEL, groups.languageCode);
 }
 
-function decomposeCatalogueEntry(name: string, languageCode: string): VoiceComposition[] {
-  const chirp = decomposeGcpVoiceName(name);
+function interpretCatalogueVoice(name: string, languageCode: string): GcpVoiceDetails[] {
+  const chirp = parseGcpVoiceName(name);
   if (chirp) {
     return [chirp];
   }
 
   return GEMINI_VOICE_NAME_PATTERN.test(name)
-    ? GEMINI_MODELS.map((model) => toComposition(name, model, languageCode))
+    ? GEMINI_MODELS.map((model) => createVoiceDetails(name, model, languageCode))
     : [];
 }
 
-function composeGcpVoiceName(voice: Voice): string {
+function toGcpVoiceName(voice: Voice): string {
   return voice.model === CHIRP_3_HD_MODEL
     ? `${voice.languageCode}-Chirp3-HD-${voice.voiceId}`
     : voice.voiceId;
@@ -113,34 +113,34 @@ function toVoiceOptions(voices: GcpVoice[]): VoiceOption[] {
     }
 
     const ssmlGender = String(voice.ssmlGender);
-    for (const composition of decomposeCatalogueEntry(voice.name, languageCode)) {
-      const key = JSON.stringify([composition.voiceId, ssmlGender]);
+    for (const details of interpretCatalogueVoice(voice.name, languageCode)) {
+      const key = JSON.stringify([details.voiceId, ssmlGender]);
       let option = options.get(key);
       if (!option) {
         option = {
           provider: "gcp",
-          name: composition.voiceId,
+          name: details.voiceId,
           ssmlGender,
           models: [],
         };
         options.set(key, option);
       }
 
-      addLanguage(option, composition);
+      addLanguage(option, details);
     }
   }
 
   return [...options.values()];
 }
 
-function addLanguage(option: VoiceOption, composition: VoiceComposition): void {
-  const definition = MODELS[composition.model]!;
+function addLanguage(option: VoiceOption, details: GcpVoiceDetails): void {
+  const definition = MODELS[details.model]!;
   let model: VoiceModel | undefined = option.models.find(
-    (candidate) => candidate.id === composition.model,
+    (candidate) => candidate.id === details.model,
   );
   if (!model) {
     model = {
-      id: composition.model,
+      id: details.model,
       label: definition.label,
       supportsPrompt: definition.supportsPrompt,
       languages: definition.documentedLanguages ? [...definition.documentedLanguages] : [],
@@ -150,9 +150,9 @@ function addLanguage(option: VoiceOption, composition: VoiceComposition): void {
 
   if (
     !definition.documentedLanguages &&
-    !model.languages.some((language) => language.code === composition.languageCode)
+    !model.languages.some((language) => language.code === details.languageCode)
   ) {
-    model.languages.push({ code: composition.languageCode, label: composition.languageCode });
+    model.languages.push({ code: details.languageCode, label: details.languageCode });
   }
 }
 
@@ -192,7 +192,7 @@ export class GcpTtsProvider implements TtsProvider {
       input: { ...this.formatInput(text), ...this.formatPrompt(model, prompt) },
       voice: {
         languageCode: voice.languageCode,
-        name: composeGcpVoiceName(voice),
+        name: toGcpVoiceName(voice),
         ...(model.requestModelName ? { modelName: model.requestModelName } : {}),
       },
       audioConfig: { audioEncoding: "MP3" },

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Voice } from "./TtsProvider.js";
-import { decomposeGcpVoiceName, GcpTtsProvider } from "./GcpTtsProvider.js";
+import { GcpTtsProvider, parseGcpVoiceName } from "./GcpTtsProvider.js";
 import { GEMINI_LANGUAGES } from "./gcpLanguages.js";
 
 const { clientConstructor, listVoices, synthesizeSpeech } = vi.hoisted(() => ({
@@ -55,8 +55,8 @@ describe("GcpTtsProvider", () => {
     expect(warning).toHaveBeenCalledOnce();
   });
 
-  it("decomposes a composed identifier into a stored voice", () => {
-    expect(decomposeGcpVoiceName("en-GB-Chirp3-HD-Aoede")).toEqual({
+  it("parses a legacy provider voice name into stored voice details", () => {
+    expect(parseGcpVoiceName("en-GB-Chirp3-HD-Aoede")).toEqual({
       voiceId: "Aoede",
       model: "chirp-3-hd",
       languageCode: "en-GB",
@@ -65,9 +65,9 @@ describe("GcpTtsProvider", () => {
   });
 
   it.each(["", "default", "en_UK/apope_low", "en-GB-Neural2-A"])(
-    "refuses to decompose %j",
+    "refuses to parse the unsupported legacy voice name %j",
     (name) => {
-      expect(decomposeGcpVoiceName(name)).toBeNull();
+      expect(parseGcpVoiceName(name)).toBeNull();
     },
   );
 
@@ -309,7 +309,7 @@ describe("GcpTtsProvider", () => {
     expect(synthesizeSpeech.mock.calls[0]?.[0].input).toEqual(input);
   });
 
-  it("composes the provider-native identifier from the stored voice", async () => {
+  it("derives the provider voice name from the stored voice", async () => {
     await new GcpTtsProvider(() => "/keys/gcp.json")
       .prepareSpeech("Hello", selectedVoice)
       .synthesize();

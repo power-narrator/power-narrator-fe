@@ -1,5 +1,5 @@
 import type { SpeakerMapping, TtsProviderId, Voice } from "../tts/TtsProvider.js";
-import { decomposeGcpVoiceName } from "../tts/GcpTtsProvider.js";
+import { parseGcpVoiceName } from "../tts/GcpTtsProvider.js";
 
 interface LegacySpeakerMapping {
   name?: unknown;
@@ -7,8 +7,11 @@ interface LegacySpeakerMapping {
   prompt?: unknown;
 }
 
-const decomposers: Record<TtsProviderId, (name: string) => Omit<Voice, "provider"> | null> = {
-  gcp: decomposeGcpVoiceName,
+const legacyVoiceNameParsers: Record<
+  TtsProviderId,
+  (name: string) => Omit<Voice, "provider"> | null
+> = {
+  gcp: parseGcpVoiceName,
 };
 
 function convertRecord(record: unknown): SpeakerMapping {
@@ -21,10 +24,12 @@ function convertRecord(record: unknown): SpeakerMapping {
     return record;
   }
 
-  const composition = decomposers[legacy.provider]?.(legacy.name);
+  const voiceDetails = legacyVoiceNameParsers[legacy.provider]?.(legacy.name);
   const prompt = typeof legacy.prompt === "string" ? { prompt: legacy.prompt } : {};
 
-  return composition ? { voice: { provider: legacy.provider, ...composition }, ...prompt } : prompt;
+  return voiceDetails
+    ? { voice: { provider: legacy.provider, ...voiceDetails }, ...prompt }
+    : prompt;
 }
 
 export function migrateSpeakerMappings(mappings: unknown): Record<string, SpeakerMapping> {
