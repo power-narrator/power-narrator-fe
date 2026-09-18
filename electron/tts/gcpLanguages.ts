@@ -105,7 +105,6 @@ function toLanguages(codes: string[], suffix = ""): VoiceLanguage[] {
   return codes.map((code) => ({ code, label: `${code}${suffix}` }));
 }
 
-/** Generally available languages first, so a preview choice is never the obvious one. */
 export const GEMINI_LANGUAGES: VoiceLanguage[] = [
   ...toLanguages(GEMINI_GA_LANGUAGE_CODES),
   ...toLanguages(GEMINI_PREVIEW_LANGUAGE_CODES, " (Preview)"),

@@ -112,14 +112,10 @@ function readPrompt(line: BracketedLine): Pick<NarrationSection, "prompt" | "for
     return null;
   }
 
-  // Exactly one space after the colon is punctuation, never more, so any further
-  // spacing typed ahead of a prompt survives the re-parse on each keystroke.
   const prefix = line.content.startsWith(" ", marker[0].length) ? `${marker[0]} ` : marker[0];
   const value = line.content.slice(prefix.length);
 
   return {
-    // An empty prompt is no prompt, but the marker still claims the line, so a
-    // direction the author emptied is never narrated as text.
     ...(value ? { prompt: value } : {}),
     format: {
       promptPrefix: `${line.lead}[${prefix}`,
@@ -128,11 +124,6 @@ function readPrompt(line: BracketedLine): Pick<NarrationSection, "prompt" | "for
   };
 }
 
-/**
- * Reads the head of a section: an optional speaker tag, then at most one prompt.
- * Anything that classifies as neither ends the run and belongs to the text, so a
- * mistyped speaker name stays visible rather than vanishing.
- */
 function parseSection(
   rawSection: RawNarrationSection,
   knownSpeakers: ReadonlySet<string>,
@@ -190,8 +181,6 @@ export const getEffectiveSpeaker = (
   return "";
 };
 
-// A prefix read without its space is still written with one; the parser strips
-// only a single space, so this never eats spacing the author typed.
 const withTrailingSpace = (prefix: string): string =>
   prefix.endsWith(" ") ? prefix : `${prefix} `;
 

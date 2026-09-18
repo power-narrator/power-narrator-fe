@@ -26,11 +26,6 @@ type ModelDefinition = {
   documentedLanguages: VoiceLanguage[] | null;
 };
 
-/**
- * A model id is this app's identity for a model and is not always a legal
- * `modelName`: Chirp 3 HD names no model in the request and would be rejected
- * if it did.
- */
 const MODELS: Record<string, ModelDefinition> = {
   [CHIRP_3_HD_MODEL]: {
     label: "Chirp 3 HD",
@@ -82,10 +77,6 @@ function toComposition(voiceId: string, model: string, languageCode: string): Vo
   };
 }
 
-/**
- * Standalone so catalogue shaping and the settings migration share one grammar
- * without constructing a provider, which needs credentials they do not have.
- */
 export function decomposeGcpVoiceName(name: string): VoiceComposition | null {
   const groups = CHIRP_3_HD_PATTERN.exec(name)?.groups;
   if (!groups?.voiceId || !groups.languageCode) {
@@ -95,11 +86,6 @@ export function decomposeGcpVoiceName(name: string): VoiceComposition | null {
   return toComposition(groups.voiceId, CHIRP_3_HD_MODEL, groups.languageCode);
 }
 
-/**
- * Every voice a single catalogue entry stands for. A Chirp 3 HD identifier
- * names one model; a bare Gemini name names none, so it stands for every
- * Gemini model, each of which supplies its own documented languages.
- */
 function decomposeCatalogueEntry(name: string, languageCode: string): VoiceComposition[] {
   const chirp = decomposeGcpVoiceName(name);
   if (chirp) {
@@ -147,11 +133,6 @@ function toVoiceOptions(voices: GcpVoice[]): VoiceOption[] {
   return [...options.values()];
 }
 
-/**
- * A model documenting its own languages carries all of them, since the
- * catalogue advertises Gemini voices under one locale that says nothing about
- * what they can speak.
- */
 function addLanguage(option: VoiceOption, composition: VoiceComposition): void {
   const definition = MODELS[composition.model]!;
   let model: VoiceModel | undefined = option.models.find(
@@ -249,12 +230,6 @@ export class GcpTtsProvider implements TtsProvider {
     return isSsml(text) ? { ssml: ensureSpeakElement(text) } : { text };
   }
 
-  /**
-   * An unusable or absent prompt leaves the field off the request rather than
-   * sending an empty one, so the model's own default delivery still applies. A
-   * model that cannot be prompted drops it here instead of refusing the
-   * synthesis, since the author may have parked it deliberately (ADR 0001).
-   */
   private formatPrompt(model: ModelDefinition, prompt: string | undefined): { prompt?: string } {
     const speakerPrompt = model.supportsPrompt ? toSpeakerPrompt(prompt) : undefined;
 

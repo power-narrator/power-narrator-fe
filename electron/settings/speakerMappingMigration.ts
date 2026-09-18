@@ -1,22 +1,12 @@
 import type { SpeakerMapping, TtsProviderId, Voice } from "../tts/TtsProvider.js";
 import { decomposeGcpVoiceName } from "../tts/GcpTtsProvider.js";
 
-/**
- * The mapping value as it was stored before speaker mappings gained a prompt:
- * one record per speaker holding the provider's composed voice identifier in
- * `name`. Delete this module once no installation can still be on that version.
- */
 interface LegacySpeakerMapping {
   name?: unknown;
   provider?: unknown;
   prompt?: unknown;
 }
 
-/**
- * A legacy identifier is decomposed by the provider that composed it, using the
- * same grammar it applies to its own catalogue, so no provider carries code
- * that exists only to read the old format.
- */
 const decomposers: Record<TtsProviderId, (name: string) => Omit<Voice, "provider"> | null> = {
   gcp: decomposeGcpVoiceName,
 };
@@ -34,8 +24,6 @@ function convertRecord(record: unknown): SpeakerMapping {
   const composition = decomposers[legacy.provider]?.(legacy.name);
   const prompt = typeof legacy.prompt === "string" ? { prompt: legacy.prompt } : {};
 
-  // Nothing about an undecomposable voice survives, since the voice key was
-  // only recoverable by decomposition.
   return composition ? { voice: { provider: legacy.provider, ...composition }, ...prompt } : prompt;
 }
 
