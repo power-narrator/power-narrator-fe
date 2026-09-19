@@ -157,6 +157,7 @@ describe("inline prompts in slide notes", () => {
       "\n\t[ Narrator ] \n\n  [ PROMPT :  whisper it  ]\t\nHello  ",
     ],
     ["no speaker", "[p: whisper]\nHello"],
+    ["a marker written without a space", "[p:whisper]\nHello"],
     ["a multi-line prompt", "[Guest]\n[prompt: \n  whisper it\n]\nHello"],
   ])("round-trips %s byte for byte", (_case, notes) => {
     expect(formatNarrationSections(parse(notes))).toBe(notes);
@@ -166,8 +167,7 @@ describe("inline prompts in slide notes", () => {
     ["[prompt: whisper]", " whisper it"],
     ["[prompt: whisper]", "whisper it "],
     ["[prompt: whisper]", "whisper  it"],
-    ["[prompt:whisper]", " whisper it"],
-    ["[p:]", " "],
+    ["[p: ]", " whisper it"],
   ])("keeps an edit to %s as %o through the round-trip a keystroke performs", (tag, prompt) => {
     const sections = parse(`[Narrator]\n${tag}\nHello`);
     sections[0]!.prompt = prompt;
@@ -175,10 +175,22 @@ describe("inline prompts in slide notes", () => {
     expect(parse(formatNarrationSections(sections))[0]?.prompt).toBe(prompt);
   });
 
-  it("saves a prompt read without a space after the colon with one", () => {
-    expect(formatNarrationSections(parse("[Narrator]\n[p:whisper]\nHello"))).toBe(
-      "[Narrator]\n[p: whisper]\nHello",
-    );
+  it("moves a space typed ahead of a prompt into a marker written without one", () => {
+    const sections = parse("[Narrator]\n[p:whisper]\nHello");
+    sections[0]!.prompt = " whisper it";
+    const notes = formatNarrationSections(sections);
+
+    expect(notes).toBe("[Narrator]\n[p: whisper it]\nHello");
+    expect(parse(notes)[0]?.prompt).toBe("whisper it");
+  });
+
+  it("leaves a prompt of nothing but a space to the marker", () => {
+    const sections = parse("[Narrator]\n[p:]\nHello");
+    sections[0]!.prompt = " ";
+    const notes = formatNarrationSections(sections);
+
+    expect(notes).toBe("[Narrator]\n[p: ]\nHello");
+    expect(parse(notes)[0]?.prompt).toBeUndefined();
   });
 
   it("uses canonical formatting for a prompt without format metadata", () => {

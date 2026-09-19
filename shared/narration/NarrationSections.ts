@@ -4,11 +4,6 @@ const DEFAULT_SECTION_SEPARATOR = "\n---\n";
 const DEFAULT_PROMPT_PREFIX = "[prompt: ";
 const DEFAULT_PROMPT_SUFFIX = "]";
 const SECTION_DIVIDER_PATTERN = /^[ \t]*-{3,}[ \t]*(?:\n)?$/;
-/**
- * Any leading bracketed line, whatever it turns out to mean. Content may span
- * lines so a prompt can be a paragraph, but never crosses a `]`, so a bracket
- * left unterminated — or closed mid-line — fails to match and stays plain text.
- */
 const BRACKETED_LINE_PATTERN = /^((?:[ \t]*\n)*[ \t]*)\[([^\]]*)\]([ \t]*)(?:\n|$)/;
 const SAME_LINE_PADDING = { leading: /^[ \t]*/, trailing: /[ \t]*$/ };
 
@@ -30,8 +25,7 @@ interface RawNarrationSection {
   text: string;
 }
 
-const normalizeNotes = (text: string): string =>
-  text.replaceAll(/\r\n|[\r\u2028\u2029]/g, "\n");
+const normalizeNotes = (text: string): string => text.replaceAll(/\r\n|[\r\u2028\u2029]/g, "\n");
 
 function splitRawSections(text: string): RawNarrationSection[] {
   const sections: RawNarrationSection[] = [];
@@ -181,8 +175,13 @@ export const getEffectiveSpeaker = (
   return "";
 };
 
-const withTrailingSpace = (prefix: string): string =>
-  prefix.endsWith(" ") ? prefix : `${prefix} `;
+function withMarkerSpacing(prefix: string, prompt: string) {
+  if (prefix.endsWith(" ") || !prompt.startsWith(" ")) {
+    return { prefix, prompt };
+  }
+
+  return { prefix: `${prefix} `, prompt: prompt.slice(1) };
+}
 
 export const formatNarrationSections = (sections: NarrationSection[]): string =>
   sections.reduce((notes, section, index) => {
@@ -196,9 +195,12 @@ export const formatNarrationSections = (sections: NarrationSection[]): string =>
     }
 
     if (section.prompt) {
-      const prefix = withTrailingSpace(section.format?.promptPrefix || DEFAULT_PROMPT_PREFIX);
+      const { prefix, prompt } = withMarkerSpacing(
+        section.format?.promptPrefix || DEFAULT_PROMPT_PREFIX,
+        section.prompt,
+      );
       const suffix = section.format?.promptSuffix || DEFAULT_PROMPT_SUFFIX;
-      tags.push(`${prefix}${section.prompt}${suffix}`);
+      tags.push(`${prefix}${prompt}${suffix}`);
     }
 
     const head = tags.join("\n");
