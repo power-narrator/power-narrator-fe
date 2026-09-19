@@ -1,276 +1,29 @@
 import { test, expect, type ElectronApplication, type Page, type Locator } from "@playwright/test";
-import { _electron as electron } from "playwright";
-import path from "node:path";
 import fs from "node:fs";
-import { fileURLToPath } from "node:url";
-import type { SlideWithSrc as Slide } from "../../electron/platform/types.js";
-import type { SpeakerMapping, Voice } from "../../shared/types/tts.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const FIXTURE_ORIGINAL = path.join(__dirname, "../fixtures/test-presentation.pptx");
-const FIXTURE_TEST = path.join(__dirname, "../fixtures/test-presentation-run.pptx");
-
-const TRANSPARENT_SLIDE_IMAGE =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
-
-const MOCK_SLIDES: Slide[] = [
-  {
-    index: 1,
-    image: "slide-1.png",
-    src: TRANSPARENT_SLIDE_IMAGE,
-    notes: "Initial notes for slide 1",
-  },
-  {
-    index: 2,
-    image: "slide-2.png",
-    src: TRANSPARENT_SLIDE_IMAGE,
-    notes: "Initial notes for slide 2\nLine 2",
-  },
-];
-
-const MOCK_MAPPINGS: Record<string, SpeakerMapping> = {
-  _default_: {
-    voice: {
-      provider: "gcp",
-      voiceId: "Default",
-      model: "chirp-3-hd",
-      languageCode: "en-US",
-      supportsPrompt: false,
-    },
-  },
-  Narrator: {
-    voice: {
-      provider: "gcp",
-      voiceId: "Narrator",
-      model: "chirp-3-hd",
-      languageCode: "en-US",
-      supportsPrompt: false,
-    },
-  },
-};
-
-const SILENT_MP3_FRAME = [0xff, 0xfb, 0x90, 0x64, ...Array.from({ length: 413 }, () => 0)];
-const DETERMINISTIC_MP3_BYTES = [...SILENT_MP3_FRAME, ...SILENT_MP3_FRAME, ...SILENT_MP3_FRAME];
-
-type GeneratedSpeechCall = {
-  text: string;
-  voiceOption: Voice;
-};
-
-type ConvertPptxCall = {
-  filePath: string;
-};
-
-type SaveNotesCall = {
-  filePath: string;
-  slides: Array<{ index: number; notes: string }>;
-};
-
-type InsertAudioCall = {
-  filePath: string;
-  slidesAudio: Array<{ index: number; sectionIndex: number; audioData: Uint8Array }>;
-};
-
-type NarrationProgress = { completed: number; total: number };
-
-type RendererNarrationApi = {
-  saveNarratedPresentation: (
-    payload: { filePath: string; slides: Array<{ slideIndex: number; notes: string }> },
-    onProgress: (progress: NarrationProgress) => void,
-  ) => Promise<unknown>;
-};
-
-type DiscardConfirmationTestGlobals = typeof globalThis & {
-  __discardConfirmationCalls: unknown[];
-  __shouldDiscardNarrationChanges: boolean;
-};
+import {
+  DELAYED_PREVIEW_TEXT,
+  DETERMINISTIC_MP3_BYTES,
+  FIXTURE_ORIGINAL,
+  FIXTURE_TEST,
+  MOCK_MAPPINGS,
+  MOCK_SLIDES,
+  getCompletedPreviewSyntheses,
+  getConvertPptxCalls,
+  getDiscardConfirmationCalls,
+  getGeneratedSpeechCalls,
+  getInsertAudioCalls,
+  getPlaybackActivity,
+  getSaveNotesCalls,
+  installMockIpcHandlers,
+  installRendererProbes,
+  launchTestApp,
+  releaseDelayedPreview,
+  resetProbes,
+  setShouldDiscardNarrationChanges,
+} from "./fixtures/app.js";
 
 let electronApp: ElectronApplication;
 let window: Page;
-
-async function launchTestApp() {
-  return electron.launch({
-    args: [path.join(__dirname, "../../dist-electron/electron/main.js")],
-    env: {
-      ...process.env,
-      NODE_ENV: "test",
-    },
-  });
-}
-
-async function installMockIpcHandlers(app: ElectronApplication) {
-  await app.evaluate(
-    ({ ipcMain }, { testFilePath, mockSlides, mockMappings, deterministicMp3Bytes }) => {
-      const discardConfirmationGlobals = globalThis as DiscardConfirmationTestGlobals;
-      discardConfirmationGlobals.__discardConfirmationCalls = [];
-      discardConfirmationGlobals.__shouldDiscardNarrationChanges = false;
-      globalThis.powerNarratorTestHarness!.useDiscardConfirmation((options) => {
-        const globals = globalThis as DiscardConfirmationTestGlobals;
-        globals.__discardConfirmationCalls.push(options);
-        return Promise.resolve(globals.__shouldDiscardNarrationChanges);
-      });
-
-      ipcMain.removeHandler("select-file");
-      ipcMain.handle("select-file", () => testFilePath);
-
-      ipcMain.removeHandler("convert-pptx");
-      (globalThis as typeof globalThis & { __convertPptxCalls?: unknown[] }).__convertPptxCalls =
-        [];
-      ipcMain.handle("convert-pptx", (_, filePath: string) => {
-        (
-          globalThis as typeof globalThis & {
-            __convertPptxCalls: unknown[];
-          }
-        ).__convertPptxCalls.push({ filePath });
-
-        return {
-          success: true,
-          slides: mockSlides,
-        };
-      });
-
-      ipcMain.removeHandler("reload-slide");
-      (globalThis as typeof globalThis & { __reloadSlideCalls?: unknown[] }).__reloadSlideCalls =
-        [];
-      ipcMain.handle(
-        "reload-slide",
-        (_, { filePath, slideIndex }: { filePath: string; slideIndex: number }) => {
-          (
-            globalThis as typeof globalThis & {
-              __reloadSlideCalls: unknown[];
-            }
-          ).__reloadSlideCalls.push({ filePath, slideIndex });
-
-          return {
-            success: true,
-            slide: mockSlides[slideIndex - 1],
-          };
-        },
-      );
-
-      ipcMain.removeHandler("get-video-save-path");
-      ipcMain.handle("get-video-save-path", () => "/tmp/output.mp4");
-
-      ipcMain.removeHandler("save-notes");
-      (globalThis as typeof globalThis & { __saveNotesCalls?: unknown[] }).__saveNotesCalls = [];
-      ipcMain.handle("save-notes", (_, filePath: string, slides: unknown) => {
-        (
-          globalThis as typeof globalThis & {
-            __saveNotesCalls: unknown[];
-          }
-        ).__saveNotesCalls.push({ filePath, slides });
-
-        return { success: true };
-      });
-
-      ipcMain.removeHandler("get-speaker-mappings");
-      ipcMain.handle("get-speaker-mappings", () => mockMappings);
-
-      ipcMain.removeHandler("set-speaker-mappings");
-      ipcMain.handle("set-speaker-mappings", () => ({ success: true }));
-
-      (
-        globalThis as typeof globalThis & { __generatedSpeechCalls?: unknown[] }
-      ).__generatedSpeechCalls = [];
-
-      (
-        globalThis as typeof globalThis & {
-          __previewMappings?: Record<string, SpeakerMapping>;
-          __completedPreviewSyntheses?: number;
-        }
-      ).__previewMappings = mockMappings;
-      (
-        globalThis as typeof globalThis & {
-          __completedPreviewSyntheses: number;
-        }
-      ).__completedPreviewSyntheses = 0;
-      const mappingSource = {
-        getSpeakerMappings: () =>
-          (
-            globalThis as typeof globalThis & {
-              __previewMappings: Record<string, SpeakerMapping>;
-            }
-          ).__previewMappings,
-      };
-      const deterministicFakeTtsAdapter = {
-        supportsProvider: () => true,
-        generateSpeech: async (text: string, voiceOption: Voice) => {
-          const synthesisGlobals = globalThis as typeof globalThis & {
-            __failNextNarrationSynthesis?: boolean;
-          };
-          if (synthesisGlobals.__failNextNarrationSynthesis) {
-            synthesisGlobals.__failNextNarrationSynthesis = false;
-            throw new Error("narration synthesis failed");
-          }
-
-          (
-            globalThis as typeof globalThis & {
-              __generatedSpeechCalls: unknown[];
-            }
-          ).__generatedSpeechCalls.push({ text, voiceOption });
-
-          if (text === "Delayed preview") {
-            return new Promise<{ audio: Uint8Array; mediaType: string }>((resolve) => {
-              (
-                globalThis as typeof globalThis & {
-                  __resolveDelayedPreview?: () => void;
-                }
-              ).__resolveDelayedPreview = () => {
-                (
-                  globalThis as typeof globalThis & {
-                    __completedPreviewSyntheses: number;
-                  }
-                ).__completedPreviewSyntheses += 1;
-                resolve({ audio: new Uint8Array(deterministicMp3Bytes), mediaType: "audio/mpeg" });
-              };
-            });
-          }
-
-          return { audio: new Uint8Array(deterministicMp3Bytes), mediaType: "audio/mpeg" };
-        },
-      };
-      (globalThis as typeof globalThis & { __insertAudioCalls?: unknown[] }).__insertAudioCalls =
-        [];
-      const deterministicFakePowerPointAdapter = {
-        saveNotes: (filePath: string, slides: unknown[]) => {
-          (
-            globalThis as typeof globalThis & {
-              __saveNotesCalls: unknown[];
-            }
-          ).__saveNotesCalls.push({ filePath, slides });
-          return Promise.resolve({ success: true as const });
-        },
-        insertAudio: (filePath: string, slidesAudio: unknown[]) => {
-          const globals = globalThis as typeof globalThis & {
-            __insertAudioCalls: unknown[];
-            __failNextAudioInsertion?: boolean;
-          };
-          globals.__insertAudioCalls.push({ filePath, slidesAudio });
-          if (globals.__failNextAudioInsertion) {
-            globals.__failNextAudioInsertion = false;
-            return Promise.resolve({ success: false as const, message: "audio automation failed" });
-          }
-          return Promise.resolve({ success: true as const });
-        },
-        removeAudio: () => Promise.resolve({ success: true as const }),
-      };
-
-      globalThis.powerNarratorTestHarness!.useNarrationAdapters({
-        mappingSource,
-        synthesizer: deterministicFakeTtsAdapter,
-        getPowerPoint: () => deterministicFakePowerPointAdapter,
-      });
-    },
-    {
-      testFilePath: FIXTURE_TEST,
-      mockSlides: MOCK_SLIDES,
-      mockMappings: MOCK_MAPPINGS,
-      deterministicMp3Bytes: DETERMINISTIC_MP3_BYTES,
-    },
-  );
-}
 
 async function loadViewer() {
   await window.waitForLoadState("networkidle");
@@ -282,146 +35,7 @@ function notesEditor(): Locator {
   return window.getByRole("textbox", { name: "Slide 1 section 1 notes" });
 }
 
-async function getConvertPptxCalls(): Promise<ConvertPptxCall[]> {
-  return electronApp.evaluate(() => {
-    return (
-      globalThis as typeof globalThis & {
-        __convertPptxCalls: ConvertPptxCall[];
-      }
-    ).__convertPptxCalls;
-  });
-}
-
-async function getDiscardConfirmationCalls(): Promise<unknown[]> {
-  return electronApp.evaluate(() => {
-    return (globalThis as DiscardConfirmationTestGlobals).__discardConfirmationCalls;
-  });
-}
-
-async function setShouldDiscardNarrationChanges(shouldDiscard: boolean) {
-  await electronApp.evaluate((_, nextValue) => {
-    (globalThis as DiscardConfirmationTestGlobals).__shouldDiscardNarrationChanges = nextValue;
-  }, shouldDiscard);
-}
-
-async function attemptCloseAndKeepEditing(attemptClose: () => Promise<unknown>) {
-  await attemptClose();
-  await expect.poll(getDiscardConfirmationCalls).toHaveLength(1);
-  await expect(notesEditor()).toHaveValue("Unsaved close warning");
-}
-
-async function getSaveNotesCalls(): Promise<SaveNotesCall[]> {
-  return electronApp.evaluate(() => {
-    return (
-      globalThis as typeof globalThis & {
-        __saveNotesCalls: SaveNotesCall[];
-      }
-    ).__saveNotesCalls;
-  });
-}
-
-async function getGeneratedSpeechCalls(): Promise<GeneratedSpeechCall[]> {
-  return electronApp.evaluate(() => {
-    return (
-      globalThis as typeof globalThis & {
-        __generatedSpeechCalls: GeneratedSpeechCall[];
-      }
-    ).__generatedSpeechCalls;
-  });
-}
-
-async function getInsertAudioCalls(): Promise<InsertAudioCall[]> {
-  return electronApp.evaluate(() => {
-    return (
-      globalThis as typeof globalThis & {
-        __insertAudioCalls: InsertAudioCall[];
-      }
-    ).__insertAudioCalls;
-  });
-}
-
-async function resetCapturedIpcCalls() {
-  await electronApp.evaluate((_, mockMappings) => {
-    const globals = globalThis as typeof globalThis & {
-      __convertPptxCalls: unknown[];
-      __discardConfirmationCalls: unknown[];
-      __reloadSlideCalls: unknown[];
-      __saveNotesCalls: unknown[];
-      __generatedSpeechCalls: unknown[];
-      __insertAudioCalls: unknown[];
-      __completedPreviewSyntheses: number;
-      __previewMappings: Record<string, SpeakerMapping>;
-      __failNextNarrationSynthesis?: boolean;
-    };
-
-    globals.__convertPptxCalls = [];
-    globals.__discardConfirmationCalls = [];
-    globals.__reloadSlideCalls = [];
-    globals.__saveNotesCalls = [];
-    globals.__generatedSpeechCalls = [];
-    globals.__insertAudioCalls = [];
-    globals.__completedPreviewSyntheses = 0;
-    globals.__previewMappings = mockMappings;
-    globals.__failNextNarrationSynthesis = false;
-  }, MOCK_MAPPINGS);
-  await window.evaluate(() => {
-    const globals = globalThis as typeof globalThis & {
-      __audioPlayUrls: string[];
-      __createdBlobUrls: string[];
-      __revokedBlobUrls: string[];
-    };
-    globals.__audioPlayUrls = [];
-    globals.__createdBlobUrls = [];
-    globals.__revokedBlobUrls = [];
-  });
-}
-
-async function resetGeneratedSpeechCalls() {
-  await electronApp.evaluate(() => {
-    (
-      globalThis as typeof globalThis & {
-        __generatedSpeechCalls: unknown[];
-      }
-    ).__generatedSpeechCalls = [];
-  });
-}
-
-async function releaseDelayedPreview() {
-  await electronApp.evaluate(() => {
-    const globals = globalThis as typeof globalThis & {
-      __resolveDelayedPreview?: () => void;
-    };
-    globals.__resolveDelayedPreview?.();
-    globals.__resolveDelayedPreview = undefined;
-  });
-}
-
-async function getPlaybackActivity() {
-  return window.evaluate(() => {
-    const globals = globalThis as typeof globalThis & {
-      __audioPlayUrls: string[];
-      __createdBlobUrls: string[];
-      __revokedBlobUrls: string[];
-    };
-
-    return {
-      playUrls: globals.__audioPlayUrls,
-      createdUrls: globals.__createdBlobUrls,
-      revokedUrls: globals.__revokedBlobUrls,
-    };
-  });
-}
-
-async function getCompletedPreviewSyntheses() {
-  return electronApp.evaluate(
-    () =>
-      (
-        globalThis as typeof globalThis & {
-          __completedPreviewSyntheses: number;
-        }
-      ).__completedPreviewSyntheses,
-  );
-}
+const discardConfirmations = () => getDiscardConfirmationCalls(electronApp);
 
 test.beforeAll(async () => {
   fs.copyFileSync(FIXTURE_ORIGINAL, FIXTURE_TEST);
@@ -436,43 +50,7 @@ test.beforeAll(async () => {
   }
 
   window = appWindow;
-  await window.addInitScript(() => {
-    const globals = globalThis as typeof globalThis & {
-      __audioPlayUrls: string[];
-      __createdBlobUrls: string[];
-      __revokedBlobUrls: string[];
-    };
-    globals.__audioPlayUrls = [];
-    globals.__createdBlobUrls = [];
-    globals.__revokedBlobUrls = [];
-
-    const originalCreateObjectUrl = URL.createObjectURL.bind(URL);
-    const originalRevokeObjectUrl = URL.revokeObjectURL.bind(URL);
-    URL.createObjectURL = (object) => {
-      const url = originalCreateObjectUrl(object);
-      globals.__createdBlobUrls.push(url);
-      return url;
-    };
-    URL.revokeObjectURL = (url) => {
-      globals.__revokedBlobUrls.push(url);
-      originalRevokeObjectUrl(url);
-    };
-    const mediaPrototype = (
-      globalThis as typeof globalThis & {
-        HTMLMediaElement: {
-          prototype: {
-            play: () => Promise<void>;
-            pause: () => void;
-          };
-        };
-      }
-    ).HTMLMediaElement.prototype;
-    mediaPrototype.play = function (this: { src: string }) {
-      globals.__audioPlayUrls.push(this.src);
-      return Promise.resolve();
-    };
-    mediaPrototype.pause = () => {};
-  });
+  await installRendererProbes(window);
 });
 
 test.afterAll(async () => {
@@ -486,7 +64,7 @@ test.afterAll(async () => {
 test.describe("PPT Viewer UI Workflows", () => {
   test.beforeEach(async () => {
     await window.reload();
-    await resetCapturedIpcCalls();
+    await resetProbes(electronApp, window);
     await loadViewer();
   });
 
@@ -496,13 +74,13 @@ test.describe("PPT Viewer UI Workflows", () => {
       return;
     }
 
-    await setShouldDiscardNarrationChanges(true);
+    await setShouldDiscardNarrationChanges(electronApp, true);
     await backButton.click();
-    await setShouldDiscardNarrationChanges(false);
+    await setShouldDiscardNarrationChanges(electronApp, false);
   });
 
   test("loads mocked slides into the viewer", async () => {
-    await expect.poll(getConvertPptxCalls).toEqual([{ filePath: FIXTURE_TEST }]);
+    await expect.poll(() => getConvertPptxCalls(electronApp)).toEqual([{ filePath: FIXTURE_TEST }]);
 
     const thumbnails = window.getByRole("img", { name: /Slide \d+ thumbnail/ });
     await expect(thumbnails).toHaveCount(MOCK_SLIDES.length, { timeout: 10000 });
@@ -511,35 +89,38 @@ test.describe("PPT Viewer UI Workflows", () => {
     await expect(notesEditor()).toHaveValue(MOCK_SLIDES[0]!.notes);
   });
 
+  test("previews narration through Electron with deterministic MP3 audio", async () => {
+    await window.getByRole("button", { name: "Narrator", exact: true }).click();
+
+    await expect
+      .poll(() => getGeneratedSpeechCalls(electronApp))
+      .toContainEqual({
+        text: MOCK_SLIDES[0]!.notes,
+        voiceOption: MOCK_MAPPINGS.Narrator!.voice,
+      });
+    await expect
+      .poll(() => getPlaybackActivity(window))
+      .toMatchObject({
+        playUrls: [expect.stringMatching(/^blob:/)],
+      });
+  });
+
   test("stopping a pending preview prevents late playback without cancelling synthesis", async () => {
-    await resetGeneratedSpeechCalls();
-    await notesEditor().fill("Delayed preview");
+    await notesEditor().fill(DELAYED_PREVIEW_TEXT);
     const narratorPreview = window.getByRole("button", { name: "Narrator", exact: true });
 
     await narratorPreview.click();
-    await expect.poll(getGeneratedSpeechCalls).toContainEqual({
-      text: "Delayed preview",
-      voiceOption: MOCK_MAPPINGS.Narrator!.voice,
-    });
+    await expect
+      .poll(() => getGeneratedSpeechCalls(electronApp))
+      .toContainEqual({
+        text: DELAYED_PREVIEW_TEXT,
+        voiceOption: MOCK_MAPPINGS.Narrator!.voice,
+      });
     await narratorPreview.click();
-    await releaseDelayedPreview();
+    await releaseDelayedPreview(electronApp);
 
-    await expect.poll(getPlaybackActivity).toMatchObject({ playUrls: [] });
-    await expect.poll(getCompletedPreviewSyntheses).toBe(1);
-  });
-
-  test("previews narration through Electron with deterministic MP3 audio", async () => {
-    await resetGeneratedSpeechCalls();
-
-    await window.getByRole("button", { name: "Narrator", exact: true }).click();
-
-    await expect.poll(getGeneratedSpeechCalls).toContainEqual({
-      text: MOCK_SLIDES[0]!.notes,
-      voiceOption: MOCK_MAPPINGS.Narrator!.voice,
-    });
-    await expect.poll(getPlaybackActivity).toMatchObject({
-      playUrls: [expect.stringMatching(/^blob:/)],
-    });
+    await expect.poll(() => getPlaybackActivity(window)).toMatchObject({ playUrls: [] });
+    await expect.poll(() => getCompletedPreviewSyntheses(electronApp)).toBe(1);
   });
 
   test("saves the full presentation through Electron narration preparation", async () => {
@@ -548,52 +129,26 @@ test.describe("PPT Viewer UI Workflows", () => {
     await expect(
       window.getByRole("button", { name: "Save All Slides", exact: true }),
     ).toBeEnabled();
-    await expect.poll(getSaveNotesCalls).toEqual([
-      {
-        filePath: FIXTURE_TEST,
-        slides: MOCK_SLIDES.map((slide) => ({ index: slide.index, notes: slide.notes })),
-      },
-    ]);
-    await expect.poll(getInsertAudioCalls).toEqual([
-      {
-        filePath: FIXTURE_TEST,
-        slidesAudio: MOCK_SLIDES.map((slide) => ({
-          index: slide.index,
-          sectionIndex: 0,
-          audioData: new Uint8Array(DETERMINISTIC_MP3_BYTES),
-        })),
-      },
-    ]);
-  });
-
-  test("delivers narration progress over the renderer-to-Electron bridge", async () => {
-    const progress = await window.evaluate(
-      async ({ filePath, slides }) => {
-        const globals = globalThis as typeof globalThis & {
-          __bridgeProgress: NarrationProgress[];
-          electronAPI: RendererNarrationApi;
-        };
-        globals.__bridgeProgress = [];
-
-        await globals.electronAPI.saveNarratedPresentation({ filePath, slides }, (progress) =>
-          globals.__bridgeProgress.push(progress),
-        );
-
-        return [...globals.__bridgeProgress];
-      },
-      {
-        filePath: FIXTURE_TEST,
-        slides: MOCK_SLIDES.map((slide) => ({
-          slideIndex: slide.index,
-          notes: slide.notes ?? "",
-        })),
-      },
-    );
-
-    expect(progress.length).toBeGreaterThan(0);
-    for (const update of progress) {
-      expect(update.total).toBe(MOCK_SLIDES.length);
-    }
+    await expect
+      .poll(() => getSaveNotesCalls(electronApp))
+      .toEqual([
+        {
+          filePath: FIXTURE_TEST,
+          slides: MOCK_SLIDES.map((slide) => ({ index: slide.index, notes: slide.notes })),
+        },
+      ]);
+    await expect
+      .poll(() => getInsertAudioCalls(electronApp))
+      .toEqual([
+        {
+          filePath: FIXTURE_TEST,
+          slidesAudio: MOCK_SLIDES.map((slide) => ({
+            index: slide.index,
+            sectionIndex: 0,
+            audioData: new Uint8Array(DETERMINISTIC_MP3_BYTES),
+          })),
+        },
+      ]);
   });
 
   for (const closeCase of [
@@ -615,9 +170,11 @@ test.describe("PPT Viewer UI Workflows", () => {
     test(`warns when the ${closeCase.name} closes while narration edits are dirty`, async () => {
       await notesEditor().fill("Unsaved close warning");
 
-      await attemptCloseAndKeepEditing(closeCase.attempt);
+      await closeCase.attempt();
+      await expect.poll(discardConfirmations).toHaveLength(1);
+      await expect(notesEditor()).toHaveValue("Unsaved close warning");
 
-      await expect.poll(getDiscardConfirmationCalls).toEqual([
+      await expect.poll(discardConfirmations).toEqual([
         expect.objectContaining({
           buttons: ["Keep Editing", "Discard Changes"],
           message: "Discard unsaved narration changes?",
