@@ -1,0 +1,25 @@
+#!/bin/sh
+# ppt-tools.ppam is compiled by hand in PowerPoint's VBA editor, so nothing in the
+# build can regenerate it from ppt-tools.bas. Committing one without the other
+# ships source and macros that disagree.
+set -e
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+
+case "$staged" in
+  *electron/scripts/ppt-tools.bas*) ;;
+  *) exit 0 ;;
+esac
+
+case "$staged" in
+  *electron/scripts/ppt-tools.ppam*) exit 0 ;;
+esac
+
+cat >&2 <<'MSG'
+pre-commit: electron/scripts/ppt-tools.bas is staged without ppt-tools.ppam.
+
+The .ppam add-in is compiled by hand from the .bas source in PowerPoint's VBA
+editor. Recompile it and stage both files, or re-run with --no-verify if this
+change genuinely does not affect the macros.
+MSG
+exit 1

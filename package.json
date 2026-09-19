@@ -5,6 +5,7 @@
   "type": "module",
   "main": "dist-electron/electron/main.js",
   "scripts": {
+    "prepare": "node -e \"try{require('child_process').execSync('git config core.hooksPath .githooks',{stdio:'ignore'})}catch{}\"",
     "dev": "concurrently -k \"vite\" \"pnpm run dev:electron\"",
     "dev:electron": "pnpm run build:electron && concurrently -k \"pnpm run build:electron --watch\" \"electron .\"",
     "build": "pnpm run typecheck && vite build && pnpm run build:electron",

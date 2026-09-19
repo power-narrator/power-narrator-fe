@@ -291,7 +291,10 @@ For VBA-backed notes and audio operations:
 2. Select **+** and open `electron/scripts/ppt-tools.ppam`.
 3. Allow macro execution when prompted.
 
-The source for the bundled macros is `electron/scripts/ppt-tools.bas`.
+The source for the bundled macros is `electron/scripts/ppt-tools.bas`. The `.ppam` is compiled
+from it by hand in PowerPoint's VBA editor, so no build step can regenerate it — both files are
+committed, and a change to one must be accompanied by a recompile of the other. The tracked
+`pre-commit` hook in `.githooks/` enforces this.
 
 ### XML CLI mode
 
