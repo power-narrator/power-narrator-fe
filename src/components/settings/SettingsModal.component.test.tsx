@@ -120,15 +120,26 @@ test("creates a mapping from the voices exposed by the provider registry", async
     savedMappings,
   );
 
-  await vi.waitFor(() =>
-    expect(screen.getByText("future-provider", { exact: true }).query()).not.toBeNull(),
-  );
   await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
   await screen.getByRole("button", { name: "Add Mapping" }).click();
   await vi.waitFor(() => expect(savedMappings).toHaveLength(1));
-
   expect(savedMappings[0]).toEqual({ Narrator: {} });
-  expect(screen.getByText("Local TTS").query()).toBeNull();
+
+  await choose(screen, "Voice for Narrator", "future-voice (NEUTRAL)");
+
+  await vi.waitFor(() =>
+    expect(savedMappings.at(-1)).toEqual({
+      Narrator: {
+        voice: {
+          provider: "future-provider",
+          voiceId: "future-voice",
+          model: "future-model",
+          languageCode: "en-US",
+          supportsPrompt: true,
+        },
+      },
+    }),
+  );
 });
 
 test("replaces a persisted mapping whose provider is no longer registered", async () => {

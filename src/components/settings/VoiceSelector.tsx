@@ -109,7 +109,7 @@ export function VoiceSelector({ speakerLabel, value, onChange, options }: VoiceS
   };
 
   return (
-    <Group gap={4} wrap="nowrap" grow>
+    <Group gap="xs" grow>
       <Select
         aria-label={`Voice for ${speakerLabel}`}
         placeholder="Select Voice"
@@ -121,7 +121,6 @@ export function VoiceSelector({ speakerLabel, value, onChange, options }: VoiceS
         onChange={handleVoiceChange}
         searchable
         size="xs"
-        miw={0}
       />
       <Select
         aria-label={`Model for ${speakerLabel}`}
@@ -134,7 +133,6 @@ export function VoiceSelector({ speakerLabel, value, onChange, options }: VoiceS
         onChange={handleModelChange}
         disabled={!selectedOption}
         size="xs"
-        miw={0}
       />
       <Select
         aria-label={`Language for ${speakerLabel}`}
@@ -148,7 +146,6 @@ export function VoiceSelector({ speakerLabel, value, onChange, options }: VoiceS
         disabled={!selectedModel}
         searchable
         size="xs"
-        miw={0}
       />
     </Group>
   );

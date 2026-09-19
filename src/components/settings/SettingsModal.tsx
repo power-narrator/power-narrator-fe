@@ -4,6 +4,7 @@ import {
   Button,
   Code,
   Divider,
+  Flex,
   Group,
   Modal,
   Paper,
@@ -11,6 +12,7 @@ import {
   Switch,
   Text,
   TextInput,
+  Title,
 } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
@@ -19,7 +21,6 @@ import { toSpeakerPrompt } from "../../../shared/narration/prompt";
 import { speakerNameProblem } from "../../../shared/narration/speakerName";
 import { useSettings } from "../../context/useSettings";
 import type { SpeakerMapping, VoiceOption } from "../../../shared/types/tts";
-import { getProviderLabel } from "./providerLabels";
 import { SpeakerPrompt } from "../SpeakerPrompt";
 import { VoiceSelector } from "./VoiceSelector";
 
@@ -42,7 +43,7 @@ function SpeakerMappingControls({
   onChange,
 }: SpeakerMappingControlsProps) {
   return (
-    <Stack gap={4} flex={1} miw={0}>
+    <Stack>
       <VoiceSelector
         speakerLabel={speakerLabel}
         value={mapping?.voice}
@@ -54,7 +55,6 @@ function SpeakerMappingControls({
         value={mapping?.prompt}
         supportsPrompt={mapping?.voice?.supportsPrompt}
         onChange={(prompt) => onChange({ prompt })}
-        textareaWidth="100%"
       />
     </Stack>
   );
@@ -143,24 +143,19 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
 
   return (
     <Modal opened={opened} onClose={onClose} title="Settings" centered size="lg">
-      <Stack>
-        <Text fw={500}>Google Cloud TTS Configuration</Text>
-        <Text size="sm" c="dimmed">
-          To use high-quality voices (Chirp 3 HD), you must provide a valid Google Cloud Service
-          Account JSON key.
-        </Text>
+      <Stack gap="sm">
+        <Box>
+          <Title order={4}>Google Cloud TTS Configuration</Title>
+          <Text size="sm" c="dimmed">
+            To use Google Cloud, you must provide a valid Google Cloud Service Account JSON key.
+          </Text>
+        </Box>
 
         <Paper withBorder p="xs">
           <Group justify="space-between">
-            <Text size="sm" fw={700}>
-              Current Key:
-            </Text>
+            <Text size="sm">Current Key:</Text>
             {keyPath ? (
-              <Code
-                color="green"
-                maw={200}
-                style={{ overflow: "hidden", textOverflow: "ellipsis" }}
-              >
+              <Code p="xs" bg="green" style={{ overflowWrap: "anywhere" }}>
                 {keyPath}
               </Code>
             ) : (
@@ -171,97 +166,93 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
           </Group>
         </Paper>
 
-        <Group justify="flex-end">
-          <Button onClick={() => void handleSetKey()} variant="light" size="xs">
-            Select Key File...
-          </Button>
-        </Group>
+        <Button
+          style={{ alignSelf: "flex-end" }}
+          onClick={() => void handleSetKey()}
+          variant="light"
+          size="xs"
+        >
+          Select Key File...
+        </Button>
 
         <Divider my="sm" />
 
-        <Group justify="space-between" align="center">
-          <Box>
-            <Text fw={500}>Speaker Voices Mapping</Text>
-            <Text size="sm" c="dimmed">
-              Assign voices to specific speaker aliases. Use tags like <Code>[speaker 1]</Code> in
-              your notes.
-            </Text>
-          </Box>
-          <Text size="sm" fw={600} c="dimmed">
-            {Array.from(
-              new Set(voiceOptions.map((option) => getProviderLabel(option.provider))),
-            ).join(", ")}
+        <Box>
+          <Text fw={500}>Speaker Voices Mapping</Text>
+          <Text size="sm" c="dimmed">
+            Assign voices to specific speaker aliases. Use tags like <Code>[speaker 1]</Code> in
+            your notes.
           </Text>
-        </Group>
+        </Box>
 
-        <Stack gap="xs">
-          <Paper p="xs" bg="dark.6">
+        <Paper p="xs" bg="dark.6">
+          <Group align="flex-start" wrap="nowrap">
+            <Text size="sm" w={100}>
+              Default Voice (No Tag)
+            </Text>
+            <SpeakerMappingControls
+              speakerLabel={DEFAULT_SPEAKER_LABEL}
+              mapping={mappings[DEFAULT_SPEAKER_KEY]}
+              voiceOptions={voiceOptions}
+              onChange={(change) => updateMapping(DEFAULT_SPEAKER_KEY, change)}
+            />
+          </Group>
+        </Paper>
+
+        {mappedSpeakers.map(([alias, mapping]) => (
+          <Paper key={alias} withBorder p="xs">
             <Group align="flex-start" wrap="nowrap">
-              <Text size="sm" fw={600} w={130} miw={130} pt={6}>
-                Default Voice (No Tag)
-              </Text>
+              <Box w={100}>
+                <Code>[{alias}]</Code>
+              </Box>
               <SpeakerMappingControls
-                speakerLabel={DEFAULT_SPEAKER_LABEL}
-                mapping={mappings[DEFAULT_SPEAKER_KEY]}
+                speakerLabel={alias}
+                mapping={mapping}
                 voiceOptions={voiceOptions}
-                onChange={(change) => updateMapping(DEFAULT_SPEAKER_KEY, change)}
+                onChange={(change) => updateMapping(alias, change)}
               />
+              <ActionIcon
+                aria-label={`Delete mapping for ${alias}`}
+                color="red"
+                variant="subtle"
+                onClick={() => removeMapping(alias)}
+              >
+                <IconTrash size={16} />
+              </ActionIcon>
             </Group>
           </Paper>
+        ))}
 
-          {mappedSpeakers.map(([alias, mapping]) => (
-            <Paper key={alias} withBorder p="xs">
-              <Group align="flex-start" wrap="nowrap">
-                <Box w={100} miw={100} pt={4}>
-                  <Code>[{alias}]</Code>
-                </Box>
-                <SpeakerMappingControls
-                  speakerLabel={alias}
-                  mapping={mapping}
-                  voiceOptions={voiceOptions}
-                  onChange={(change) => updateMapping(alias, change)}
-                />
-                <ActionIcon
-                  aria-label={`Delete mapping for ${alias}`}
-                  color="red"
-                  variant="subtle"
-                  onClick={() => removeMapping(alias)}
-                >
-                  <IconTrash size={16} />
-                </ActionIcon>
-              </Group>
-            </Paper>
-          ))}
-
-          <Group mt="xs">
-            <TextInput
-              placeholder="New alias (e.g. speaker 1)"
-              size="xs"
-              value={newAlias}
-              error={aliasProblem}
-              onChange={(event) => {
-                setNewAlias(event.currentTarget.value);
-                setAliasProblem(null);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  addAlias();
-                }
-              }}
-              flex={1}
-            />
-            <Button
-              size="xs"
-              onClick={addAlias}
-              disabled={!newAlias.trim() || voiceOptions.length === 0}
-            >
-              Add Mapping
-            </Button>
-          </Group>
-        </Stack>
+        <Flex
+          component="form"
+          gap="xs"
+          onSubmit={(event) => {
+            event.preventDefault();
+            addAlias();
+          }}
+        >
+          <TextInput
+            placeholder="New alias (e.g. speaker 1)"
+            size="xs"
+            value={newAlias}
+            error={aliasProblem}
+            onChange={(event) => {
+              setNewAlias(event.currentTarget.value);
+              setAliasProblem(null);
+            }}
+            flex={1}
+          />
+          <Button
+            size="xs"
+            onClick={addAlias}
+            disabled={!newAlias.trim() || voiceOptions.length === 0}
+          >
+            Add Mapping
+          </Button>
+        </Flex>
 
         {error && (
-          <Text c="red" size="sm" mt="sm">
+          <Text c="red" size="sm">
             {error}
           </Text>
         )}
@@ -270,7 +261,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
 
         <Group justify="space-between" align="center">
           <Box>
-            <Text fw={500}>XML CLI Engine (Experimental)</Text>
+            <Text>XML CLI Engine (Experimental)</Text>
             <Text size="sm" c="dimmed">
               Use the Python XML CLI for PPTX operations instead of AppleScript. Less features are
               supported but it does not require PowerPoint to be running.
@@ -283,13 +274,12 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
               setXmlCliEnabled(enabled);
               void window.electronAPI.setXmlCliEnabled(enabled);
             }}
-            size="md"
           />
         </Group>
 
-        <Group justify="flex-end" mt="md">
-          <Button onClick={onClose}>Close</Button>
-        </Group>
+        <Button onClick={onClose} style={{ alignSelf: "flex-end" }}>
+          Close
+        </Button>
       </Stack>
     </Modal>
   );
