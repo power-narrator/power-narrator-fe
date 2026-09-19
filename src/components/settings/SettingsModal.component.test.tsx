@@ -404,6 +404,27 @@ test("opens stored prompts after mappings load while empty prompts stay closed",
   expect(screen.getByRole("textbox", { name: "Prompt for Guest" }).query()).toBeNull();
 });
 
+test("keeps a prompt a voice will use open, closable again once it is ignored", async () => {
+  const screen = await renderSettings({ voiceOptions: [bilingualOption] });
+
+  await waitForMapping(screen);
+  await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
+  await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
+
+  await expect
+    .element(screen.getByRole("button", { name: "Prompt for Narrator (set)" }))
+    .toBeDisabled();
+
+  await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
+  await choose(screen, "Model for Narrator", "Chirp 3 HD");
+  await choose(screen, "Language for Narrator", "de-DE");
+  await screen.getByRole("button", { name: "Prompt for Narrator (set)" }).click();
+
+  await vi.waitFor(() =>
+    expect(screen.getByRole("textbox", { name: "Prompt for Narrator" }).query()).toBeNull(),
+  );
+});
+
 test("keeps a prompt through a switch to a voice that ignores prompts, advising so", async () => {
   const savedMappings: Record<string, SpeakerMapping>[] = [];
   const screen = await renderSettings({ voiceOptions: [bilingualOption] }, savedMappings);
