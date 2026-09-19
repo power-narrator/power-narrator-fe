@@ -1,12 +1,11 @@
-import { test, expect, type ElectronApplication, type Page, type Locator } from "@playwright/test";
-import fs from "node:fs";
+import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import {
   DELAYED_PREVIEW_TEXT,
   DETERMINISTIC_MP3_BYTES,
-  FIXTURE_ORIGINAL,
   FIXTURE_TEST,
   MOCK_MAPPINGS,
   MOCK_SLIDES,
+  expect,
   getCompletedPreviewSyntheses,
   getConvertPptxCalls,
   getDiscardConfirmationCalls,
@@ -14,123 +13,88 @@ import {
   getInsertAudioCalls,
   getPlaybackActivity,
   getSaveNotesCalls,
-  installMockIpcHandlers,
-  installRendererProbes,
-  launchTestApp,
   releaseDelayedPreview,
   resetProbes,
-  setShouldDiscardNarrationChanges,
+  test,
 } from "./fixtures/app.js";
 
-let electronApp: ElectronApplication;
-let window: Page;
-
-async function loadViewer() {
-  await window.waitForLoadState("networkidle");
-  await window.getByRole("button", { name: "Select PowerPoint File" }).click();
-  await expect(window.getByText("Add Section")).toBeVisible({ timeout: 15000 });
+async function loadViewer(win: Page) {
+  await win.getByRole("button", { name: "Select PowerPoint File" }).click();
+  await expect(win.getByText("Add Section")).toBeVisible();
 }
 
-function notesEditor(): Locator {
-  return window.getByRole("textbox", { name: "Slide 1 section 1 notes" });
+function notesEditor(win: Page): Locator {
+  return win.getByRole("textbox", { name: "Slide 1 section 1 notes" });
 }
 
-const discardConfirmations = () => getDiscardConfirmationCalls(electronApp);
-
-test.beforeAll(async () => {
-  fs.copyFileSync(FIXTURE_ORIGINAL, FIXTURE_TEST);
-
-  electronApp = await launchTestApp();
-  await installMockIpcHandlers(electronApp);
-
-  const appWindow = await electronApp.firstWindow();
-
-  if (!appWindow) {
-    throw new Error("Could not find application window");
-  }
-
-  window = appWindow;
-  await installRendererProbes(window);
-});
-
-test.afterAll(async () => {
-  await electronApp?.close();
-
-  if (fs.existsSync(FIXTURE_TEST)) {
-    fs.unlinkSync(FIXTURE_TEST);
-  }
-});
+function narratorPreview(win: Page): Locator {
+  return win.getByRole("button", { name: "Narrator", exact: true });
+}
 
 test.describe("PPT Viewer UI Workflows", () => {
-  test.beforeEach(async () => {
-    await window.reload();
-    await resetProbes(electronApp, window);
-    await loadViewer();
+  test.beforeEach(async ({ app, win }) => {
+    await win.reload();
+    await resetProbes(app, win);
+    await loadViewer(win);
   });
 
-  test.afterEach(async () => {
-    const backButton = window.getByRole("button", { name: "Back", exact: false });
-    if (!(await backButton.isVisible())) {
-      return;
-    }
+  test("loads mocked slides into the viewer", async ({ app, win }) => {
+    await expect.poll(() => getConvertPptxCalls(app)).toEqual([{ filePath: FIXTURE_TEST }]);
 
-    await setShouldDiscardNarrationChanges(electronApp, true);
-    await backButton.click();
-    await setShouldDiscardNarrationChanges(electronApp, false);
+    const thumbnails = win.getByRole("img", { name: /Slide \d+ thumbnail/ });
+    await expect(thumbnails).toHaveCount(MOCK_SLIDES.length);
+    await expect(win.getByRole("img", { name: "Slide 1 preview" })).toBeVisible();
+
+    await expect(notesEditor(win)).toHaveValue(MOCK_SLIDES[0]!.notes);
   });
 
-  test("loads mocked slides into the viewer", async () => {
-    await expect.poll(() => getConvertPptxCalls(electronApp)).toEqual([{ filePath: FIXTURE_TEST }]);
-
-    const thumbnails = window.getByRole("img", { name: /Slide \d+ thumbnail/ });
-    await expect(thumbnails).toHaveCount(MOCK_SLIDES.length, { timeout: 10000 });
-    await expect(window.getByRole("img", { name: "Slide 1 preview" })).toBeVisible();
-
-    await expect(notesEditor()).toHaveValue(MOCK_SLIDES[0]!.notes);
-  });
-
-  test("previews narration through Electron with deterministic MP3 audio", async () => {
-    await window.getByRole("button", { name: "Narrator", exact: true }).click();
+  test("previews narration through Electron with deterministic MP3 audio", async ({ app, win }) => {
+    await narratorPreview(win).click();
 
     await expect
-      .poll(() => getGeneratedSpeechCalls(electronApp))
+      .poll(() => getGeneratedSpeechCalls(app))
       .toContainEqual({
         text: MOCK_SLIDES[0]!.notes,
         voiceOption: MOCK_MAPPINGS.Narrator!.voice,
       });
     await expect
-      .poll(() => getPlaybackActivity(window))
+      .poll(() => getPlaybackActivity(win))
       .toMatchObject({
         playUrls: [expect.stringMatching(/^blob:/)],
       });
   });
 
-  test("stopping a pending preview prevents late playback without cancelling synthesis", async () => {
-    await notesEditor().fill(DELAYED_PREVIEW_TEXT);
-    const narratorPreview = window.getByRole("button", { name: "Narrator", exact: true });
+  test("stopping a pending preview prevents late playback without cancelling synthesis", async ({
+    app,
+    win,
+  }) => {
+    await notesEditor(win).fill(DELAYED_PREVIEW_TEXT);
 
-    await narratorPreview.click();
+    await narratorPreview(win).click();
     await expect
-      .poll(() => getGeneratedSpeechCalls(electronApp))
+      .poll(() => getGeneratedSpeechCalls(app))
       .toContainEqual({
         text: DELAYED_PREVIEW_TEXT,
         voiceOption: MOCK_MAPPINGS.Narrator!.voice,
       });
-    await narratorPreview.click();
-    await releaseDelayedPreview(electronApp);
+    await narratorPreview(win).click();
+    await releaseDelayedPreview(app);
 
-    await expect.poll(() => getPlaybackActivity(window)).toMatchObject({ playUrls: [] });
-    await expect.poll(() => getCompletedPreviewSyntheses(electronApp)).toBe(1);
+    await expect.poll(() => getPlaybackActivity(win)).toMatchObject({ playUrls: [] });
+    await expect.poll(() => getCompletedPreviewSyntheses(app)).toBe(1);
   });
 
-  test("saves the full presentation through Electron narration preparation", async () => {
-    await window.getByRole("button", { name: "Save All Slides", exact: true }).click();
+  test("saves the full presentation through Electron narration preparation", async ({
+    app,
+    win,
+  }) => {
+    const saveAll = win.getByRole("button", { name: "Save All Slides", exact: true });
 
-    await expect(
-      window.getByRole("button", { name: "Save All Slides", exact: true }),
-    ).toBeEnabled();
+    await saveAll.click();
+
+    await expect(saveAll).toBeEnabled();
     await expect
-      .poll(() => getSaveNotesCalls(electronApp))
+      .poll(() => getSaveNotesCalls(app))
       .toEqual([
         {
           filePath: FIXTURE_TEST,
@@ -138,7 +102,7 @@ test.describe("PPT Viewer UI Workflows", () => {
         },
       ]);
     await expect
-      .poll(() => getInsertAudioCalls(electronApp))
+      .poll(() => getInsertAudioCalls(app))
       .toEqual([
         {
           filePath: FIXTURE_TEST,
@@ -154,32 +118,36 @@ test.describe("PPT Viewer UI Workflows", () => {
   for (const closeCase of [
     {
       name: "window",
-      attempt: () =>
-        electronApp.evaluate(({ BrowserWindow }) => {
+      attempt: (app: ElectronApplication) =>
+        app.evaluate(({ BrowserWindow }) => {
           BrowserWindow.getAllWindows()[0]?.close();
         }),
     },
     {
       name: "application",
-      attempt: () =>
-        electronApp.evaluate(({ app }) => {
-          app.quit();
+      attempt: (app: ElectronApplication) =>
+        app.evaluate(({ app: electronApp }) => {
+          electronApp.quit();
         }),
     },
   ]) {
-    test(`warns when the ${closeCase.name} closes while narration edits are dirty`, async () => {
-      await notesEditor().fill("Unsaved close warning");
+    test(`warns when the ${closeCase.name} closes while narration edits are dirty`, async ({
+      app,
+      win,
+    }) => {
+      await notesEditor(win).fill("Unsaved close warning");
 
-      await closeCase.attempt();
-      await expect.poll(discardConfirmations).toHaveLength(1);
-      await expect(notesEditor()).toHaveValue("Unsaved close warning");
+      await closeCase.attempt(app);
 
-      await expect.poll(discardConfirmations).toEqual([
-        expect.objectContaining({
-          buttons: ["Keep Editing", "Discard Changes"],
-          message: "Discard unsaved narration changes?",
-        }),
-      ]);
+      await expect
+        .poll(() => getDiscardConfirmationCalls(app))
+        .toEqual([
+          expect.objectContaining({
+            buttons: ["Keep Editing", "Discard Changes"],
+            message: "Discard unsaved narration changes?",
+          }),
+        ]);
+      await expect(notesEditor(win)).toHaveValue("Unsaved close warning");
     });
   }
 });

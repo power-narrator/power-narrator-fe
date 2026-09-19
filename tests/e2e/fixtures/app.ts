@@ -1,5 +1,6 @@
 import { _electron as electron } from "playwright";
-import type { ElectronApplication, Page } from "@playwright/test";
+import { test as base, type ElectronApplication, type Page } from "@playwright/test";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { SlideWithSrc as Slide } from "../../../electron/platform/types.js";
@@ -56,7 +57,6 @@ export const DETERMINISTIC_MP3_BYTES = [
   ...SILENT_MP3_FRAME,
 ];
 
-/** Text that parks synthesis until `releaseDelayedPreview` resolves it. */
 export const DELAYED_PREVIEW_TEXT = "Delayed preview";
 
 export type GeneratedSpeechCall = { text: string; voiceOption: Voice };
@@ -97,7 +97,7 @@ export type PlaybackActivity = {
   revokedUrls: string[];
 };
 
-export function launchTestApp(): Promise<ElectronApplication> {
+function launchTestApp(): Promise<ElectronApplication> {
   return electron.launch({
     args: [path.join(__dirname, "../../../dist-electron/electron/main.js")],
     env: {
@@ -107,7 +107,7 @@ export function launchTestApp(): Promise<ElectronApplication> {
   });
 }
 
-export async function installMockIpcHandlers(app: ElectronApplication) {
+async function installMockIpcHandlers(app: ElectronApplication) {
   await app.evaluate(
     (
       { ipcMain },
@@ -196,8 +196,7 @@ export async function installMockIpcHandlers(app: ElectronApplication) {
   );
 }
 
-/** Playback and blob-URL probes must exist before the renderer's first script runs. */
-export async function installRendererProbes(page: Page) {
+async function installRendererProbes(page: Page) {
   await page.addInitScript(() => {
     const globals = globalThis as RendererGlobals;
     globals.__audioPlayUrls = [];
@@ -256,10 +255,10 @@ export const getGeneratedSpeechCalls = (app: ElectronApplication) =>
 export const getSaveNotesCalls = (app: ElectronApplication) => readProbe(app, "saveNotes");
 export const getInsertAudioCalls = (app: ElectronApplication) => readProbe(app, "insertAudio");
 
-export function setShouldDiscardNarrationChanges(app: ElectronApplication, shouldDiscard: boolean) {
-  return app.evaluate((_, nextValue) => {
-    (globalThis as MainGlobals).__shouldDiscardNarrationChanges = nextValue;
-  }, shouldDiscard);
+function allowDiscardingNarrationChanges(app: ElectronApplication) {
+  return app.evaluate(() => {
+    (globalThis as MainGlobals).__shouldDiscardNarrationChanges = true;
+  });
 }
 
 export function releaseDelayedPreview(app: ElectronApplication) {
@@ -284,3 +283,39 @@ export function getPlaybackActivity(page: Page): Promise<PlaybackActivity> {
     };
   });
 }
+
+type WorkerFixtures = {
+  app: ElectronApplication;
+  win: Page;
+};
+
+export const test = base.extend<object, WorkerFixtures>({
+  app: [
+    // Playwright parses this signature for fixture names, so the empty pattern is required.
+    // oxlint-disable-next-line no-empty-pattern
+    async ({}, use) => {
+      fs.copyFileSync(FIXTURE_ORIGINAL, FIXTURE_TEST);
+
+      const app = await launchTestApp();
+      await installMockIpcHandlers(app);
+
+      await use(app);
+
+      await allowDiscardingNarrationChanges(app);
+      await app.close();
+      fs.rmSync(FIXTURE_TEST, { force: true });
+    },
+    { scope: "worker" },
+  ],
+
+  win: [
+    async ({ app }, use) => {
+      const page = await app.firstWindow();
+      await installRendererProbes(page);
+      await use(page);
+    },
+    { scope: "worker" },
+  ],
+});
+
+export { expect } from "@playwright/test";
