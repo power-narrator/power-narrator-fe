@@ -23,7 +23,8 @@ export function SpeakerPrompt({
   const hasPrompt = Boolean(toSpeakerPrompt(value));
   const [closedPrompt, setClosedPrompt] = useState<string>();
   const [emptyPromptOpened, setEmptyPromptOpened] = useState(false);
-  const opened = hasPrompt ? value !== closedPrompt : emptyPromptOpened;
+  const locked = hasPrompt && supportsPrompt !== false;
+  const opened = locked || (hasPrompt ? value !== closedPrompt : emptyPromptOpened);
 
   const toggle = () => {
     if (hasPrompt) {
@@ -46,6 +47,7 @@ export function SpeakerPrompt({
             variant={hasPrompt ? "light" : "subtle"}
             color={hasPrompt ? "blue" : "gray"}
             onClick={toggle}
+            disabled={locked}
             size="compact-xs"
           >
             Prompt
