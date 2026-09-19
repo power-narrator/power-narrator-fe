@@ -30,7 +30,7 @@ interface RawNarrationSection {
   text: string;
 }
 
-export const normalizeNotes = (text: string): string =>
+const normalizeNotes = (text: string): string =>
   text.replaceAll(/\r\n|[\r\u2028\u2029]/g, "\n");
 
 function splitRawSections(text: string): RawNarrationSection[] {

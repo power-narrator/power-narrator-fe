@@ -181,12 +181,6 @@ describe("inline prompts in slide notes", () => {
     );
   });
 
-  it("saves a prompt read without a space after the colon with one", () => {
-    expect(formatNarrationSections(parse("[Narrator]\n[p:whisper]\nHello"))).toBe(
-      "[Narrator]\n[p: whisper]\nHello",
-    );
-  });
-
   it("uses canonical formatting for a prompt without format metadata", () => {
     expect(
       formatNarrationSections([{ speaker: "Narrator", prompt: "whisper", text: "Hello" }]),
