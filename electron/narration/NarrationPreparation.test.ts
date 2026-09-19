@@ -368,11 +368,7 @@ describe("NarrationPreparation inline prompts", () => {
       { slideIndex: 1, notes: "[Narrator]\n[p: almost whispering]\nFirst" },
     ]);
 
-    expect(generateSpeech).toHaveBeenCalledWith(
-      "First",
-      promptableVoice,
-      combinedPrompt,
-    );
+    expect(generateSpeech).toHaveBeenCalledWith("First", promptableVoice, combinedPrompt);
   });
 
   it("narrates an inline prompt in a section with no preset prompt", async () => {
@@ -415,11 +411,7 @@ describe("NarrationPreparation inline prompts", () => {
       speakerChoice: { kind: "effective" },
     });
 
-    expect(generateSpeech).toHaveBeenCalledWith(
-      "First",
-      promptableVoice,
-      combinedPrompt,
-    );
+    expect(generateSpeech).toHaveBeenCalledWith("First", promptableVoice, combinedPrompt);
   });
 
   it("leaves a bracketed line that names no speaker in the narrated text", async () => {

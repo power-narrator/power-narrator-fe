@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import { speakerNameProblem } from "./speakerName.js";
 
 describe("speaker name validation", () => {
-  it.each(["Narrator", "speaker 1", "Dr. Aoede", "prompt", "note: aside", "Guest: Kore"])("accepts %j", (name) => {
-    expect(speakerNameProblem(name)).toBeNull();
-  });
+  it.each(["Narrator", "speaker 1", "Dr. Aoede", "prompt", "note: aside", "Guest: Kore"])(
+    "accepts %j",
+    (name) => {
+      expect(speakerNameProblem(name)).toBeNull();
+    },
+  );
 
   it.each([
     ["empty", ""],
