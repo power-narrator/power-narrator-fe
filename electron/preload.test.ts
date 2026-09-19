@@ -1,6 +1,6 @@
 import fs from "node:fs";
+import { stripTypeScriptTypes } from "node:module";
 import vm from "node:vm";
-import ts from "typescript";
 import { expect, it, vi } from "vitest";
 import type {
   NarratedPresentationSaveRequest,
@@ -49,9 +49,7 @@ function controlledPromise<T>() {
 
 function loadPreload() {
   const source = fs.readFileSync(new URL("./preload.cts", import.meta.url), "utf8");
-  const javascript = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
+  const javascript = stripTypeScriptTypes(source);
   vm.runInNewContext(javascript, {
     exports: {},
     require: (moduleName: string) => {
