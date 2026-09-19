@@ -74,9 +74,9 @@ export function NotesSectionList({
   const speakerOptions = getSpeakerOptions(mappings);
 
   return (
-    <Stack gap="xs" mih={0} flex={1}>
+    <Stack gap="xs" mih={0}>
       <Text size="sm">Presenter Notes</Text>
-      <ScrollArea type="auto" flex={1}>
+      <ScrollArea flex={1}>
         <Stack>
           {sections.map((section, index) => {
             const effectiveSpeaker = getEffectiveSpeaker(sections, index);
@@ -104,7 +104,6 @@ export function NotesSectionList({
                         ?.supportsPrompt
                     }
                     onChange={(prompt) => onSectionPromptChange(index, prompt)}
-                    textareaWidth="100%"
                     rowContent={{
                       leading: (
                         <Select

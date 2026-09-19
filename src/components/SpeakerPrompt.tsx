@@ -18,7 +18,6 @@ export function SpeakerPrompt({
   supportsPrompt,
   onChange,
   rowContent,
-  textareaWidth = 220,
 }: SpeakerPromptProps) {
   const label = `Prompt for ${speakerLabel}`;
   const hasPrompt = Boolean(toSpeakerPrompt(value));
@@ -36,8 +35,8 @@ export function SpeakerPrompt({
   };
 
   return (
-    <Stack gap={4} flex={rowContent ? 1 : undefined}>
-      <Group gap="xs" justify="space-between" wrap="nowrap">
+    <Stack gap="xs" flex={rowContent ? 1 : undefined}>
+      <Group justify="space-between">
         <Group gap="xs">
           {rowContent?.leading}
           <Button
@@ -64,14 +63,10 @@ export function SpeakerPrompt({
           aria-label={label}
           placeholder="e.g. conspiratorial, almost whispering"
           value={value ?? ""}
-          // Kept verbatim, spacing included, so the author owns their own
-          // padding; only an empty field deletes the prompt. What a provider
-          // receives is trimmed later, by toSpeakerPrompt.
           onChange={(event) => onChange(event.currentTarget.value || undefined)}
           autosize
           minRows={2}
           size="xs"
-          w={textareaWidth}
         />
       </Collapse>
     </Stack>
