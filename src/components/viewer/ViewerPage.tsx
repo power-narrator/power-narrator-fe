@@ -98,7 +98,8 @@ export function ViewerPage({
 
   const activeSlide = slides[activeSlideIndex] ?? { ...EMPTY_SLIDE, index: activeSlideIndex + 1 };
   const activeSlideNumber = activeSlide.index || activeSlideIndex + 1;
-  const activeSections = parseNarrationSections(activeSlide.notes || "", speakerNames);
+  const sectionsOf = (slide: Slide) => parseNarrationSections(slide.notes || "", speakerNames);
+  const activeSections = sectionsOf(activeSlide);
 
   function takePendingTypingSlidePosition() {
     if (typingCheckpointTimerRef.current !== null) {
@@ -129,7 +130,7 @@ export function ViewerPage({
       return false;
     }
 
-    const sections = parseNarrationSections(currentSlide.notes || "", speakerNames);
+    const sections = sectionsOf(currentSlide);
     if (!updater(sections)) {
       return false;
     }
@@ -156,29 +157,27 @@ export function ViewerPage({
   }
 
   /**
-   * The structured content one save submits. The viewer still holds its edits as
-   * note text, so they are parsed once here rather than crossing the seam as
-   * syntax; the cutover to the structured editor removes this parse.
+   * The viewer still holds its edits as note text, so they are parsed once here
+   * rather than crossing the seam as syntax; the cutover to the structured
+   * editor replaces this parse with the editor's own save snapshot.
    */
-  function submittedSlide(slide: Slide) {
-    return {
-      slideIndex: slide.index,
-      sections: parseNarrationSections(slide.notes || "", speakerNames),
-    };
-  }
+  const slideToSubmit = (slide: Slide) => ({
+    slideIndex: slide.index,
+    sections: sectionsOf(slide),
+  });
 
   /**
    * Commits the whole presentation through the narrated save path, so notes and
    * narration audio are validated, synthesized, and committed together.
    */
   async function commitNarratedPresentation(setStatus: (status: string) => void) {
-    // Captured before the request so completion reconciles exactly what was
-    // submitted, leaving anything edited while it ran dirty.
+    // The render that was submitted, which completion reconciles against rather
+    // than against whatever the author has edited by the time it returns.
     const submitted = slides.map((slide, position) => ({ slide, position }));
     const result = await electronAPI.saveNarratedPresentation(
       {
         filePath,
-        slides: submitted.map(({ slide }) => submittedSlide(slide)),
+        slides: submitted.map(({ slide }) => slideToSubmit(slide)),
       },
       ({ completed, total }) => setStatus(`Preparing narration ${completed}/${total}...`),
     );
@@ -434,7 +433,7 @@ export function ViewerPage({
       async (command) => {
         const result = await electronAPI.saveNarratedSlide({
           filePath,
-          ...submittedSlide(activeSlide),
+          ...slideToSubmit(activeSlide),
         });
         if (!result.success) {
           reportNarratedSaveFailure(result);
