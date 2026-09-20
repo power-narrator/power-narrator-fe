@@ -4,10 +4,11 @@ import type {
   PreviewNarrationRequest,
 } from "../../shared/types/narration.js";
 import type { SlideAudioEntry } from "../platform/types.js";
+import { getEffectiveSpeaker } from "../../shared/narration/NarrationSections.js";
 import {
-  getEffectiveSpeaker,
-  parseNarrationSections,
-} from "../../shared/narration/NarrationSections.js";
+  toNarrationSections,
+  type SlideNotePayload,
+} from "../../shared/narration/slideNotePayload.js";
 import {
   DEFAULT_SPEAKER_VALUE,
   getSpeakerNames,
@@ -54,7 +55,7 @@ export class NarrationPreparation {
     }
 
     const mappings = await this.mappingSource.getSpeakerMappings();
-    const sections = parseNarrationSections(request.notes, getSpeakerNames(mappings));
+    const sections = toNarrationSections(request, getSpeakerNames(mappings));
     const speaker =
       request.speakerChoice.kind === "effective"
         ? getEffectiveSpeaker(sections, request.sectionIndex)
@@ -76,12 +77,12 @@ export class NarrationPreparation {
   }
 
   async prepareBatch(
-    slides: Array<{ slideIndex: number; notes: string }>,
+    slides: Array<SlideNotePayload & { slideIndex: number }>,
     onProgress?: (progress: NarrationPreparationProgress) => void,
   ): Promise<SlideAudioEntry[]> {
     const mappings = await this.mappingSource.getSpeakerMappings();
     const prepared = slides.flatMap((slide) => {
-      const sections = parseNarrationSections(slide.notes, getSpeakerNames(mappings));
+      const sections = toNarrationSections(slide, getSpeakerNames(mappings));
 
       return sections.flatMap((section, sectionIndex) => {
         const text = section.text.trim();

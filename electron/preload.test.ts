@@ -6,8 +6,15 @@ import type {
   NarratedPresentationSaveRequest,
   NarratedSaveResult,
   NarrationPreparationProgress,
+  NarrationPreviewResult,
+  PreviewNarrationRequest,
 } from "../shared/types/narration.js";
+import { parseNarrationSections } from "../shared/narration/NarrationSections.js";
+import { toNotesText } from "../shared/narration/slideNotePayload.js";
 
+type PrepareNarrationPreview = (
+  payload: PreviewNarrationRequest,
+) => Promise<NarrationPreviewResult>;
 type ProgressListener = (event: unknown, progress: NarrationPreparationProgress) => void;
 type SaveNarratedPresentation = (
   payload: NarratedPresentationSaveRequest,
@@ -16,7 +23,12 @@ type SaveNarratedPresentation = (
 
 const electron = vi.hoisted(() => {
   const state = {
-    exposedApi: undefined as { saveNarratedPresentation: SaveNarratedPresentation } | undefined,
+    exposedApi: undefined as
+      | {
+          saveNarratedPresentation: SaveNarratedPresentation;
+          prepareNarrationPreview: PrepareNarrationPreview;
+        }
+      | undefined,
     listeners: new Set<ProgressListener>(),
   };
   return {
@@ -90,4 +102,45 @@ it("stops delivering progress after a narrated presentation save settles", async
   }
 
   expect(observedProgress).toEqual([{ completed: 1, total: 2 }]);
+});
+
+it("carries structured slide-note sections across the preview channel", async () => {
+  loadPreload();
+  const notes = "  [ Narrator ]  \n[p: almost whispering]\nFirst\n\n-----\nSecond\n";
+  electron.ipcRenderer.invoke.mockResolvedValue({
+    audio: new Uint8Array([1]),
+    mediaType: "audio/mpeg",
+  });
+
+  await electron.state.exposedApi!.prepareNarrationPreview({
+    slideIndex: 1,
+    sectionIndex: 0,
+    sections: parseNarrationSections(notes, ["Narrator"]),
+    text: "First",
+    speakerChoice: { kind: "effective" },
+  });
+
+  const [channel, payload] = electron.ipcRenderer.invoke.mock.lastCall!;
+  expect(channel).toBe("prepare-narration-preview");
+  const delivered = structuredClone(payload) as PreviewNarrationRequest;
+  expect(delivered).toEqual(payload);
+  expect(toNotesText(delivered)).toBe(notes);
+});
+
+it("carries structured slide-note sections across the narrated presentation save channel", async () => {
+  loadPreload();
+  const notes = "[Narrator]\nFirst\n----\n[ Guest ]\nSecond";
+  electron.ipcRenderer.invoke.mockResolvedValue({ success: true });
+
+  await electron.state.exposedApi!.saveNarratedPresentation(
+    {
+      filePath: "/slides/talk.pptx",
+      slides: [{ slideIndex: 1, sections: parseNarrationSections(notes, ["Narrator", "Guest"]) }],
+    },
+    () => {},
+  );
+
+  const [, payload] = electron.ipcRenderer.invoke.mock.lastCall!;
+  const delivered = structuredClone(payload) as NarratedPresentationSaveRequest;
+  expect(toNotesText(delivered.slides[0]!)).toBe(notes);
 });

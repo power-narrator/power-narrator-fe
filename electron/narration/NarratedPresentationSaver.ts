@@ -5,6 +5,7 @@ import type {
   NarratedSlideSaveRequest,
 } from "../../shared/types/narration.js";
 import type { PptProvider } from "../platform/PptProvider.js";
+import { toNotesText } from "../../shared/narration/slideNotePayload.js";
 import { NarrationPreparation, NarrationPreparationError } from "./NarrationPreparation.js";
 
 type SavePowerPoint = Pick<PptProvider, "saveNotes" | "insertAudio" | "removeAudio">;
@@ -20,10 +21,8 @@ export class NarratedPresentationSaver {
    * the single-slide save is its own IPC channel with its own request shape.
    */
   saveSlide(request: NarratedSlideSaveRequest): Promise<NarratedSaveResult> {
-    return this.savePresentation({
-      filePath: request.filePath,
-      slides: [{ slideIndex: request.slideIndex, notes: request.notes }],
-    });
+    const { filePath, slideIndex, ...noteSource } = request;
+    return this.savePresentation({ filePath, slides: [{ slideIndex, ...noteSource }] });
   }
 
   async savePresentation(
@@ -56,7 +55,7 @@ export class NarratedPresentationSaver {
     try {
       notesResult = await powerpoint.saveNotes(
         request.filePath,
-        request.slides.map((slide) => ({ index: slide.slideIndex, notes: slide.notes })),
+        request.slides.map((slide) => ({ index: slide.slideIndex, notes: toNotesText(slide) })),
       );
     } catch (error: unknown) {
       return this.powerPointFailure(error, false);
