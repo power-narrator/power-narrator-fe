@@ -4,8 +4,6 @@ export interface SlideManifestEntry {
   index: number;
   image: string;
   notes: string;
-  /** Present once the notes have been parsed at the application seam. */
-  sections?: NarrationSection[];
 }
 
 export interface SlideNotesEntry {
@@ -15,6 +13,14 @@ export interface SlideNotesEntry {
 
 export interface SlideWithSrc extends SlideManifestEntry {
   src: string;
+}
+
+/**
+ * A slide as the application works with it: its notes already parsed, so raw
+ * note syntax stops at the PowerPoint seam.
+ */
+export interface StructuredSlide extends Omit<SlideWithSrc, "notes"> {
+  sections: NarrationSection[];
 }
 
 export type SlideImageMap = Record<number, { image: string }>;
@@ -41,6 +47,10 @@ export type BasicPptResult = Result;
 export type SlidesPptResult = Result<{ slides: SlideWithSrc[] }>;
 
 export type SlidePptResult = Result<{ slide: SlideWithSrc }>;
+
+export type StructuredSlidesResult = Result<{ slides: StructuredSlide[] }>;
+
+export type StructuredSlideResult = Result<{ slide: StructuredSlide }>;
 
 export type VideoPptResult = Result<{ outputPath: string }>;
 

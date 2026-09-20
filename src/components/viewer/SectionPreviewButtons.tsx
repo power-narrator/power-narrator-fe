@@ -13,7 +13,8 @@ interface SectionPreviewButtonsProps {
   sections: readonly NarrationSection[];
   mappings: Record<string, SpeakerMapping>;
   onFocus: () => void;
-  getTextarea?: () => HTMLTextAreaElement | null;
+  /** The author's current selection within the section, when the view can read one. */
+  getSelectedText?: () => string | undefined;
 }
 
 function formatTime(time: number) {
@@ -29,7 +30,7 @@ export function SectionPreviewButtons({
   sections,
   mappings,
   onFocus,
-  getTextarea,
+  getSelectedText,
 }: SectionPreviewButtonsProps) {
   const preview = useNarrationPreview({
     id,
@@ -37,7 +38,7 @@ export function SectionPreviewButtons({
     sectionIndex,
     sections,
     onFocus,
-    getTextarea,
+    getSelectedText,
   });
   const effectiveSpeaker = preview.effectiveSpeaker;
   const speakers = getSpeakerOptions(mappings);

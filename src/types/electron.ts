@@ -4,29 +4,24 @@ import type {
   PlaySlideRequest,
   ReloadSlideRequest,
   RemoveAudioRequest,
-  SlidePptResult,
-  SlideManifestEntry,
-  SlideWithSrc,
-  SlidesPptResult,
+  StructuredSlide,
+  StructuredSlideResult,
+  StructuredSlidesResult,
   SetGcpKeyResult as PlatformSetGcpKeyResult,
   VideoPptResult,
 } from "../../electron/platform/types";
 
-export type Slide = SlideWithSrc;
+export type Slide = StructuredSlide;
 
-export type ConvertResponse = SlidesPptResult;
+export type ConvertResponse = StructuredSlidesResult;
 
 export type BasicElectronResult = BasicPptResult;
 
-export type SlidesElectronResult = SlidesPptResult;
-
-export type SlideElectronResult = SlidePptResult;
+export type SlideElectronResult = StructuredSlideResult;
 
 export type VideoElectronResult = VideoPptResult;
 
 export type SetGcpKeyResult = PlatformSetGcpKeyResult;
-
-export type SaveNotesSlide = SlideManifestEntry;
 
 export type GenerateVideoPayload = GenerateVideoRequest;
 

@@ -14,11 +14,8 @@ import type {
   PlaySlidePayload,
   ReloadSlidePayload,
   RemoveAudioPayload,
-  SaveNotesSlide,
   SlideElectronResult,
   SetGcpKeyResult,
-  Slide,
-  SlidesElectronResult,
   VideoElectronResult,
 } from "./types/electron";
 
@@ -29,7 +26,6 @@ declare global {
       onConversionUpdate: (callback: (event: unknown, value: unknown) => void) => void;
       getPathForFile: (file: File) => string;
       selectFile: () => Promise<string | null>;
-      saveNotes: (filePath: string, slides: SaveNotesSlide[]) => Promise<BasicElectronResult>;
       saveNarratedSlide: (payload: NarratedSlideSaveRequest) => Promise<NarratedSaveResult>;
       saveNarratedPresentation: (
         payload: NarratedPresentationSaveRequest,

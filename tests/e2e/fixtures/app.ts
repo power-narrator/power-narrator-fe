@@ -3,7 +3,8 @@ import { test as base, type ElectronApplication, type Page } from "@playwright/t
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { SlideWithSrc as Slide } from "../../../electron/platform/types.js";
+import { parseNarrationSections } from "../../../shared/narration/NarrationSections.js";
+import type { SlideWithSrc as Slide, StructuredSlide } from "../../../electron/platform/types.js";
 import type { SpeakerMapping, Voice } from "../../../shared/types/tts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -57,10 +58,13 @@ export const DETERMINISTIC_MP3_BYTES = [
   ...SILENT_MP3_FRAME,
 ];
 
-export const DELAYED_PREVIEW_TEXT = "Delayed preview";
+/** What the PowerPoint load seam hands the renderer, in place of raw note text. */
+const MOCK_STRUCTURED_SLIDES: StructuredSlide[] = MOCK_SLIDES.map(({ notes, ...slide }) => ({
+  ...slide,
+  sections: parseNarrationSections(notes, Object.keys(MOCK_MAPPINGS)),
+}));
 
 export type GeneratedSpeechCall = { text: string; voiceOption: Voice };
-export type ConvertPptxCall = { filePath: string };
 export type SaveNotesCall = {
   filePath: string;
   slides: Array<{ index: number; notes: string }>;
@@ -71,7 +75,6 @@ export type InsertAudioCall = {
 };
 
 type MainProbes = {
-  convertPptx: ConvertPptxCall[];
   discardConfirmations: unknown[];
   generatedSpeech: GeneratedSpeechCall[];
   saveNotes: SaveNotesCall[];
@@ -81,8 +84,6 @@ type MainProbes = {
 type MainGlobals = typeof globalThis & {
   __probes: MainProbes;
   __shouldDiscardNarrationChanges: boolean;
-  __completedPreviewSyntheses: number;
-  __resolveDelayedPreview?: () => void;
 };
 
 type RendererGlobals = typeof globalThis & {
@@ -109,13 +110,9 @@ function launchTestApp(): Promise<ElectronApplication> {
 
 async function installMockIpcHandlers(app: ElectronApplication) {
   await app.evaluate(
-    (
-      { ipcMain },
-      { testFilePath, mockSlides, mockMappings, deterministicMp3Bytes, delayedPreviewText },
-    ) => {
+    ({ ipcMain }, { testFilePath, mockSlides, mockMappings, deterministicMp3Bytes }) => {
       const globals = globalThis as MainGlobals;
       const emptyProbes = (): MainProbes => ({
-        convertPptx: [],
         discardConfirmations: [],
         generatedSpeech: [],
         saveNotes: [],
@@ -124,10 +121,8 @@ async function installMockIpcHandlers(app: ElectronApplication) {
 
       globals.__probes = emptyProbes();
       globals.__shouldDiscardNarrationChanges = false;
-      globals.__completedPreviewSyntheses = 0;
       (globals as MainGlobals & { __resetProbes: () => void }).__resetProbes = () => {
         globals.__probes = emptyProbes();
-        globals.__completedPreviewSyntheses = 0;
       };
 
       globalThis.powerNarratorTestHarness!.useDiscardConfirmation((options) => {
@@ -139,10 +134,7 @@ async function installMockIpcHandlers(app: ElectronApplication) {
       ipcMain.handle("select-file", () => testFilePath);
 
       ipcMain.removeHandler("convert-pptx");
-      ipcMain.handle("convert-pptx", (_, filePath: string) => {
-        globals.__probes.convertPptx.push({ filePath });
-        return { success: true, slides: mockSlides };
-      });
+      ipcMain.handle("convert-pptx", () => ({ success: true, slides: mockSlides }));
 
       ipcMain.removeHandler("get-speaker-mappings");
       ipcMain.handle("get-speaker-mappings", () => mockMappings);
@@ -151,15 +143,6 @@ async function installMockIpcHandlers(app: ElectronApplication) {
         supportsProvider: () => true,
         generateSpeech: (text: string, voiceOption: Voice) => {
           globals.__probes.generatedSpeech.push({ text, voiceOption });
-
-          if (text === delayedPreviewText) {
-            return new Promise<{ audio: Uint8Array; mediaType: string }>((resolve) => {
-              globals.__resolveDelayedPreview = () => {
-                globals.__completedPreviewSyntheses += 1;
-                resolve({ audio: new Uint8Array(deterministicMp3Bytes), mediaType: "audio/mpeg" });
-              };
-            });
-          }
 
           return Promise.resolve({
             audio: new Uint8Array(deterministicMp3Bytes),
@@ -188,10 +171,9 @@ async function installMockIpcHandlers(app: ElectronApplication) {
     },
     {
       testFilePath: FIXTURE_TEST,
-      mockSlides: MOCK_SLIDES,
+      mockSlides: MOCK_STRUCTURED_SLIDES,
       mockMappings: MOCK_MAPPINGS,
       deterministicMp3Bytes: DETERMINISTIC_MP3_BYTES,
-      delayedPreviewText: DELAYED_PREVIEW_TEXT,
     },
   );
 }
@@ -247,7 +229,6 @@ function readProbe<Key extends keyof MainProbes>(app: ElectronApplication, key: 
   ) as Promise<MainProbes[Key]>;
 }
 
-export const getConvertPptxCalls = (app: ElectronApplication) => readProbe(app, "convertPptx");
 export const getDiscardConfirmationCalls = (app: ElectronApplication) =>
   readProbe(app, "discardConfirmations");
 export const getGeneratedSpeechCalls = (app: ElectronApplication) =>
@@ -259,18 +240,6 @@ function allowDiscardingNarrationChanges(app: ElectronApplication) {
   return app.evaluate(() => {
     (globalThis as MainGlobals).__shouldDiscardNarrationChanges = true;
   });
-}
-
-export function releaseDelayedPreview(app: ElectronApplication) {
-  return app.evaluate(() => {
-    const globals = globalThis as MainGlobals;
-    globals.__resolveDelayedPreview?.();
-    globals.__resolveDelayedPreview = undefined;
-  });
-}
-
-export function getCompletedPreviewSyntheses(app: ElectronApplication) {
-  return app.evaluate(() => (globalThis as MainGlobals).__completedPreviewSyntheses);
 }
 
 export function getPlaybackActivity(page: Page): Promise<PlaybackActivity> {

@@ -1,16 +1,11 @@
 import { Stack } from "@mantine/core";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ActionButtonState } from "../../types/viewer";
 import type { Slide, SlideElectronResult } from "../../types/electron";
 import { useSettings } from "../../context/useSettings";
 import { getSpeakerNames } from "../../../shared/narration/speaker";
 import { getErrorMessage } from "../../utils/errors";
-import {
-  formatNarrationSections,
-  parseNarrationSections,
-  type NarrationSection,
-} from "../../../shared/narration/NarrationSections";
 import { NotesSectionList } from "./NotesSectionList";
 import { SlideActionsBar, type SlideActionBarKey } from "./SlideActionsBar";
 import { SlidePreviewPane } from "./SlidePreviewPane";
@@ -18,7 +13,8 @@ import { SlideThumbnailList } from "./SlideThumbnailList";
 import { SsmlToolbar } from "./SsmlToolbar";
 import { ViewerHeader, type ViewerHeaderActionKey } from "./ViewerHeader";
 import { Split } from "@gfazioli/mantine-split-pane";
-import { useViewerSession } from "./useViewerSession";
+import { useSectionTextareas } from "./useSectionTextareas";
+import { useSlideNoteEditor } from "./useSlideNoteEditor";
 import { useViewerOperation } from "./useViewerOperation";
 
 interface ViewerPageProps {
@@ -27,13 +23,6 @@ interface ViewerPageProps {
   onBack: () => void;
   onOpenSettings: () => void;
 }
-
-const EMPTY_SLIDE: Slide = {
-  index: 1,
-  image: "",
-  src: "",
-  notes: "",
-};
 
 function alertError(label: string, error: unknown) {
   const message = getErrorMessage(error);
@@ -55,32 +44,19 @@ export function ViewerPage({
   onOpenSettings,
 }: ViewerPageProps) {
   const electronAPI = window.electronAPI;
+  const { mappings } = useSettings();
+  const speakerNames = useMemo(() => getSpeakerNames(mappings), [mappings]);
   const reportUnsavedChanges = useCallback(
     (hasUnsavedChanges: boolean) => electronAPI.setHasUnsavedNarrationChanges(hasUnsavedChanges),
     [electronAPI],
   );
-  const viewerSession = useViewerSession(initialSlides, reportUnsavedChanges);
-  const slides = viewerSession.slides;
-  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
-  const [activeSectionIndex, setActiveSectionIndex] = useState(0);
-  // Reset the active section while rendering the newly selected slide rather than
-  // in an effect, which would render the stale section index first.
-  const [sectionResetSlideIndex, setSectionResetSlideIndex] = useState(0);
-  if (sectionResetSlideIndex !== activeSlideIndex) {
-    setSectionResetSlideIndex(activeSlideIndex);
-    setActiveSectionIndex(0);
-  }
+  const editor = useSlideNoteEditor(initialSlides, speakerNames, reportUnsavedChanges);
+  const textareas = useSectionTextareas();
   const operation = useViewerOperation();
 
-  const textareasRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
-  const typingCheckpointTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingTypingSlidePositionRef = useRef<number | null>(null);
-  const pendingSelectionRef = useRef<{ sectionIndex: number; start: number; end: number } | null>(
-    null,
-  );
-  const { mappings } = useSettings();
-  const speakerNames = getSpeakerNames(mappings);
   const busy = operation.busy;
+  const slides = editor.slides;
+  const activeSlideNumber = editor.activeSlide?.index ?? editor.activeSlidePosition + 1;
 
   const headerActionStates: Record<ViewerHeaderActionKey, ActionButtonState> = {
     reloadAllSlides: operation.actionState("reloadAllSlides"),
@@ -96,88 +72,59 @@ export function ViewerPage({
     removeAudio: operation.actionState("removeAudio"),
   };
 
-  const activeSlide = slides[activeSlideIndex] ?? { ...EMPTY_SLIDE, index: activeSlideIndex + 1 };
-  const activeSlideNumber = activeSlide.index || activeSlideIndex + 1;
-  const sectionsOf = (slide: Slide) => parseNarrationSections(slide.notes || "", speakerNames);
-  const activeSections = sectionsOf(activeSlide);
-
-  function takePendingTypingSlidePosition() {
-    if (typingCheckpointTimerRef.current !== null) {
-      clearTimeout(typingCheckpointTimerRef.current);
-      typingCheckpointTimerRef.current = null;
-    }
-    const slidePosition = pendingTypingSlidePositionRef.current;
-    pendingTypingSlidePositionRef.current = null;
-    return slidePosition;
-  }
-
-  function finishPendingTypingCheckpoint() {
-    const slidePosition = takePendingTypingSlidePosition();
-    if (slidePosition !== null) {
-      viewerSession.checkpointCurrentEdits([slidePosition]);
-    }
-  }
-
-  async function confirmDiscardChanges(slideIndices?: readonly number[]) {
-    return (
-      !viewerSession.wouldDiscard(slideIndices) || electronAPI.confirmDiscardNarrationChanges()
-    );
-  }
-
-  function updateActiveSlideSections(updater: (sections: NarrationSection[]) => boolean) {
-    const currentSlide = slides[activeSlideIndex];
-    if (!currentSlide) {
-      return false;
+  const { selectionIntent, selectionRestored } = editor;
+  useLayoutEffect(() => {
+    if (!selectionIntent) {
+      return;
     }
 
-    const sections = sectionsOf(currentSlide);
-    if (!updater(sections)) {
-      return false;
+    textareas.restore(selectionIntent);
+    selectionRestored();
+  }, [selectionIntent, selectionRestored, textareas]);
+
+  async function confirmDiscardChanges(slideIndex?: number) {
+    return !editor.wouldDiscard(slideIndex) || electronAPI.confirmDiscardNarrationChanges();
+  }
+
+  function insertWrappedTag(startTag: string, endTag?: string) {
+    const id = editor.activeSectionId;
+    const selection = id && textareas.selectionIn(id);
+    if (selection) {
+      editor.insertSsml({ startTag, endTag, selection });
+    }
+  }
+
+  const handleHistoryKeyDown = (event: ReactKeyboardEvent) => {
+    if (!event.ctrlKey && !event.metaKey) {
+      return;
     }
 
-    const nextSlides = [...slides];
-    nextSlides[activeSlideIndex] = {
-      ...currentSlide,
-      notes: formatNarrationSections(sections),
-    };
+    if (event.key === "z") {
+      event.preventDefault();
+      editor.undo();
+    }
 
-    viewerSession.updateSlides(nextSlides, [activeSlideIndex]);
-    return true;
-  }
-
-  function resetHistoryWithSlides(nextSlides: Slide[], reloadedSlides = nextSlides) {
-    const reloadedPositions =
-      reloadedSlides === nextSlides
-        ? undefined
-        : reloadedSlides.flatMap((reloadedSlide) => {
-            const position = nextSlides.findIndex((slide) => slide.index === reloadedSlide.index);
-            return position === -1 ? [] : [position];
-          });
-    viewerSession.reloadCompleted(nextSlides, reloadedPositions);
-  }
-
-  /**
-   * The viewer still holds its edits as note text, so they are parsed once here
-   * rather than crossing the seam as syntax; the cutover to the structured
-   * editor replaces this parse with the editor's own save snapshot.
-   */
-  const slideToSubmit = (slide: Slide) => ({
-    slideIndex: slide.index,
-    sections: sectionsOf(slide),
-  });
+    if (event.key === "y") {
+      event.preventDefault();
+      editor.redo();
+    }
+  };
 
   /**
    * Commits the whole presentation through the narrated save path, so notes and
    * narration audio are validated, synthesized, and committed together.
    */
   async function commitNarratedPresentation(setStatus: (status: string) => void) {
-    // The render that was submitted, which completion reconciles against rather
-    // than against whatever the author has edited by the time it returns.
-    const submitted = slides.map((slide, position) => ({ slide, position }));
+    // The snapshot that was submitted, which completion reconciles against
+    // rather than against whatever the author has edited by the time it returns.
+    const snapshot = editor.submitSave();
     const result = await electronAPI.saveNarratedPresentation(
       {
         filePath,
-        slides: submitted.map(({ slide }) => slideToSubmit(slide)),
+        slides: snapshot.slides.map((slide) => ({
+          slideIndex: slide.index,
+          sections: slide.sections,
+        })),
       },
       ({ completed, total }) => setStatus(`Preparing narration ${completed}/${total}...`),
     );
@@ -186,199 +133,12 @@ export function ViewerPage({
       return false;
     }
 
-    viewerSession.saveCompleted(submitted);
+    editor.saveSucceeded(snapshot);
     return true;
   }
 
-  function runRemoveAudio(slideIndices: number[]) {
-    return electronAPI.removeAudio({ filePath, slideIndices });
-  }
-
-  useEffect(
-    () => () => {
-      takePendingTypingSlidePosition();
-    },
-    [],
-  );
-
-  const handleUndo = () => {
-    finishPendingTypingCheckpoint();
-    viewerSession.undo();
-  };
-
-  const handleRedo = () => {
-    finishPendingTypingCheckpoint();
-    viewerSession.redo();
-  };
-
-  function handleHistoryKeyDown(event: ReactKeyboardEvent) {
-    if ((event.ctrlKey || event.metaKey) && event.key === "z") {
-      event.preventDefault();
-      handleUndo();
-    }
-
-    if ((event.ctrlKey || event.metaKey) && event.key === "y") {
-      event.preventDefault();
-      handleRedo();
-    }
-  }
-
-  useLayoutEffect(() => {
-    const pendingSelection = pendingSelectionRef.current;
-    if (!pendingSelection || pendingSelection.sectionIndex !== activeSectionIndex) {
-      return;
-    }
-
-    const textarea = textareasRefs.current[pendingSelection.sectionIndex];
-    if (!textarea) {
-      return;
-    }
-
-    textarea.focus();
-    textarea.setSelectionRange(pendingSelection.start, pendingSelection.end);
-    pendingSelectionRef.current = null;
-  }, [activeSectionIndex, activeSlide.notes]);
-
-  function insertWrappedTag(startTag: string, endTag = "") {
-    finishPendingTypingCheckpoint();
-    const textarea = textareasRefs.current[activeSectionIndex];
-    if (!textarea) {
-      return;
-    }
-
-    const selectionStart = textarea.selectionStart;
-    const selectionEnd = textarea.selectionEnd;
-    const didUpdate = updateActiveSlideSections((sections) => {
-      const activeSection = sections[activeSectionIndex];
-      if (!activeSection) {
-        return false;
-      }
-
-      const text = activeSection.text || "";
-      const before = text.slice(0, selectionStart);
-      const selection = text.slice(selectionStart, selectionEnd);
-      const after = text.slice(selectionEnd);
-      activeSection.text = before + startTag + selection + endTag + after;
-      return true;
-    });
-
-    if (!didUpdate) {
-      return;
-    }
-
-    pendingSelectionRef.current = {
-      sectionIndex: activeSectionIndex,
-      start: selectionStart + startTag.length,
-      end: selectionEnd + startTag.length,
-    };
-
-    viewerSession.checkpointCurrentEdits([activeSlideIndex]);
-  }
-
-  function insertSelfClosingTag(tag: string) {
-    insertWrappedTag(tag);
-  }
-
-  /** Typing commits once the author pauses, so a keystroke is not an undo step. */
-  function editSectionWhileTyping(index: number, edit: (section: NarrationSection) => void) {
-    const didUpdate = updateActiveSlideSections((sections) => {
-      const section = sections[index];
-      if (!section) {
-        return false;
-      }
-
-      edit(section);
-      return true;
-    });
-
-    if (!didUpdate) {
-      return;
-    }
-
-    takePendingTypingSlidePosition();
-    pendingTypingSlidePositionRef.current = activeSlideIndex;
-    typingCheckpointTimerRef.current = setTimeout(finishPendingTypingCheckpoint, 800);
-  }
-
-  const handleSectionTextChange = (index: number, value: string) => {
-    editSectionWhileTyping(index, (section) => {
-      section.text = value;
-    });
-  };
-
-  const handleSectionPromptChange = (index: number, prompt: string | undefined) => {
-    editSectionWhileTyping(index, (section) => {
-      section.prompt = prompt;
-    });
-  };
-
-  const handleSpeakerChange = (index: number, speaker: string | null) => {
-    finishPendingTypingCheckpoint();
-    const didUpdate = updateActiveSlideSections((sections) => {
-      const section = sections[index];
-      if (!section) {
-        return false;
-      }
-
-      section.speaker = speaker || "";
-      return true;
-    });
-
-    if (!didUpdate) {
-      return;
-    }
-
-    viewerSession.checkpointCurrentEdits([activeSlideIndex]);
-  };
-
-  const handleAddSection = () => {
-    finishPendingTypingCheckpoint();
-    const newSectionIndex = activeSections.length;
-    const didUpdate = updateActiveSlideSections((sections) => {
-      sections.push({ speaker: "", text: "" });
-      return true;
-    });
-
-    if (!didUpdate) {
-      return;
-    }
-
-    viewerSession.checkpointCurrentEdits([activeSlideIndex]);
-    setActiveSectionIndex(newSectionIndex);
-  };
-
-  const handleDeleteSection = (index: number) => {
-    finishPendingTypingCheckpoint();
-    const nextSectionCount = Math.max(0, activeSections.length - 1);
-    const didUpdate = updateActiveSlideSections((sections) => {
-      if (!sections[index]) {
-        return false;
-      }
-
-      sections.splice(index, 1);
-      return true;
-    });
-
-    if (!didUpdate) {
-      return;
-    }
-
-    viewerSession.checkpointCurrentEdits([activeSlideIndex]);
-
-    if (activeSectionIndex >= nextSectionCount) {
-      setActiveSectionIndex(Math.max(0, nextSectionCount - 1));
-    }
-  };
-
-  const assignTextareaRef = (index: number, element: HTMLTextAreaElement | null) => {
-    textareasRefs.current[index] = element;
-  };
-
-  const getTextarea = (index: number) => textareasRefs.current[index] || null;
-
-  const handleGenerateVideo = async () => {
-    finishPendingTypingCheckpoint();
-    await operation.run(
+  const handleGenerateVideo = () =>
+    operation.run(
       "generateVideo",
       "Preparing narration...",
       async (command) => {
@@ -406,11 +166,9 @@ export function ViewerPage({
       },
       (error) => alertError("Error preparing generation", error),
     );
-  };
 
-  const handleSaveAllSlides = async () => {
-    finishPendingTypingCheckpoint();
-    await operation.run(
+  const handleSaveAllSlides = () =>
+    operation.run(
       "saveAllSlides",
       "Preparing narration...",
       async (command) => {
@@ -423,32 +181,38 @@ export function ViewerPage({
       },
       (error) => alertError("Save error", error),
     );
-  };
 
-  const handleSaveSlide = async () => {
-    finishPendingTypingCheckpoint();
-    await operation.run(
+  const handleSaveSlide = () =>
+    operation.run(
       "saveSlide",
-      `Saving slide ${activeSlide.index}...`,
+      `Saving slide ${activeSlideNumber}...`,
       async (command) => {
+        const snapshot = editor.submitSave([activeSlideNumber]);
+        const submitted = snapshot.slides[0];
+        if (!submitted) {
+          command.clearStatus();
+          return;
+        }
+
         const result = await electronAPI.saveNarratedSlide({
           filePath,
-          ...slideToSubmit(activeSlide),
+          slideIndex: submitted.index,
+          sections: submitted.sections,
         });
         if (!result.success) {
           reportNarratedSaveFailure(result);
           command.clearStatus();
           return;
         }
-        viewerSession.saveCompleted([{ slide: activeSlide, position: activeSlideIndex }]);
+
+        editor.saveSucceeded(snapshot);
         command.showOutcome("Saved slides!");
       },
       (error) => alertError("Save error", error),
     );
-  };
 
-  const handlePlaySlide = async () => {
-    await operation.run(
+  const handlePlaySlide = () =>
+    operation.run(
       "playSlide",
       `Playing slide ${activeSlideNumber}...`,
       async (command) => {
@@ -462,57 +226,34 @@ export function ViewerPage({
       },
       (error) => alertError("Play slide error", error),
     );
-  };
 
-  const syncSlides = async (
-    request: () => ReturnType<typeof electronAPI.convertPptx>,
-    failureMessage: string,
-    progressMessage: string,
-  ) => {
-    if (!(await confirmDiscardChanges())) {
+  const handleReloadAllSlides = async () => {
+    // A declined reload must keep the open typing group as an undo step of its own.
+    editor.finalizePendingTyping();
+    if (busy || !(await confirmDiscardChanges())) {
       return;
     }
 
     await operation.run(
       "reloadAllSlides",
-      progressMessage,
+      "Syncing all slides...",
       async (command) => {
-        const result = await request();
+        const result = await electronAPI.convertPptx(filePath);
         if (!result.success) {
-          alert(`${failureMessage}: ${result.message}`);
+          alert(`Sync error: ${result.message}`);
           command.clearStatus();
           return;
         }
-        resetHistoryWithSlides(result.slides);
-        setActiveSlideIndex((currentIndex) =>
-          Math.min(currentIndex, Math.max(0, result.slides.length - 1)),
-        );
+        editor.reloadPresentation(result.slides);
         command.showOutcome("Synced!");
       },
-      (error) => alertError(failureMessage, error),
-    );
-  };
-
-  const handleReloadAllSlides = async () => {
-    finishPendingTypingCheckpoint();
-    if (busy) {
-      return;
-    }
-
-    await syncSlides(
-      () => electronAPI.convertPptx(filePath),
-      "Sync error",
-      "Syncing all slides...",
+      (error) => alertError("Sync error", error),
     );
   };
 
   const handleReloadSlide = async () => {
-    finishPendingTypingCheckpoint();
-    if (busy) {
-      return;
-    }
-
-    if (!(await confirmDiscardChanges([activeSlideNumber]))) {
+    editor.finalizePendingTyping();
+    if (busy || !(await confirmDiscardChanges(activeSlideNumber))) {
       return;
     }
 
@@ -529,21 +270,19 @@ export function ViewerPage({
           command.clearStatus();
           return;
         }
-        const nextSlides = [...slides];
-        nextSlides[activeSlideIndex] = result.slide;
-        resetHistoryWithSlides(nextSlides, [result.slide]);
+        editor.reloadSlide(result.slide);
         command.showOutcome("Synced!");
       },
       (error) => alertError("Sync slide error", error),
     );
   };
 
-  const handleRemoveAudio = async () => {
-    await operation.run(
-      "removeAudio",
-      "Removing audio...",
+  const runRemoveAudio = (owner: "removeAudio" | "removeAllAudio", slideIndices: number[]) =>
+    operation.run(
+      owner,
+      owner === "removeAudio" ? "Removing audio..." : "Removing all audio...",
       async (command) => {
-        const result = await runRemoveAudio([activeSlideNumber]);
+        const result = await electronAPI.removeAudio({ filePath, slideIndices });
         if (!result.success) {
           alert(`Failed to remove audio: ${result.message}`);
           command.clearStatus();
@@ -553,30 +292,12 @@ export function ViewerPage({
       },
       (error) => alertError("Remove audio error", error),
     );
-  };
-
-  const handleRemoveAllAudio = async () => {
-    await operation.run(
-      "removeAllAudio",
-      "Removing all audio...",
-      async (command) => {
-        const result = await runRemoveAudio(slides.map((slide) => slide.index));
-        if (!result.success) {
-          alert(`Failed to remove audio: ${result.message}`);
-          command.clearStatus();
-          return;
-        }
-        command.showOutcome("Removed!");
-      },
-      (error) => alertError("Remove audio error", error),
-    );
-  };
 
   return (
     <Stack gap="0" h="100%" mih={0} onKeyDown={handleHistoryKeyDown}>
       <ViewerHeader
         onBack={() => {
-          finishPendingTypingCheckpoint();
+          editor.finalizePendingTyping();
           void confirmDiscardChanges().then((confirmed) => {
             if (confirmed) {
               onBack();
@@ -584,14 +305,18 @@ export function ViewerPage({
           });
         }}
         onOpenSettings={() => {
-          finishPendingTypingCheckpoint();
+          editor.finalizePendingTyping();
           onOpenSettings();
         }}
         actionStates={headerActionStates}
         handlers={{
           reloadAllSlides: () => void handleReloadAllSlides(),
           saveAllSlides: () => void handleSaveAllSlides(),
-          removeAllAudio: () => void handleRemoveAllAudio(),
+          removeAllAudio: () =>
+            void runRemoveAudio(
+              "removeAllAudio",
+              slides.map((slide) => slide.index),
+            ),
           generateVideo: () => void handleGenerateVideo(),
         }}
       />
@@ -600,11 +325,8 @@ export function ViewerPage({
         <Split.Pane initialWidth="10%">
           <SlideThumbnailList
             slides={slides}
-            activeSlideIndex={activeSlideIndex}
-            onSelectSlide={(slideIndex) => {
-              finishPendingTypingCheckpoint();
-              setActiveSlideIndex(slideIndex);
-            }}
+            activeSlideIndex={editor.activeSlidePosition}
+            onSelectSlide={editor.selectSlide}
           />
         </Split.Pane>
 
@@ -613,7 +335,10 @@ export function ViewerPage({
         <Split.Pane grow>
           <Split orientation="horizontal" h="100%">
             <Split.Pane initialHeight="30%">
-              <SlidePreviewPane activeSlideSrc={activeSlide.src} slideNumber={activeSlideNumber} />
+              <SlidePreviewPane
+                activeSlideSrc={editor.activeSlide?.src ?? ""}
+                slideNumber={activeSlideNumber}
+              />
             </Split.Pane>
 
             <Split.Resizer />
@@ -626,31 +351,30 @@ export function ViewerPage({
                     reloadSlide: () => void handleReloadSlide(),
                     saveSlide: () => void handleSaveSlide(),
                     playSlide: () => void handlePlaySlide(),
-                    removeAudio: () => void handleRemoveAudio(),
+                    removeAudio: () => void runRemoveAudio("removeAudio", [activeSlideNumber]),
                   }}
                 />
 
                 <SsmlToolbar
-                  canUndo={viewerSession.canUndo}
-                  canRedo={viewerSession.canRedo}
-                  onUndo={handleUndo}
-                  onRedo={handleRedo}
-                  onInsertSelfClosingTag={insertSelfClosingTag}
+                  canUndo={editor.canUndo}
+                  canRedo={editor.canRedo}
+                  onUndo={editor.undo}
+                  onRedo={editor.redo}
+                  onInsertSelfClosingTag={(tag) => insertWrappedTag(tag)}
                   onInsertWrappedTag={insertWrappedTag}
                 />
 
                 <NotesSectionList
-                  sections={activeSections}
+                  sections={editor.sections}
                   mappings={mappings}
-                  slideIndex={activeSlide.index}
-                  onFocusSection={setActiveSectionIndex}
-                  onSpeakerChange={handleSpeakerChange}
-                  onSectionTextChange={handleSectionTextChange}
-                  onSectionPromptChange={handleSectionPromptChange}
-                  onDeleteSection={handleDeleteSection}
-                  onAddSection={handleAddSection}
-                  assignTextareaRef={assignTextareaRef}
-                  getTextarea={getTextarea}
+                  slideIndex={activeSlideNumber}
+                  onFocusSection={editor.selectSection}
+                  onSpeakerChange={editor.setSectionSpeaker}
+                  onSectionTextChange={editor.setSectionText}
+                  onSectionPromptChange={editor.setSectionPrompt}
+                  onDeleteSection={editor.deleteSection}
+                  onAddSection={editor.addSection}
+                  textareas={textareas}
                 />
               </Stack>
             </Split.Pane>

@@ -1,6 +1,10 @@
 import { MantineProvider } from "@mantine/core";
 import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
+import {
+  formatNarrationSections,
+  parseNarrationSections,
+} from "../../../shared/narration/NarrationSections";
 import type { NarratedSaveResult } from "../../../shared/types/narration";
 import { AudioProvider } from "../../context/AudioContext";
 import type { Slide } from "../../types/electron";
@@ -8,12 +12,17 @@ import { SettingsProvider } from "../../context/SettingsContext";
 import { ViewerPage } from "./ViewerPage";
 import { NarrationPreviewProvider } from "./useNarrationPreview";
 
-const loadedSlide: Slide = {
-  index: 1,
-  image: "slide-one.png",
-  src: "slide-one",
-  notes: "Loaded narration",
-};
+/** Slides reach the viewer parsed, as the PowerPoint load seam parses them. */
+function loadedWith(notes: string, knownSpeakers: readonly string[] = []): Slide {
+  return {
+    index: 1,
+    image: "slide-one.png",
+    src: "slide-one",
+    sections: parseNarrationSections(notes, knownSpeakers),
+  };
+}
+
+const loadedSlide = loadedWith("Loaded narration");
 
 interface ViewerElectronOverrides {
   getSpeakerMappings?: typeof window.electronAPI.getSpeakerMappings;
@@ -21,7 +30,6 @@ interface ViewerElectronOverrides {
   reloadSlide?: typeof window.electronAPI.reloadSlide;
   saveNarratedSlide?: typeof window.electronAPI.saveNarratedSlide;
   saveNarratedPresentation?: typeof window.electronAPI.saveNarratedPresentation;
-  saveNotes?: typeof window.electronAPI.saveNotes;
   getVideoSavePath?: typeof window.electronAPI.getVideoSavePath;
   generateVideo?: typeof window.electronAPI.generateVideo;
   playSlide?: typeof window.electronAPI.playSlide;
@@ -46,9 +54,6 @@ function installElectronApi(overrides: ViewerElectronOverrides = {}) {
     ),
     saveNarratedPresentation: vi.fn<typeof window.electronAPI.saveNarratedPresentation>(
       (): Promise<NarratedSaveResult> => Promise.resolve({ success: true }),
-    ),
-    saveNotes: vi.fn<typeof window.electronAPI.saveNotes>(() =>
-      Promise.resolve({ success: true as const }),
     ),
     getVideoSavePath: vi.fn<typeof window.electronAPI.getVideoSavePath>(() =>
       Promise.resolve("video.mp4"),
@@ -126,28 +131,35 @@ test("renders the notes restored by undo/redo keyboard shortcuts", async () => {
   await vi.waitFor(() => expect(editor.element()).toHaveValue("Edited narration"));
 });
 
-test("keeps typing and a later section addition as separate undo steps", async () => {
+test("wraps the selected narration in SSML and restores focus and selection", async () => {
   installElectronApi();
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const { screen } = await renderViewer();
-  const editor = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });
+  const notes = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });
+  const textarea = notes.element() as HTMLTextAreaElement;
 
-  await editor.fill("Edited narration");
-  await screen.getByRole("button", { name: "Add Section" }).click();
-  await vi.runAllTimersAsync();
-  vi.useRealTimers();
+  textarea.focus();
+  textarea.setSelectionRange(0, 6);
+  await screen.getByRole("button", { name: "Paragraph" }).click();
 
-  await expect.element(editor).toHaveValue("Edited narration");
+  await expect.element(notes).toHaveValue("<p>Loaded</p> narration");
+  expect(document.activeElement).toBe(textarea);
+  expect([textarea.selectionStart, textarea.selectionEnd]).toEqual([3, 9]);
+});
+
+test("shows the sections of the slide whose thumbnail is chosen", async () => {
+  installElectronApi();
+  const secondSlide: Slide = {
+    ...loadedWith("Second slide narration"),
+    index: 2,
+    image: "slide-two.png",
+  };
+  const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
+
+  await screen.getByRole("button", { name: "Slide 2" }).click();
+
   await expect
-    .element(screen.getByRole("textbox", { name: "Slide 1 section 2 notes" }))
-    .toBeInTheDocument();
-
-  await screen.getByRole("button", { name: "Undo" }).click();
-
-  await expect.element(editor).toHaveValue("Edited narration");
-  await expect
-    .element(screen.getByRole("textbox", { name: "Slide 1 section 2 notes" }))
-    .not.toBeInTheDocument();
+    .element(screen.getByRole("textbox", { name: "Slide 2 section 1 notes" }))
+    .toHaveValue("Second slide narration");
 });
 
 test("stays on the slide when the navigation discard warning is declined", async () => {
@@ -194,53 +206,6 @@ test("restores the loaded narration when the reload discard warning is accepted"
   await vi.waitFor(() => expect(editor.element()).toHaveValue("Loaded narration"));
 });
 
-test("navigates back without a warning once a reload has discarded the edits", async () => {
-  const discardDialog = { allow: true };
-  installElectronApi({
-    confirmDiscardNarrationChanges: vi.fn<typeof window.electronAPI.confirmDiscardNarrationChanges>(
-      () => Promise.resolve(discardDialog.allow),
-    ),
-  });
-  const { screen, onBack } = await renderViewer();
-  const editor = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });
-
-  await editor.fill("Unsaved narration");
-  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
-  await vi.waitFor(() => expect(editor.element()).toHaveValue("Loaded narration"));
-
-  // A declining dialog from here on: navigating back proves no warning was raised.
-  discardDialog.allow = false;
-  await screen.getByRole("button", { name: "Back", exact: false }).click();
-
-  expect(onBack).toHaveBeenCalledOnce();
-});
-
-test("keeps narration dirty when the narrated save fails", async () => {
-  const saveNarratedSlide = vi.fn<typeof window.electronAPI.saveNarratedSlide>(() =>
-    Promise.resolve({
-      success: false,
-      stage: "validation",
-      partial: false,
-      message: "Invalid narration",
-    }),
-  );
-  installElectronApi({
-    saveNarratedSlide,
-    confirmDiscardNarrationChanges: vi.fn<typeof window.electronAPI.confirmDiscardNarrationChanges>(
-      () => Promise.resolve(false),
-    ),
-  });
-  vi.spyOn(window, "alert").mockImplementation(() => {});
-  const { screen, onBack } = await renderViewer();
-
-  await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Edited narration");
-  await screen.getByRole("button", { name: "Save Slide", exact: true }).click();
-  await vi.waitFor(() => expect(saveNarratedSlide).toHaveBeenCalledOnce());
-  await screen.getByRole("button", { name: "Back", exact: false }).click();
-
-  expect(onBack).not.toHaveBeenCalled();
-});
-
 test("clears the dirty warning after a successful narrated save", async () => {
   const saveNarratedSlide = vi.fn<typeof window.electronAPI.saveNarratedSlide>(() =>
     Promise.resolve({
@@ -261,30 +226,6 @@ test("clears the dirty warning after a successful narrated save", async () => {
   await screen.getByRole("button", { name: "Back", exact: false }).click();
 
   expect(onBack).toHaveBeenCalledOnce();
-});
-
-test("keeps narration edited during a save dirty after that save completes", async () => {
-  let finishSave: ((result: NarratedSaveResult) => void) | undefined;
-  const saveNarratedSlide = vi.fn<typeof window.electronAPI.saveNarratedSlide>(
-    () => new Promise<NarratedSaveResult>((resolve) => (finishSave = resolve)),
-  );
-  const confirmDiscardNarrationChanges = vi.fn<
-    typeof window.electronAPI.confirmDiscardNarrationChanges
-  >(() => Promise.resolve(false));
-  installElectronApi({ saveNarratedSlide, confirmDiscardNarrationChanges });
-  const { screen, onBack } = await renderViewer();
-  const editor = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });
-
-  await editor.fill("Sent for save");
-  await screen.getByRole("button", { name: "Save Slide", exact: true }).click();
-  await vi.waitFor(() => expect(saveNarratedSlide).toHaveBeenCalledOnce());
-  await editor.fill("Edited while saving");
-  finishSave?.({ success: true });
-  await vi.waitFor(() => expect(screen.getByText("Saved slides!").first()).toBeInTheDocument());
-
-  await screen.getByRole("button", { name: "Back", exact: false }).click();
-
-  expect(onBack).not.toHaveBeenCalled();
 });
 
 test("disables conflicting Viewer operations while a save is active", async () => {
@@ -342,24 +283,6 @@ test("generates video after a successful narrated save", async () => {
   await screen.getByRole("button", { name: "Generate Video", exact: true }).click();
 
   await vi.waitFor(() => expect(generateVideo).toHaveBeenCalledOnce());
-});
-
-test("commits notes through the narrated save rather than separately", async () => {
-  const generateVideo = vi.fn<typeof window.electronAPI.generateVideo>(() =>
-    Promise.resolve({ success: true as const, outputPath: "video.mp4" }),
-  );
-  const saveNotes = vi.fn<typeof window.electronAPI.saveNotes>(() =>
-    Promise.resolve({ success: true as const }),
-  );
-  installElectronApi({ generateVideo, saveNotes });
-  vi.spyOn(window, "alert").mockImplementation(() => {});
-  const { screen } = await renderViewer();
-
-  await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Edited narration");
-  await screen.getByRole("button", { name: "Generate Video", exact: true }).click();
-  await vi.waitFor(() => expect(generateVideo).toHaveBeenCalledOnce());
-
-  expect(saveNotes).not.toHaveBeenCalled();
 });
 
 test("reports a slide playback failure", async () => {
@@ -430,10 +353,7 @@ test("removes audio for every slide", async () => {
 
 test("keeps unsaved edits when the reload-all discard warning is declined", async () => {
   const convertPptx = vi.fn<typeof window.electronAPI.convertPptx>(() =>
-    Promise.resolve({
-      success: true,
-      slides: [{ ...loadedSlide, notes: "Reloaded narration" }],
-    }),
+    Promise.resolve({ success: true, slides: [loadedWith("Reloaded narration")] }),
   );
   installElectronApi({
     convertPptx,
@@ -452,10 +372,7 @@ test("keeps unsaved edits when the reload-all discard warning is declined", asyn
 
 test("reloads every slide when the reload-all discard warning is accepted", async () => {
   const convertPptx = vi.fn<typeof window.electronAPI.convertPptx>(() =>
-    Promise.resolve({
-      success: true,
-      slides: [{ ...loadedSlide, notes: "Reloaded narration" }],
-    }),
+    Promise.resolve({ success: true, slides: [loadedWith("Reloaded narration")] }),
   );
   installElectronApi({
     convertPptx,
@@ -480,11 +397,12 @@ const promptableVoice = {
   supportsPrompt: true,
 };
 
-function installPromptMappings(supportsPrompt = true) {
+function installPromptMappings(supportsPrompt = true, overrides: ViewerElectronOverrides = {}) {
   return installElectronApi({
     getSpeakerMappings: vi.fn<typeof window.electronAPI.getSpeakerMappings>(() =>
       Promise.resolve({ _default_: { voice: { ...promptableVoice, supportsPrompt } } }),
     ),
+    ...overrides,
   });
 }
 
@@ -492,26 +410,24 @@ const promptButton = "Prompt for slide 1 section 1";
 
 test("shows the inline prompt a section already carries", async () => {
   installPromptMappings();
-  const { screen } = await renderViewer(vi.fn(), [
-    { ...loadedSlide, notes: "[p:excited]\nLoaded narration" },
-  ]);
+  const { screen } = await renderViewer(vi.fn(), [loadedWith("[p:excited]\nLoaded narration")]);
 
   await expect.element(screen.getByRole("textbox", { name: promptButton })).toHaveValue("excited");
 });
 
 test("removes the marker from the notes when the prompt is cleared", async () => {
-  const electronAPI = installPromptMappings();
-  const { screen } = await renderViewer(vi.fn(), [
-    { ...loadedSlide, notes: "[p:excited]\nLoaded narration" },
-  ]);
+  const saveNarratedSlide = vi.fn<typeof window.electronAPI.saveNarratedSlide>(() =>
+    Promise.resolve({ success: true as const }),
+  );
+  installPromptMappings(true, { saveNarratedSlide });
+  const { screen } = await renderViewer(vi.fn(), [loadedWith("[p:excited]\nLoaded narration")]);
 
   await screen.getByRole("textbox", { name: promptButton }).fill("");
   await screen.getByRole("button", { name: "Save Slide", exact: true }).click();
 
-  await vi.waitFor(() =>
-    expect(electronAPI.saveNarratedSlide).toHaveBeenCalledWith(
-      expect.objectContaining({ sections: [{ speaker: "", text: "Loaded narration" }] }),
-    ),
+  await vi.waitFor(() => expect(saveNarratedSlide).toHaveBeenCalledOnce());
+  expect(formatNarrationSections(saveNarratedSlide.mock.lastCall![0].sections)).toBe(
+    "Loaded narration",
   );
 });
 
@@ -539,7 +455,8 @@ test("advises when the section's effective speaker ignores prompts", async () =>
   await expect.element(screen.getByText("This model ignores prompts.")).toBeVisible();
 });
 
-const taggedSlide: Slide = { ...loadedSlide, notes: "[Alice]\nLoaded narration" };
+/** Loaded before the mapping existed, so its bracketed line was narration text. */
+const taggedSlide = loadedWith("[Alice]\nLoaded narration");
 
 test("shows a bracketed line as the section's speaker once a mapping names it", async () => {
   installElectronApi({

@@ -87,7 +87,7 @@ interface NarrationPreviewOptions {
   sectionIndex: number;
   sections: readonly NarrationSection[];
   onFocus: () => void;
-  getTextarea?: () => HTMLTextAreaElement | null;
+  getSelectedText?: () => string | undefined;
 }
 
 export function useNarrationPreview(options: NarrationPreviewOptions) {
@@ -156,12 +156,7 @@ export function useNarrationPreview(options: NarrationPreviewOptions) {
         return;
       }
 
-      const textarea = options.getTextarea?.();
-      const text = textarea
-        ? textarea.selectionStart === textarea.selectionEnd
-          ? textarea.value
-          : textarea.value.slice(textarea.selectionStart, textarea.selectionEnd)
-        : sectionText;
+      const text = options.getSelectedText?.() ?? sectionText;
       if (!text.trim()) {
         alert("No text to preview.");
         return;

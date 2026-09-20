@@ -18,7 +18,6 @@ import type {
   PlaySlideRequest,
   ReloadSlideRequest,
   RemoveAudioRequest,
-  SlideManifestEntry,
 } from "./platform/types.js";
 import { registerNarrationIpc } from "./narration/registerNarrationIpc.js";
 import { withSlideSections, withSlidesSections } from "./narration/structuredSlideNotes.js";
@@ -203,12 +202,6 @@ ipcMain.handle("convert-pptx", async (_, filePath: string) => {
 // ==========================================
 // PowerPoint Action Handlers
 // ==========================================
-ipcMain.handle("save-notes", async (_, filePath: string, slides: SlideManifestEntry[]) => {
-  const absolutePath = path.resolve(filePath);
-  if (!fs.existsSync(absolutePath)) return { success: false, message: "File not found" };
-  return getActiveCoreProvider().saveNotes(absolutePath, slides);
-});
-
 ipcMain.handle("remove-audio", async (_, { filePath, slideIndices }: RemoveAudioRequest) => {
   const absolutePath = path.resolve(filePath);
   if (!fs.existsSync(absolutePath)) return { success: false, message: "File not found" };
