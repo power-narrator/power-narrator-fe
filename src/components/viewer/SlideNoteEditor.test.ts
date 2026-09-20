@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { formatNarrationSections } from "../../../shared/narration/NarrationSections";
+import {
+  formatNarrationSections,
+  type NarrationSection,
+} from "../../../shared/narration/NarrationSections";
 import type { Slide } from "../../types/electron";
 import {
   activeSectionId,
   activeSections,
   activeSlide,
   addSection,
+  beginSave,
   deleteSection,
   effectiveSpeaker,
   hasUnsavedChanges,
@@ -19,6 +23,7 @@ import {
   reclassifySpeakerTags,
   reloadPresentation,
   reloadSlide,
+  saveSucceeded,
   selectSection,
   selectSlide,
   setSectionPrompt,
@@ -26,6 +31,7 @@ import {
   setSectionText,
   undo,
   type SlideNoteEditor,
+  type SnapshotSlide,
 } from "./SlideNoteEditor";
 
 function slide(index: number, notes: string): Slide {
@@ -853,5 +859,153 @@ describe("reclassifying speaker tags", () => {
     const emptied = deleteSection(opened, activeSections(opened)[0]!.id);
 
     expect(activeSections(reclassifySpeakerTags(emptied, ["Alice"]))).toEqual([]);
+  });
+});
+
+describe("saving", () => {
+  it("submits exactly the structured content the slides hold", () => {
+    const editor = openedEditor();
+
+    const { snapshot } = beginSave(editor);
+
+    expect(snapshot.slides.map((slide) => slide.index)).toEqual([1, 2]);
+    expect(snapshot.slides[0]?.sections).toEqual(formattableSections(editor));
+  });
+
+  it("submits only the requested slides", () => {
+    const editor = openedEditor();
+
+    expect(beginSave(editor, [2]).snapshot.slides.map((slide) => slide.index)).toEqual([2]);
+    expect(beginSave(editor, [7]).snapshot.slides).toEqual([]);
+  });
+
+  it("finalizes pending typing, so the submitted content is its own undo step", () => {
+    const editor = openedEditor();
+    const sectionId = activeSections(editor)[0]!.id;
+
+    const submitted = beginSave(setSectionText(editor, sectionId, "Typed")).editor;
+
+    expect(sectionTexts(undo(submitted))).toEqual(["First narration", "Second section"]);
+    expect(sectionTexts(redo(undo(submitted)))).toEqual(["Typed", "Second section"]);
+  });
+
+  it("refuses to be altered after submission", () => {
+    const { snapshot } = beginSave(openedEditor());
+
+    expect(() => {
+      (snapshot.slides[0]!.sections as NarrationSection[])[0]!.text = "Tampered";
+    }).toThrow(TypeError);
+    expect(() => (snapshot.slides as SnapshotSlide[]).pop()).toThrow(TypeError);
+  });
+
+  it("leaves the live editor free to keep changing while the operation runs", () => {
+    const editor = openedEditor();
+    const { editor: submitted } = beginSave(editor);
+
+    expect(Object.isFrozen(activeSections(submitted)[0]?.format)).toBe(false);
+  });
+
+  it("clears dirty state for the slides the save committed", () => {
+    const editor = openedEditor();
+    const edited = setSectionText(editor, activeSections(editor)[0]!.id, "Rewritten");
+    const { editor: submitted, snapshot } = beginSave(edited);
+
+    const saved = saveSucceeded(submitted, snapshot);
+
+    expect(isSlideDirty(saved, 1)).toBe(false);
+    expect(hasUnsavedChanges(saved)).toBe(false);
+  });
+
+  it("clears dirty state across every slide a whole-presentation save committed", () => {
+    const editor = openedEditor();
+    const firstEdited = setSectionText(editor, activeSections(editor)[0]!.id, "Rewritten");
+    const onSecond = selectSlide(firstEdited, 1);
+    const bothEdited = setSectionText(onSecond, activeSections(onSecond)[0]!.id, "Also rewritten");
+    const { editor: submitted, snapshot } = beginSave(bothEdited);
+
+    const saved = saveSucceeded(submitted, snapshot);
+
+    expect(isSlideDirty(saved, 1)).toBe(false);
+    expect(isSlideDirty(saved, 2)).toBe(false);
+    expect(hasUnsavedChanges(saved)).toBe(false);
+  });
+
+  it("leaves other slides dirty when one slide is saved", () => {
+    const editor = openedEditor();
+    const firstEdited = setSectionText(editor, activeSections(editor)[0]!.id, "Rewritten");
+    const onSecond = selectSlide(firstEdited, 1);
+    const bothEdited = setSectionText(onSecond, activeSections(onSecond)[0]!.id, "Also rewritten");
+    const { editor: submitted, snapshot } = beginSave(bothEdited, [1]);
+
+    const saved = saveSucceeded(submitted, snapshot);
+
+    expect(isSlideDirty(saved, 1)).toBe(false);
+    expect(isSlideDirty(saved, 2)).toBe(true);
+    expect(hasUnsavedChanges(saved)).toBe(true);
+  });
+
+  it("keeps edits made after submission dirty once the older save succeeds", () => {
+    const editor = openedEditor();
+    const sectionId = activeSections(editor)[0]!.id;
+    const { editor: submitted, snapshot } = beginSave(setSectionText(editor, sectionId, "Sent"));
+    const newer = setSectionText(submitted, sectionId, "Written while saving");
+
+    const saved = saveSucceeded(newer, snapshot);
+
+    expect(sectionTexts(saved)).toEqual(["Written while saving", "Second section"]);
+    expect(isSlideDirty(saved, 1)).toBe(true);
+  });
+
+  it("clears dirty state again when the newer edit is restored to the saved content", () => {
+    const editor = openedEditor();
+    const sectionId = activeSections(editor)[0]!.id;
+    const { editor: submitted, snapshot } = beginSave(setSectionText(editor, sectionId, "Sent"));
+    const newer = setSectionText(submitted, sectionId, "Written while saving");
+
+    const restored = setSectionText(saveSucceeded(newer, snapshot), sectionId, "Sent");
+
+    expect(isSlideDirty(restored, 1)).toBe(false);
+    expect(hasUnsavedChanges(restored)).toBe(false);
+  });
+
+  it("keeps the submitted content dirty while a save has not succeeded", () => {
+    const editor = openedEditor();
+    const edited = setSectionText(editor, activeSections(editor)[0]!.id, "Rewritten");
+
+    const failed = beginSave(edited).editor;
+
+    expect(isSlideDirty(failed, 1)).toBe(true);
+    expect(hasUnsavedChanges(failed)).toBe(true);
+  });
+
+  it("commits the retry of a failed save", () => {
+    const editor = openedEditor();
+    const edited = setSectionText(editor, activeSections(editor)[0]!.id, "Rewritten");
+    const failed = beginSave(edited).editor;
+    const retry = beginSave(failed);
+
+    expect(hasUnsavedChanges(saveSucceeded(retry.editor, retry.snapshot))).toBe(false);
+  });
+
+  it("keeps the reloaded content of a slide PowerPoint replaced while the save ran", () => {
+    const editor = openedEditor();
+    const edited = setSectionText(editor, activeSections(editor)[0]!.id, "Submitted");
+    const { editor: submitted, snapshot } = beginSave(edited, [1]);
+    const reloaded = reloadSlide(submitted, slide(1, "PowerPoint replaced this"));
+
+    const saved = saveSucceeded(reloaded, snapshot);
+
+    expect(sectionTexts(saved)).toEqual(["PowerPoint replaced this"]);
+    expect(isSlideDirty(saved, 1)).toBe(false);
+  });
+
+  it("ignores a slide the presentation no longer contains", () => {
+    const editor = openedEditor();
+    const { snapshot } = beginSave(editor, [2]);
+
+    const saved = saveSucceeded(reloadPresentation(editor, [slide(1, "Only slide")]), snapshot);
+
+    expect(saved.slides.map((editorSlide) => editorSlide.index)).toEqual([1]);
+    expect(hasUnsavedChanges(saved)).toBe(false);
   });
 });

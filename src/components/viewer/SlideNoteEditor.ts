@@ -538,3 +538,81 @@ export function reclassifySpeakerTags(
     mintedSectionCount,
   };
 }
+
+export interface SnapshotSlide {
+  index: number;
+  sections: readonly NarrationSection[];
+}
+
+/** Exactly the structured content one persistence operation submitted. */
+export interface SaveSnapshot {
+  slides: readonly SnapshotSlide[];
+  /**
+   * The saved baselines the submission was made against. A baseline is replaced
+   * only by a reload, a reclassification, or another completed save, so one that
+   * is no longer the same has already moved past this snapshot.
+   */
+  submittedAgainst: ReadonlyMap<number, readonly NarrationSection[] | undefined>;
+}
+
+export interface SaveSubmission {
+  editor: SlideNoteEditor;
+  snapshot: SaveSnapshot;
+}
+
+/** Copies deeply enough that freezing cannot reach back into the live editor. */
+function toSnapshotSlide(slide: EditorSlide): SnapshotSlide {
+  return Object.freeze({
+    index: slide.index,
+    sections: Object.freeze(
+      slide.sections.map(({ id: _id, format, ...section }) =>
+        Object.freeze(format ? { ...section, format: Object.freeze({ ...format }) } : section),
+      ),
+    ),
+  });
+}
+
+/**
+ * Takes the content of a persistence operation, finalizing pending typing so
+ * the submitted content is an undo step of its own. The snapshot is frozen
+ * because the author keeps editing while the operation runs: only this content
+ * may later be reconciled as saved.
+ */
+export function beginSave(
+  source: SlideNoteEditor,
+  slideIndices?: readonly number[],
+): SaveSubmission {
+  const editor = finalizePendingTyping(source);
+  const submitted = editor.slides.filter(
+    (slide) => slideIndices === undefined || slideIndices.includes(slide.index),
+  );
+
+  return {
+    editor,
+    snapshot: Object.freeze({
+      slides: Object.freeze(submitted.map(toSnapshotSlide)),
+      submittedAgainst: new Map(
+        submitted.map((slide) => [slide.index, editor.savedSections.get(slide.index)]),
+      ),
+    }),
+  };
+}
+
+/**
+ * Advances the saved baseline of each submitted slide to the snapshot that was
+ * committed, and no further. Edits made while the operation ran therefore stay
+ * dirty, and a save that never succeeds leaves its content dirty for a retry.
+ *
+ * A slide whose baseline moved on while the operation ran keeps the newer one,
+ * so a completed save can never reinstate content PowerPoint has since replaced.
+ */
+export function saveSucceeded(editor: SlideNoteEditor, snapshot: SaveSnapshot): SlideNoteEditor {
+  const savedSections = new Map(editor.savedSections);
+  for (const slide of snapshot.slides) {
+    if (savedSections.get(slide.index) === snapshot.submittedAgainst.get(slide.index)) {
+      savedSections.set(slide.index, slide.sections);
+    }
+  }
+
+  return { ...editor, savedSections };
+}
