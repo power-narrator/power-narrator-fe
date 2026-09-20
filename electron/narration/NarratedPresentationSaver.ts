@@ -21,8 +21,8 @@ export class NarratedPresentationSaver {
    * the single-slide save is its own IPC channel with its own request shape.
    */
   saveSlide(request: NarratedSlideSaveRequest): Promise<NarratedSaveResult> {
-    const { filePath, slideIndex, ...noteSource } = request;
-    return this.savePresentation({ filePath, slides: [{ slideIndex, ...noteSource }] });
+    const { filePath, ...slide } = request;
+    return this.savePresentation({ filePath, slides: [slide] });
   }
 
   async savePresentation(

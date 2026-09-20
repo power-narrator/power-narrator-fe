@@ -21,6 +21,8 @@ import type {
   SlideManifestEntry,
 } from "./platform/types.js";
 import { registerNarrationIpc } from "./narration/registerNarrationIpc.js";
+import { withSlideSections, withSlidesSections } from "./narration/structuredSlideNotes.js";
+import { getSpeakerNames } from "../shared/narration/speaker.js";
 import { UnsavedNarrationChanges } from "./windows/UnsavedNarrationChanges.js";
 import { createMainWindow } from "./windows/createMainWindow.js";
 import { installTestHarness } from "./testing/narrationTestHarness.js";
@@ -91,11 +93,11 @@ function getActiveCoreProvider(): PptProvider {
   return nativeProvider;
 }
 
+const getSpeakerMappings = (): Record<string, SpeakerMapping> =>
+  (store.get("speakerMappings") as Record<string, SpeakerMapping>) || {};
+
 registerNarrationIpc(ipcMain, {
-  mappingSource: {
-    getSpeakerMappings: () =>
-      (store.get("speakerMappings") as Record<string, SpeakerMapping>) || {},
-  },
+  mappingSource: { getSpeakerMappings },
   synthesizer: ttsManager,
   getPowerPoint: getActiveCoreProvider,
 });
@@ -192,7 +194,10 @@ ipcMain.handle("convert-pptx", async (_, filePath: string) => {
     return { success: false, message: `File not found: ${absolutePath}` };
   }
 
-  return getActiveCoreProvider().convertPptx(absolutePath, getOutputDir(absolutePath));
+  return withSlidesSections(
+    await getActiveCoreProvider().convertPptx(absolutePath, getOutputDir(absolutePath)),
+    getSpeakerNames(getSpeakerMappings()),
+  );
 });
 
 // ==========================================
@@ -226,7 +231,10 @@ ipcMain.handle("reload-slide", async (_, { filePath, slideIndex }: ReloadSlideRe
   if (!fs.existsSync(outputDir)) {
     return { success: false, message: "Conversion directory not found. Please sync all first." };
   }
-  return getActiveCoreProvider().reloadSlide(absolutePath, slideIndex, outputDir);
+  return withSlideSections(
+    await getActiveCoreProvider().reloadSlide(absolutePath, slideIndex, outputDir),
+    getSpeakerNames(getSpeakerMappings()),
+  );
 });
 
 ipcMain.handle("generate-video", async (_, { filePath, videoOutputPath }: GenerateVideoRequest) => {
