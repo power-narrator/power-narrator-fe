@@ -5,7 +5,7 @@ import type {
   NarratedSlideSaveRequest,
 } from "../../shared/types/narration.js";
 import type { PptProvider } from "../platform/PptProvider.js";
-import { toNotesText } from "../../shared/narration/slideNotePayload.js";
+import { formatNarrationSections } from "../../shared/narration/NarrationSections.js";
 import { NarrationPreparation, NarrationPreparationError } from "./NarrationPreparation.js";
 
 type SavePowerPoint = Pick<PptProvider, "saveNotes" | "insertAudio" | "removeAudio">;
@@ -55,7 +55,12 @@ export class NarratedPresentationSaver {
     try {
       notesResult = await powerpoint.saveNotes(
         request.filePath,
-        request.slides.map((slide) => ({ index: slide.slideIndex, notes: toNotesText(slide) })),
+        // Raw note text exists only from here on: structured sections are
+        // formatted immediately before PowerPoint takes them.
+        request.slides.map((slide) => ({
+          index: slide.slideIndex,
+          notes: formatNarrationSections(slide.sections),
+        })),
       );
     } catch (error: unknown) {
       return this.powerPointFailure(error, false);

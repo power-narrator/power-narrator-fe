@@ -510,7 +510,7 @@ test("removes the marker from the notes when the prompt is cleared", async () =>
 
   await vi.waitFor(() =>
     expect(electronAPI.saveNarratedSlide).toHaveBeenCalledWith(
-      expect.objectContaining({ notes: "Loaded narration" }),
+      expect.objectContaining({ sections: [{ speaker: "", text: "Loaded narration" }] }),
     ),
   );
 });
@@ -525,7 +525,9 @@ test("writes a marker into the notes when a prompt is added", async () => {
 
   await vi.waitFor(() =>
     expect(electronAPI.saveNarratedSlide).toHaveBeenCalledWith(
-      expect.objectContaining({ notes: "[prompt: excited]\nLoaded narration" }),
+      expect.objectContaining({
+        sections: [expect.objectContaining({ prompt: "excited", text: "Loaded narration" })],
+      }),
     ),
   );
 });

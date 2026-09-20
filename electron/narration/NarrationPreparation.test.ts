@@ -106,8 +106,14 @@ describe("NarrationPreparation", () => {
     );
 
     const batch = preparation.prepareBatch([
-      { slideIndex: 5, notes: "[Narrator]\nFive first\n---\nFive second" },
-      { slideIndex: 1, notes: "[Narrator]\nOne first" },
+      {
+        slideIndex: 5,
+        sections: [
+          { speaker: "Narrator", text: "Five first" },
+          { speaker: "", text: "Five second" },
+        ],
+      },
+      { slideIndex: 1, sections: [{ speaker: "Narrator", text: "One first" }] },
     ]);
     await vi.waitFor(() => expect(pending.size).toBe(3));
 
@@ -305,7 +311,7 @@ describe("NarrationPreparation prompts", () => {
       Narrator: { voice: promptableVoice, prompt: "conspiratorial, almost whispering" },
     });
 
-    await preparation.prepareBatch([{ slideIndex: 1, notes: "[Narrator]\nFirst\n---\nSecond" }]);
+    await preparation.prepareBatch([{ slideIndex: 1, sections: FIRST_SECOND }]);
 
     expect(generateSpeech.mock.calls).toEqual([
       ["First", promptableVoice, "conspiratorial, almost whispering"],
@@ -320,7 +326,13 @@ describe("NarrationPreparation prompts", () => {
     });
 
     await preparation.prepareBatch([
-      { slideIndex: 1, notes: "[Narrator]\nFirst\n---\n[Guest]\nSecond" },
+      {
+        slideIndex: 1,
+        sections: [
+          { speaker: "Narrator", text: "First" },
+          { speaker: "Guest", text: "Second" },
+        ],
+      },
     ]);
 
     expect(generateSpeech.mock.calls).toEqual([
@@ -357,7 +369,10 @@ describe("NarrationPreparation inline prompts", () => {
     });
 
     await preparation.prepareBatch([
-      { slideIndex: 1, notes: "[Narrator]\n[p: almost whispering]\nFirst" },
+      {
+        slideIndex: 1,
+        sections: [{ speaker: "Narrator", prompt: "almost whispering", text: "First" }],
+      },
     ]);
 
     expect(generateSpeech).toHaveBeenCalledWith("First", promptableVoice, combinedPrompt);
@@ -369,7 +384,7 @@ describe("NarrationPreparation inline prompts", () => {
     });
 
     await preparation.prepareBatch([
-      { slideIndex: 1, notes: "[Narrator]\n[prompt: sigh first]\nFirst" },
+      { slideIndex: 1, sections: [{ speaker: "Narrator", prompt: "sigh first", text: "First" }] },
     ]);
 
     expect(generateSpeech).toHaveBeenCalledWith("First", promptableVoice, "sigh first");
@@ -381,7 +396,13 @@ describe("NarrationPreparation inline prompts", () => {
     });
 
     await preparation.prepareBatch([
-      { slideIndex: 1, notes: "[Narrator]\n[p: almost whispering]\nFirst\n---\nSecond" },
+      {
+        slideIndex: 1,
+        sections: [
+          { speaker: "Narrator", prompt: "almost whispering", text: "First" },
+          { speaker: "", text: "Second" },
+        ],
+      },
     ]);
 
     expect(generateSpeech.mock.calls).toEqual([
@@ -406,23 +427,16 @@ describe("NarrationPreparation inline prompts", () => {
     expect(generateSpeech).toHaveBeenCalledWith("First", promptableVoice, combinedPrompt);
   });
 
-  it("leaves a bracketed line that names no speaker in the narrated text", async () => {
-    const { preparation, generateSpeech } = createPreparation({
-      Narrator: { voice: promptableVoice },
-    });
-
-    await preparation.prepareBatch([{ slideIndex: 1, notes: "[Narrator]\n[sigh]\nFirst" }]);
-
-    expect(generateSpeech).toHaveBeenCalledWith("[sigh]\nFirst", promptableVoice, undefined);
-  });
-
   it("narrates an inline prompt the chosen voice ignores rather than refusing it", async () => {
     const { preparation, generateSpeech } = createPreparation({
       Narrator: { voice: narratorVoice },
     });
 
     await preparation.prepareBatch([
-      { slideIndex: 1, notes: "[Narrator]\n[p: almost whispering]\nFirst" },
+      {
+        slideIndex: 1,
+        sections: [{ speaker: "Narrator", prompt: "almost whispering", text: "First" }],
+      },
     ]);
 
     expect(generateSpeech).toHaveBeenCalledWith("First", narratorVoice, "almost whispering");

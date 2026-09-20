@@ -10,6 +10,10 @@ import { parseNarrationSections } from "../../shared/narration/NarrationSections
 import { NarrationPreparation } from "./NarrationPreparation.js";
 import { NarratedPresentationSaver } from "./NarratedPresentationSaver.js";
 
+/** Authored notes as the editor would hold them: parsed once, before any save. */
+const sections = (notes: string, knownSpeakers: string[] = ["Narrator"]) =>
+  parseNarrationSections(notes, knownSpeakers);
+
 const narratorVoice: Voice = {
   provider: "gcp",
   voiceId: "Narrator",
@@ -145,7 +149,7 @@ describe("NarratedPresentationSaver", () => {
     await expect(
       saver.savePresentation({
         filePath: "/slides/talk.pptx",
-        slides: [{ slideIndex: 4, notes: "[Narrator]\n  \n---\n\t" }],
+        slides: [{ slideIndex: 4, sections: sections("[Narrator]\n  \n---\n\t") }],
       }),
     ).resolves.toEqual({ success: true });
 
@@ -165,7 +169,7 @@ describe("NarratedPresentationSaver", () => {
     await expect(
       saver.savePresentation({
         filePath: "/slides/talk.pptx",
-        slides: [{ slideIndex: 4, notes: "  " }],
+        slides: [{ slideIndex: 4, sections: sections("  ") }],
       }),
     ).resolves.toEqual({
       success: false,
@@ -186,8 +190,8 @@ describe("NarratedPresentationSaver", () => {
       saver.savePresentation({
         filePath: "/slides/talk.pptx",
         slides: [
-          { slideIndex: 2, notes: "[Narrator]\nValid" },
-          { slideIndex: 8, notes: "[Missing]\nInvalid" },
+          { slideIndex: 2, sections: sections("[Narrator]\nValid") },
+          { slideIndex: 8, sections: sections("[Missing]\nInvalid", ["Narrator", "Missing"]) },
         ],
       }),
     ).resolves.toMatchObject({
@@ -209,14 +213,13 @@ describe("NarratedPresentationSaver", () => {
     );
     const { powerpoint, saver } = createSaver(generateSpeech);
     const onProgress = vi.fn<(progress: NarrationPreparationProgress) => void>();
+    const nineNotes = "[Narrator]\nNine first\n---\n[Narrator]\n  \n---\n[Narrator]\nNine third";
+    const threeNotes = "[Narrator]\nThree first";
     const request = {
       filePath: "/slides/talk.pptx",
       slides: [
-        {
-          slideIndex: 9,
-          notes: "[Narrator]\nNine first\n---\n[Narrator]\n  \n---\n[Narrator]\nNine third",
-        },
-        { slideIndex: 3, notes: "[Narrator]\nThree first" },
+        { slideIndex: 9, sections: sections(nineNotes) },
+        { slideIndex: 3, sections: sections(threeNotes) },
       ],
     };
 
@@ -239,8 +242,8 @@ describe("NarratedPresentationSaver", () => {
     ]);
     expect(powerpoint.committedNotes).toEqual(
       new Map([
-        [9, request.slides[0]!.notes],
-        [3, request.slides[1]!.notes],
+        [9, nineNotes],
+        [3, threeNotes],
       ]),
     );
     expect(powerpoint.insertedAudio).toEqual(
@@ -265,7 +268,7 @@ describe("NarratedPresentationSaver", () => {
     await expect(
       saver.savePresentation({
         filePath: "/slides/talk.pptx",
-        slides: [{ slideIndex: 5, notes: "[Narrator]\nHello" }],
+        slides: [{ slideIndex: 5, sections: sections("[Narrator]\nHello") }],
       }),
     ).resolves.toMatchObject({ success: false, stage: "synthesis", partial: false });
     expectNoPowerPointMutation(powerpoint);
@@ -289,7 +292,7 @@ describe("NarratedPresentationSaver", () => {
     await expect(
       saver.savePresentation({
         filePath: "/slides/talk.pptx",
-        slides: [{ slideIndex: 5, notes: "[Narrator]\nHello" }],
+        slides: [{ slideIndex: 5, sections: sections("[Narrator]\nHello") }],
       }),
     ).resolves.toEqual({
       success: false,
@@ -313,7 +316,7 @@ describe("NarratedPresentationSaver", () => {
       await expect(
         saver.savePresentation({
           filePath: "/slides/talk.pptx",
-          slides: [{ slideIndex: 2, notes: "[Narrator]\nHello" }],
+          slides: [{ slideIndex: 2, sections: sections("[Narrator]\nHello") }],
         }),
       ).resolves.toEqual({
         success: false,
@@ -333,7 +336,7 @@ describe("NarratedPresentationSaver", () => {
     const { powerpoint, saver, synthesize } = createCachedRetrySaver();
     const request = {
       filePath: "/slides/talk.pptx",
-      slides: [{ slideIndex: 2, notes: "[Narrator]\nRetry me" }],
+      slides: [{ slideIndex: 2, sections: sections("[Narrator]\nRetry me") }],
     };
 
     await expect(saver.savePresentation(request)).resolves.toEqual({
@@ -354,11 +357,11 @@ describe("NarratedPresentationSaver", () => {
 
     await saver.savePresentation({
       filePath: "/slides/talk.pptx",
-      slides: [{ slideIndex: 2, notes: "[Narrator]\nBefore edit" }],
+      slides: [{ slideIndex: 2, sections: sections("[Narrator]\nBefore edit") }],
     });
     await saver.savePresentation({
       filePath: "/slides/talk.pptx",
-      slides: [{ slideIndex: 2, notes: "[Narrator]\nAfter edit" }],
+      slides: [{ slideIndex: 2, sections: sections("[Narrator]\nAfter edit") }],
     });
 
     expect(synthesize).toHaveBeenCalledTimes(2);
@@ -371,7 +374,7 @@ describe("NarratedPresentationSaver", () => {
     }));
     const request = {
       filePath: "/slides/talk.pptx",
-      slides: [{ slideIndex: 2, notes: "[Narrator]\nSame notes" }],
+      slides: [{ slideIndex: 2, sections: sections("[Narrator]\nSame notes") }],
     };
 
     await saver.savePresentation(request);
@@ -388,7 +391,7 @@ describe("NarratedPresentationSaver", () => {
       saver.saveSlide({
         filePath: "/slides/talk.pptx",
         slideIndex: 7,
-        notes: "[Narrator]\nOnly slide",
+        sections: sections("[Narrator]\nOnly slide"),
       }),
     ).resolves.toEqual({ success: true });
 
@@ -403,25 +406,10 @@ describe("NarratedPresentationSaver", () => {
     await expect(
       saver.savePresentation({
         filePath: "/slides/talk.pptx",
-        slides: [{ slideIndex: 2, sections: parseNarrationSections(notes, ["Narrator"]) }],
+        slides: [{ slideIndex: 2, sections: sections(notes) }],
       }),
     ).resolves.toEqual({ success: true });
 
     expect(powerpoint.committedNotes).toEqual(new Map([[2, notes]]));
-  });
-
-  it("saves one slide from structured sections", async () => {
-    const { powerpoint, saver } = createSaver();
-
-    await expect(
-      saver.saveSlide({
-        filePath: "/slides/talk.pptx",
-        slideIndex: 1,
-        sections: [{ speaker: "Narrator", text: "Only" }],
-      }),
-    ).resolves.toEqual({ success: true });
-
-    expect(powerpoint.committedNotes).toEqual(new Map([[1, "[Narrator]\nOnly"]]));
-    expect(powerpoint.insertedAudio).toEqual(new Map([[1, new Map([[0, new Uint8Array([1])]])]]));
   });
 });

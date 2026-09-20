@@ -156,17 +156,29 @@ export function ViewerPage({
   }
 
   /**
+   * The structured content one save submits. The viewer still holds its edits as
+   * note text, so they are parsed once here rather than crossing the seam as
+   * syntax; the cutover to the structured editor removes this parse.
+   */
+  function submittedSlide(slide: Slide) {
+    return {
+      slideIndex: slide.index,
+      sections: parseNarrationSections(slide.notes || "", speakerNames),
+    };
+  }
+
+  /**
    * Commits the whole presentation through the narrated save path, so notes and
    * narration audio are validated, synthesized, and committed together.
    */
   async function commitNarratedPresentation(setStatus: (status: string) => void) {
+    // Captured before the request so completion reconciles exactly what was
+    // submitted, leaving anything edited while it ran dirty.
+    const submitted = slides.map((slide, position) => ({ slide, position }));
     const result = await electronAPI.saveNarratedPresentation(
       {
         filePath,
-        slides: slides.map((slide) => ({
-          slideIndex: slide.index,
-          notes: slide.notes || "",
-        })),
+        slides: submitted.map(({ slide }) => submittedSlide(slide)),
       },
       ({ completed, total }) => setStatus(`Preparing narration ${completed}/${total}...`),
     );
@@ -175,7 +187,7 @@ export function ViewerPage({
       return false;
     }
 
-    viewerSession.saveCompleted(slides.map((slide, position) => ({ slide, position })));
+    viewerSession.saveCompleted(submitted);
     return true;
   }
 
@@ -422,8 +434,7 @@ export function ViewerPage({
       async (command) => {
         const result = await electronAPI.saveNarratedSlide({
           filePath,
-          slideIndex: activeSlide.index,
-          notes: activeSlide.notes || "",
+          ...submittedSlide(activeSlide),
         });
         if (!result.success) {
           reportNarratedSaveFailure(result);
