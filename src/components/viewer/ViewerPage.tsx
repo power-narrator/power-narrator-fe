@@ -110,10 +110,6 @@ export function ViewerPage({
     return slidePosition;
   }
 
-  function cancelPendingTypingCheckpoint() {
-    takePendingTypingSlidePosition();
-  }
-
   function finishPendingTypingCheckpoint() {
     const slidePosition = takePendingTypingSlidePosition();
     if (slidePosition !== null) {
@@ -189,7 +185,7 @@ export function ViewerPage({
 
   useEffect(
     () => () => {
-      cancelPendingTypingCheckpoint();
+      takePendingTypingSlidePosition();
     },
     [],
   );
@@ -288,7 +284,7 @@ export function ViewerPage({
       return;
     }
 
-    cancelPendingTypingCheckpoint();
+    takePendingTypingSlidePosition();
     pendingTypingSlidePositionRef.current = activeSlideIndex;
     typingCheckpointTimerRef.current = setTimeout(finishPendingTypingCheckpoint, 800);
   }
