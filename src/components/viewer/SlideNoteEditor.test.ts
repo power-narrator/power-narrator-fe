@@ -475,6 +475,20 @@ describe("typing checkpoints", () => {
     expect(sectionTexts(redo(undo(editor)))[0]).toBe("Typed");
   });
 
+  it("finalizes pending typing before another section is selected", () => {
+    let editor = openedEditor();
+    const [first, second] = activeSections(editor);
+
+    editor = typeInFirstSection(editor, "Typed");
+    editor = setSectionText(selectSection(editor, second!.id), second!.id, "Also typed");
+
+    const undone = undo(editor);
+    expect(sectionTexts(undone)).toEqual(["Typed", "Second section"]);
+    expect(sectionTexts(undo(undone))[0]).toBe("First narration");
+    expect(activeSectionId(undone)).toBe(second!.id);
+    expect(first).toBeDefined();
+  });
+
   it("keeps pending typing and the next discrete action as separate undo steps", () => {
     let editor = openedEditor();
     const [first, second] = activeSections(editor);
@@ -543,10 +557,30 @@ describe("undo and redo", () => {
   });
 
   it("leaves dirty state matching the restored content", () => {
-    const editor = setSectionText(openedEditor(), activeSections(openedEditor())[0]!.id, "Typed");
+    const opened = openedEditor();
+    const editor = setSectionText(opened, activeSections(opened)[0]!.id, "Typed");
 
     expect(hasUnsavedChanges(editor)).toBe(true);
     expect(hasUnsavedChanges(undo(editor))).toBe(false);
+  });
+
+  it("ignores an edit that changes nothing", () => {
+    const editor = openedEditor();
+    const [first] = activeSections(editor);
+
+    expect(setSectionSpeaker(editor, first!.id, "Alice")).toBe(editor);
+    expect(setSectionText(editor, first!.id, "First narration")).toBe(editor);
+    expect(setSectionPrompt(editor, first!.id, undefined)).toBe(editor);
+    expect(canUndo(setSectionText(editor, first!.id, "First narration"))).toBe(false);
+  });
+
+  it("returns the author to the section they were editing before the change", () => {
+    const editor = openedEditor();
+    const second = activeSections(editor)[1]!;
+
+    const added = addSection(selectSection(editor, second.id));
+
+    expect(activeSectionId(undo(added))).toBe(second.id);
   });
 
   it("does nothing beyond either end of the history", () => {
@@ -602,22 +636,18 @@ describe("inserting SSML", () => {
   });
 
   it("creates its own undo step after finalizing pending typing", () => {
-    vi.useFakeTimers();
-    try {
-      const editor = setSectionText(openedEditor(), activeSections(openedEditor())[0]!.id, "Typed");
+    const opened = openedEditor();
+    const editor = setSectionText(opened, activeSections(opened)[0]!.id, "Typed");
 
-      const { editor: tagged } = insertSsml(editor, {
-        startTag: "<p>",
-        endTag: "</p>",
-        selection: { start: 0, end: 5 },
-      });
+    const { editor: tagged } = insertSsml(editor, {
+      startTag: "<p>",
+      endTag: "</p>",
+      selection: { start: 0, end: 5 },
+    });
 
-      expect(sectionTexts(tagged)[0]).toBe("<p>Typed</p>");
-      expect(sectionTexts(undo(tagged))[0]).toBe("Typed");
-      expect(sectionTexts(undo(undo(tagged)))[0]).toBe("First narration");
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(sectionTexts(tagged)[0]).toBe("<p>Typed</p>");
+    expect(sectionTexts(undo(tagged))[0]).toBe("Typed");
+    expect(sectionTexts(undo(undo(tagged)))[0]).toBe("First narration");
   });
 
   it("reports no selection intent when no section is active", () => {
