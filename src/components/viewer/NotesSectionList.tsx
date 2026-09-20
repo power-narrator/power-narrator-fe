@@ -9,7 +9,6 @@ import {
   Text,
   Textarea,
 } from "@mantine/core";
-import type { NarrationSection } from "../../../shared/narration/NarrationSections";
 import { getSpeakerOptions } from "../../utils/viewer";
 import type { SpeakerMapping } from "../../../shared/types/tts";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
@@ -17,18 +16,19 @@ import { IconPlus } from "@tabler/icons-react";
 import { getEffectiveSpeaker } from "../../../shared/narration/NarrationSections";
 import { DEFAULT_SPEAKER_VALUE, toSynthesisSpeaker } from "../../../shared/narration/speaker";
 import { SpeakerPrompt } from "../SpeakerPrompt";
+import type { EditorSection, SectionId } from "./SlideNoteEditor";
+import type { SectionTextareas } from "./useSectionTextareas";
 
 interface NotesSectionListProps {
-  sections: NarrationSection[];
+  sections: readonly EditorSection[];
   mappings: Record<string, SpeakerMapping>;
-  onFocusSection: (index: number) => void;
-  onSpeakerChange: (index: number, speaker: string | null) => void;
-  onSectionTextChange: (index: number, value: string) => void;
-  onSectionPromptChange: (index: number, prompt: string | undefined) => void;
-  onDeleteSection: (index: number) => void;
+  onFocusSection: (id: SectionId) => void;
+  onSpeakerChange: (id: SectionId, speaker: string | null) => void;
+  onSectionTextChange: (id: SectionId, value: string) => void;
+  onSectionPromptChange: (id: SectionId, prompt: string | undefined) => void;
+  onDeleteSection: (id: SectionId) => void;
   onAddSection: () => void;
-  assignTextareaRef: (index: number, element: HTMLTextAreaElement | null) => void;
-  getTextarea: (index: number) => HTMLTextAreaElement | null;
+  textareas: SectionTextareas;
   slideIndex: number;
 }
 
@@ -65,8 +65,7 @@ export function NotesSectionList({
   onSectionPromptChange,
   onDeleteSection,
   onAddSection,
-  assignTextareaRef,
-  getTextarea,
+  textareas,
   slideIndex,
 }: NotesSectionListProps) {
   const speakerOptions = getSpeakerOptions(mappings);
@@ -91,7 +90,7 @@ export function NotesSectionList({
                 withBorder
                 bg="var(--mantine-color-default)"
                 gap="0"
-                key={index} // oxlint-disable-line react/no-array-index-key until the viewer edits through SlideNoteEditor identities
+                key={section.id}
                 bdrs="4"
               >
                 <Group p="xs">
@@ -102,14 +101,14 @@ export function NotesSectionList({
                       mappings[toSynthesisSpeaker(effectiveSpeaker).mappingKey]?.voice
                         ?.supportsPrompt
                     }
-                    onChange={(prompt) => onSectionPromptChange(index, prompt)}
+                    onChange={(prompt) => onSectionPromptChange(section.id, prompt)}
                     rowContent={{
                       leading: (
                         <Select
                           aria-label={`Speaker for ${sectionLabel}`}
                           data={speakerOptions}
                           value={section.speaker}
-                          onChange={(value) => onSpeakerChange(index, value)}
+                          onChange={(value) => onSpeakerChange(section.id, value)}
                           size="xs"
                           placeholder={placeholder}
                           allowDeselect
@@ -121,7 +120,7 @@ export function NotesSectionList({
                           variant="subtle"
                           color="red"
                           size="xs"
-                          onClick={() => onDeleteSection(index)}
+                          onClick={() => onDeleteSection(section.id)}
                         >
                           Remove Section
                         </Button>
@@ -131,21 +130,21 @@ export function NotesSectionList({
                 </Group>
                 <Divider />
                 <SectionPreviewButtons
-                  id={`${slideIndex}-${index}`}
+                  id={`${slideIndex}-${section.id}`}
                   slideIndex={slideIndex}
                   sectionIndex={index}
                   sections={sections}
                   mappings={mappings}
-                  onFocus={() => onFocusSection(index)}
-                  getTextarea={() => getTextarea(index)}
+                  onFocus={() => onFocusSection(section.id)}
+                  getSelectedText={() => textareas.selectedTextIn(section.id)}
                 />
                 <Divider />
                 <SectionTextEditor
                   label={`Slide ${slideIndex} section ${index + 1} notes`}
                   value={section.text}
-                  onChange={(value) => onSectionTextChange(index, value)}
-                  onFocus={() => onFocusSection(index)}
-                  assignRef={(element) => assignTextareaRef(index, element)}
+                  onChange={(value) => onSectionTextChange(section.id, value)}
+                  onFocus={() => onFocusSection(section.id)}
+                  assignRef={(element) => textareas.assign(section.id, element)}
                 />
               </Paper>
             );

@@ -5,8 +5,8 @@ import type { Slide } from "../../types/electron";
 import { SlideThumbnailList } from "./SlideThumbnailList";
 
 const slides: Slide[] = [
-  { index: 1, image: "one.png", src: "one.png", notes: "" },
-  { index: 2, image: "two.png", src: "two.png", notes: "" },
+  { index: 1, image: "one.png", src: "one.png", sections: [] },
+  { index: 2, image: "two.png", src: "two.png", sections: [] },
 ];
 
 async function renderThumbnails(activeSlideIndex = 0) {

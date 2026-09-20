@@ -153,7 +153,10 @@ test("previews only the text selected in the live notes editor", async () => {
           sections={[{ speaker: "Narrator", prompt: "wearily", text: "Stale section text" }]}
           mappings={{ Narrator: { voice: narratorVoice } }}
           onFocus={() => {}}
-          getTextarea={() => editorRef.current}
+          getSelectedText={() => {
+            const textarea = editorRef.current;
+            return textarea?.value.slice(textarea.selectionStart, textarea.selectionEnd);
+          }}
         />
       </PreviewProviders>
     );

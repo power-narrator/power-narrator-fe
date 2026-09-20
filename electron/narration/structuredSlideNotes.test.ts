@@ -10,7 +10,7 @@ const slide = (index: number, notes: string) => ({
 });
 
 describe("structured slide notes", () => {
-  it("attaches sections to a reloaded slide alongside its raw notes", () => {
+  it("replaces a reloaded slide's raw notes with its sections", () => {
     const result = withSlideSections(
       { success: true, slide: slide(1, "[Narrator]\nHello") },
       knownSpeakers,
@@ -19,7 +19,9 @@ describe("structured slide notes", () => {
     expect(result).toEqual({
       success: true,
       slide: {
-        ...slide(1, "[Narrator]\nHello"),
+        index: 1,
+        image: "1.png",
+        src: "app://1.png",
         sections: [expect.objectContaining({ speaker: "Narrator", text: "Hello" })],
       },
     });

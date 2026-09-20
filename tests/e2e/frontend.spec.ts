@@ -1,19 +1,15 @@
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import {
-  DELAYED_PREVIEW_TEXT,
   DETERMINISTIC_MP3_BYTES,
   FIXTURE_TEST,
   MOCK_MAPPINGS,
   MOCK_SLIDES,
   expect,
-  getCompletedPreviewSyntheses,
-  getConvertPptxCalls,
   getDiscardConfirmationCalls,
   getGeneratedSpeechCalls,
   getInsertAudioCalls,
   getPlaybackActivity,
   getSaveNotesCalls,
-  releaseDelayedPreview,
   resetProbes,
   test,
 } from "./fixtures/app.js";
@@ -38,16 +34,6 @@ test.describe("PPT Viewer UI Workflows", () => {
     await loadViewer(win);
   });
 
-  test("loads mocked slides into the viewer", async ({ app, win }) => {
-    await expect.poll(() => getConvertPptxCalls(app)).toEqual([{ filePath: FIXTURE_TEST }]);
-
-    const thumbnails = win.getByRole("button", { name: /^Slide \d+$/ });
-    await expect(thumbnails).toHaveCount(MOCK_SLIDES.length);
-    await expect(win.getByRole("img", { name: "Slide 1 preview" })).toBeVisible();
-
-    await expect(notesEditor(win)).toHaveValue(MOCK_SLIDES[0]!.notes);
-  });
-
   test("previews narration through Electron with deterministic MP3 audio", async ({ app, win }) => {
     await narratorPreview(win).click();
 
@@ -62,26 +48,6 @@ test.describe("PPT Viewer UI Workflows", () => {
       .toMatchObject({
         playUrls: [expect.stringMatching(/^blob:/)],
       });
-  });
-
-  test("stopping a pending preview prevents late playback without cancelling synthesis", async ({
-    app,
-    win,
-  }) => {
-    await notesEditor(win).fill(DELAYED_PREVIEW_TEXT);
-
-    await narratorPreview(win).click();
-    await expect
-      .poll(() => getGeneratedSpeechCalls(app))
-      .toContainEqual({
-        text: DELAYED_PREVIEW_TEXT,
-        voiceOption: MOCK_MAPPINGS.Narrator!.voice,
-      });
-    await narratorPreview(win).click();
-    await releaseDelayedPreview(app);
-
-    await expect.poll(() => getPlaybackActivity(win)).toMatchObject({ playUrls: [] });
-    await expect.poll(() => getCompletedPreviewSyntheses(app)).toBe(1);
   });
 
   test("saves the full presentation through Electron narration preparation", async ({

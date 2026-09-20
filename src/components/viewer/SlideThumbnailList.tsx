@@ -2,7 +2,7 @@ import { Box, Image, ScrollArea, Stack, UnstyledButton } from "@mantine/core";
 import type { Slide } from "../../types/electron";
 
 interface SlideThumbnailListProps {
-  slides: Slide[];
+  slides: readonly Pick<Slide, "index" | "src">[];
   activeSlideIndex: number;
   onSelectSlide: (index: number) => void;
 }

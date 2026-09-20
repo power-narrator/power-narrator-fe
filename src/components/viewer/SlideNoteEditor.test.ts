@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   formatNarrationSections,
+  parseNarrationSections,
   type NarrationSection,
 } from "../../../shared/narration/NarrationSections";
 import type { Slide } from "../../types/electron";
@@ -34,11 +35,17 @@ import {
   type SnapshotSlide,
 } from "./SlideNoteEditor";
 
-function slide(index: number, notes: string): Slide {
-  return { index, image: `slide-${index}.png`, src: `slide-${index}`, notes };
-}
-
 const speakers = ["Alice", "Bob"];
+
+/** Slides reach the editor already parsed, as the PowerPoint load seam parses them. */
+function slide(index: number, notes: string, knownSpeakers: readonly string[] = speakers): Slide {
+  return {
+    index,
+    image: `slide-${index}.png`,
+    src: `slide-${index}`,
+    sections: parseNarrationSections(notes, knownSpeakers),
+  };
+}
 
 function openedEditor(): SlideNoteEditor {
   return openSlideNoteEditor(
@@ -55,25 +62,23 @@ const formattableSections = (editor: SlideNoteEditor) =>
   activeSections(editor).map(({ id: _id, ...section }) => section);
 
 describe("openSlideNoteEditor", () => {
-  it("parses every slide up front", () => {
+  it("holds every slide's sections up front", () => {
     const editor = openedEditor();
 
     expect(sectionTexts(editor)).toEqual(["First narration", "Second section"]);
     expect(sectionTexts(selectSlide(editor, 1))).toEqual(["Other narration"]);
   });
 
-  it("parses speaker tags using the known speaker names", () => {
-    const editor = openedEditor();
-
-    expect(activeSections(editor)[0]?.speaker).toBe("Alice");
-    expect(activeSections(openSlideNoteEditor([slide(1, "[Alice]\nText")], [])).at(0)?.text).toBe(
-      "[Alice]\nText",
-    );
-  });
-
-  it("uses sections already parsed at the load seam", () => {
+  it("takes the sections the load seam parsed, without reading notes itself", () => {
     const editor = openSlideNoteEditor(
-      [{ ...slide(1, "[Alice]\nRaw"), sections: [{ speaker: "Bob", text: "Parsed" }] }],
+      [
+        {
+          index: 1,
+          image: "slide-1.png",
+          src: "slide-1",
+          sections: [{ speaker: "Bob", text: "Parsed" }],
+        },
+      ],
       speakers,
     );
 
@@ -699,15 +704,6 @@ describe("reloading one slide", () => {
     expect(sectionTexts(editor)).toEqual(["One", "Two"]);
   });
 
-  it("parses the reloaded notes with the editor's current speaker names", () => {
-    const editor = reloadSlide(
-      openSlideNoteEditor([slide(1, "Text")], []),
-      slide(1, "[Alice]\nHi"),
-    );
-
-    expect(activeSections(editor)[0]).toMatchObject({ speaker: "", text: "[Alice]\nHi" });
-  });
-
   it("ignores a slide the presentation does not contain", () => {
     const editor = openedEditor();
 
@@ -777,7 +773,7 @@ describe("reloading the presentation", () => {
 });
 
 describe("reclassifying speaker tags", () => {
-  const unmapped = () => openSlideNoteEditor([slide(1, "[Alice]\nGreeting")], []);
+  const unmapped = () => openSlideNoteEditor([slide(1, "[Alice]\nGreeting", [])], []);
 
   it("recognizes a bracketed line once its mapping name is added", () => {
     const editor = reclassifySpeakerTags(unmapped(), ["Alice"]);
@@ -787,7 +783,7 @@ describe("reclassifying speaker tags", () => {
 
   it("returns a bracketed line to narration text once its mapping name is removed", () => {
     const editor = reclassifySpeakerTags(
-      openSlideNoteEditor([slide(1, "[Alice]\nGreeting")], ["Alice"]),
+      openSlideNoteEditor([slide(1, "[Alice]\nGreeting", ["Alice"])], ["Alice"]),
       [],
     );
 
@@ -843,7 +839,7 @@ describe("reclassifying speaker tags", () => {
   });
 
   it("mints identities only for the sections a reinterpreted divider splits off", () => {
-    const opened = openSlideNoteEditor([slide(1, "[Alice]\nGreeting\n---\nSecond")], []);
+    const opened = openSlideNoteEditor([slide(1, "[Alice]\nGreeting\n---\nSecond", [])], []);
     const [first, second] = activeSections(opened);
     const split = setSectionText(opened, first!.id, "One\n---\nTwo");
 

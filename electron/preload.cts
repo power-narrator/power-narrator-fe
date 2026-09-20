@@ -7,10 +7,9 @@ import type {
   PlaySlideRequest,
   ReloadSlideRequest,
   RemoveAudioRequest,
-  SlidePptResult,
   SetGcpKeyResult,
-  SlideManifestEntry,
-  SlidesPptResult,
+  StructuredSlideResult,
+  StructuredSlidesResult,
   VideoPptResult,
 } from "./platform/types.js";
 import type { Voice } from "../shared/types/tts.js";
@@ -25,15 +24,13 @@ import type {
 let narratedPresentationRequestId = 0;
 
 const electronAPI = {
-  convertPptx: (filePath: string): Promise<SlidesPptResult> =>
+  convertPptx: (filePath: string): Promise<StructuredSlidesResult> =>
     ipcRenderer.invoke("convert-pptx", filePath),
   onConversionUpdate: (callback: (event: unknown, value: unknown) => void) => {
     ipcRenderer.on("conversion-update", callback);
   },
   getPathForFile: (file: File) => (file as File & { path?: string }).path ?? "",
   selectFile: (): Promise<string | null> => ipcRenderer.invoke("select-file"),
-  saveNotes: (filePath: string, slides: SlideManifestEntry[]): Promise<BasicPptResult> =>
-    ipcRenderer.invoke("save-notes", filePath, slides),
   saveNarratedSlide: (payload: NarratedSlideSaveRequest): Promise<NarratedSaveResult> =>
     ipcRenderer.invoke("save-narrated-slide", payload),
   saveNarratedPresentation: async (
@@ -73,7 +70,7 @@ const electronAPI = {
     ipcRenderer.invoke("remove-audio", payload),
   playSlide: (payload: PlaySlideRequest): Promise<BasicPptResult> =>
     ipcRenderer.invoke("play-slide", payload),
-  reloadSlide: (payload: ReloadSlideRequest): Promise<SlidePptResult> =>
+  reloadSlide: (payload: ReloadSlideRequest): Promise<StructuredSlideResult> =>
     ipcRenderer.invoke("reload-slide", payload),
   getVideoSavePath: (): Promise<string | null> => ipcRenderer.invoke("get-video-save-path"),
   setHasUnsavedNarrationChanges: (hasChanges: boolean): void => {

@@ -10,7 +10,7 @@ export type SectionId = string;
 
 export type EditorSection = NarrationSection & { id: SectionId };
 
-export type EditorSlide = Omit<Slide, "notes" | "sections"> & { sections: EditorSection[] };
+export type EditorSlide = Omit<Slide, "sections"> & { sections: EditorSection[] };
 
 export interface SlideNoteEditor {
   slides: readonly EditorSlide[];
@@ -84,19 +84,10 @@ const baselineOf = (slides: readonly EditorSlide[]) =>
 const clampSlidePosition = (slides: readonly EditorSlide[], position: number): number =>
   Math.min(Math.max(position, 0), Math.max(slides.length - 1, 0));
 
-function toEditorSlide(
-  { notes, sections, ...slide }: Slide,
-  speakerNames: readonly string[],
-  mint: () => SectionId,
-): EditorSlide {
+function toEditorSlide({ sections, ...slide }: Slide, mint: () => SectionId): EditorSlide {
   return {
     ...slide,
-    // Slides arriving from the load seam are already parsed; only unparsed
-    // notes still need the codec here.
-    sections: (sections ?? parseNarrationSections(notes || "", speakerNames)).map((section) => ({
-      ...section,
-      id: mint(),
-    })),
+    sections: sections.map((section) => ({ ...section, id: mint() })),
   };
 }
 
@@ -107,7 +98,7 @@ export function openSlideNoteEditor(
   const speakerNames = [...knownSpeakers];
   let mintedSectionCount = 0;
   const editorSlides = slides.map((slide) =>
-    toEditorSlide(slide, speakerNames, () => sectionId(mintedSectionCount++)),
+    toEditorSlide(slide, () => sectionId(mintedSectionCount++)),
   );
 
   return {
@@ -407,9 +398,7 @@ export function reloadSlide(source: SlideNoteEditor, reloaded: Slide): SlideNote
 
   const editor = finalizePendingTyping(source);
   let mintedSectionCount = editor.mintedSectionCount;
-  const replacement = toEditorSlide(reloaded, editor.speakerNames, () =>
-    sectionId(mintedSectionCount++),
-  );
+  const replacement = toEditorSlide(reloaded, () => sectionId(mintedSectionCount++));
   const substitute = (slides: readonly EditorSlide[]): readonly EditorSlide[] =>
     slides.map((slide, at) => (at === position ? replacement : slide));
   const savedSections = new Map(editor.savedSections);
@@ -441,7 +430,7 @@ export function reloadPresentation(
 ): SlideNoteEditor {
   let mintedSectionCount = editor.mintedSectionCount;
   const mint = () => sectionId(mintedSectionCount++);
-  const slides = reloaded.map((slide) => toEditorSlide(slide, editor.speakerNames, mint));
+  const slides = reloaded.map((slide) => toEditorSlide(slide, mint));
   const activeIndex = activeSlide(editor)?.index;
   const retained = slides.findIndex((slide) => slide.index === activeIndex);
   const activeSlidePosition =
