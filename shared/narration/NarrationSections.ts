@@ -183,7 +183,7 @@ function withMarkerSpacing(prefix: string, prompt: string) {
   return { prefix: `${prefix} `, prompt: prompt.slice(1) };
 }
 
-export const formatNarrationSections = (sections: NarrationSection[]): string =>
+export const formatNarrationSections = (sections: readonly NarrationSection[]): string =>
   sections.reduce((notes, section, index) => {
     const separator = index > 0 ? section.format?.separatorBefore || DEFAULT_SECTION_SEPARATOR : "";
     const tags: string[] = [];

@@ -42,7 +42,6 @@ async function renderSections() {
             sections={sections}
             mappings={mappings}
             slideIndex={3}
-            slideNotes={"[Alice]\nFirst narration\n---\nSecond section"}
             assignTextareaRef={() => {}}
             getTextarea={() => null}
             {...handlers}

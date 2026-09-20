@@ -11,7 +11,6 @@ import {
 } from "react";
 import {
   getEffectiveSpeaker,
-  parseNarrationSections,
   type NarrationSection,
 } from "../../../shared/narration/NarrationSections";
 import { DEFAULT_SPEAKER_VALUE } from "../../../shared/narration/speaker";
@@ -86,19 +85,14 @@ interface NarrationPreviewOptions {
   id: string;
   slideIndex: number;
   sectionIndex: number;
-  slideNotes: string;
-  /** Speaker classification is mapping-dependent, so the parser needs the names. */
-  speakerNames: readonly string[];
-  section: NarrationSection;
+  sections: readonly NarrationSection[];
   onFocus: () => void;
   getTextarea?: () => HTMLTextAreaElement | null;
 }
 
 export function useNarrationPreview(options: NarrationPreviewOptions) {
-  const effectiveSpeaker = getEffectiveSpeaker(
-    parseNarrationSections(options.slideNotes, options.speakerNames),
-    options.sectionIndex,
-  );
+  const effectiveSpeaker = getEffectiveSpeaker(options.sections, options.sectionIndex);
+  const sectionText = options.sections[options.sectionIndex]?.text ?? "";
   const {
     activeId,
     isPlaying: audioIsPlaying,
@@ -167,7 +161,7 @@ export function useNarrationPreview(options: NarrationPreviewOptions) {
         ? textarea.selectionStart === textarea.selectionEnd
           ? textarea.value
           : textarea.value.slice(textarea.selectionStart, textarea.selectionEnd)
-        : options.section.text;
+        : sectionText;
       if (!text.trim()) {
         alert("No text to preview.");
         return;
@@ -182,7 +176,7 @@ export function useNarrationPreview(options: NarrationPreviewOptions) {
         const preview = await window.electronAPI.prepareNarrationPreview({
           slideIndex: options.slideIndex,
           sectionIndex: options.sectionIndex,
-          notes: options.slideNotes,
+          sections: options.sections,
           text,
           speakerChoice,
         });
@@ -200,11 +194,23 @@ export function useNarrationPreview(options: NarrationPreviewOptions) {
         finish(token);
       }
     },
-    [activeTarget, claim, clear, effectiveSpeaker, finish, isCurrent, options, playAudio, stop],
+    [
+      activeTarget,
+      claim,
+      clear,
+      effectiveSpeaker,
+      finish,
+      isCurrent,
+      options,
+      playAudio,
+      sectionText,
+      stop,
+    ],
   );
 
   return {
     effectiveSpeaker,
+    sectionText,
     activeTarget,
     lastPlayedSpeaker,
     isGenerating,

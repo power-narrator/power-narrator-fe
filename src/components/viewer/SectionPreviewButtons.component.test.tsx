@@ -7,7 +7,7 @@ import type {
   PreviewNarrationRequest,
 } from "../../../shared/types/narration";
 import type { NarrationSection } from "../../../shared/narration/NarrationSections";
-import type { Voice } from "../../../shared/types/tts";
+import type { SpeakerMapping, Voice } from "../../../shared/types/tts";
 import { AudioProvider } from "../../context/AudioContext";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
 import { NarrationPreviewProvider } from "./useNarrationPreview";
@@ -40,15 +40,17 @@ function PreviewProviders({ children }: PropsWithChildren) {
 }
 
 async function renderSpeakerChoicePreview({
-  slideNotes,
-  section,
+  sections,
   sectionIndex = 0,
   captureAudio = false,
+  mappings = { Narrator: { voice: narratorVoice } },
+  respond = () => Promise.resolve({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" }),
 }: {
-  slideNotes: string;
-  section: NarrationSection;
+  sections: NarrationSection[];
   sectionIndex?: number;
   captureAudio?: boolean;
+  mappings?: Record<string, SpeakerMapping>;
+  respond?: () => Promise<NarrationPreviewResult>;
 }) {
   const previewRequests: PreviewNarrationRequest[] = [];
   const audioElements: HTMLAudioElement[] = [];
@@ -57,7 +59,7 @@ async function renderSpeakerChoicePreview({
     value: {
       prepareNarrationPreview: (request: PreviewNarrationRequest) => {
         previewRequests.push(request);
-        return Promise.resolve({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
+        return respond();
       },
     },
   });
@@ -78,9 +80,8 @@ async function renderSpeakerChoicePreview({
         id={`1-${sectionIndex}`}
         slideIndex={1}
         sectionIndex={sectionIndex}
-        slideNotes={slideNotes}
-        section={section}
-        mappings={{ Narrator: { voice: narratorVoice } }}
+        sections={sections}
+        mappings={mappings}
         onFocus={() => {}}
       />
     </PreviewProviders>,
@@ -88,6 +89,11 @@ async function renderSpeakerChoicePreview({
 
   return { audioElements, previewRequests, screen };
 }
+
+const concurrentSections: NarrationSection[] = [
+  { speaker: "First", text: "First section" },
+  { speaker: "Second", text: "Second section" },
+];
 
 async function renderConcurrentSectionPreviews() {
   const finishPreview = new Map<number, (preview: NarrationPreviewResult) => void>();
@@ -103,18 +109,14 @@ async function renderConcurrentSectionPreviews() {
   const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
   const screen = await render(
     <PreviewProviders>
-      {[
-        { index: 0, speaker: "First" },
-        { index: 1, speaker: "Second" },
-      ].map(({ index, speaker }) => (
+      {concurrentSections.map((section, index) => (
         <SectionPreviewButtons
-          key={speaker}
+          key={section.speaker}
           id={`1-${index}`}
           slideIndex={1}
           sectionIndex={index}
-          slideNotes={`${speaker} section`}
-          section={{ speaker, text: `${speaker} section` }}
-          mappings={{ [speaker]: { voice: narratorVoice } }}
+          sections={concurrentSections}
+          mappings={{ [section.speaker]: { voice: narratorVoice } }}
           onFocus={() => {}}
         />
       ))}
@@ -148,8 +150,7 @@ test("previews only the text selected in the live notes editor", async () => {
           id="1-0"
           slideIndex={1}
           sectionIndex={0}
-          slideNotes="Stale section text"
-          section={{ speaker: "Narrator", text: "Stale section text" }}
+          sections={[{ speaker: "Narrator", prompt: "wearily", text: "Stale section text" }]}
           mappings={{ Narrator: { voice: narratorVoice } }}
           onFocus={() => {}}
           getTextarea={() => editorRef.current}
@@ -168,6 +169,7 @@ test("previews only the text selected in the live notes editor", async () => {
     expect(previewRequests).toContainEqual(
       expect.objectContaining({
         text: "only this phrase",
+        sections: [{ speaker: "Narrator", prompt: "wearily", text: "Stale section text" }],
         speakerChoice: { kind: "override", speaker: "Narrator" },
       }),
     );
@@ -176,8 +178,10 @@ test("previews only the text selected in the live notes editor", async () => {
 
 test("an effective preview derives its highlighted speaker from slide notes", async () => {
   const { previewRequests, screen } = await renderSpeakerChoicePreview({
-    slideNotes: "[Narrator]\nFirst\n---\nInherited",
-    section: { speaker: "", text: "Inherited" },
+    sections: [
+      { speaker: "Narrator", text: "First" },
+      { speaker: "", text: "Inherited" },
+    ],
     sectionIndex: 1,
   });
 
@@ -202,8 +206,10 @@ test("an effective preview derives its highlighted speaker from slide notes", as
 
 test("an effective preview remembers the inherited speaker after playback", async () => {
   const { audioElements, previewRequests, screen } = await renderSpeakerChoicePreview({
-    slideNotes: "[Narrator]\nFirst\n---\nInherited",
-    section: { speaker: "", text: "Inherited" },
+    sections: [
+      { speaker: "Narrator", text: "First" },
+      { speaker: "", text: "Inherited" },
+    ],
     sectionIndex: 1,
     captureAudio: true,
   });
@@ -228,22 +234,20 @@ test("an effective preview remembers the inherited speaker after playback", asyn
 });
 
 test("an explicit Default preview remains a temporary override", async () => {
-  const slideNotes = "[Narrator]\nStored narration";
-  const { previewRequests, screen } = await renderSpeakerChoicePreview({
-    slideNotes,
-    section: { speaker: "Narrator", text: "Stored narration" },
-  });
+  const sections: NarrationSection[] = [{ speaker: "Narrator", text: "Stored narration" }];
+  const { previewRequests, screen } = await renderSpeakerChoicePreview({ sections });
 
   await screen.getByRole("button", { name: "Default" }).click();
 
   await vi.waitFor(() =>
     expect(previewRequests).toEqual([
       expect.objectContaining({
-        notes: slideNotes,
+        sections: [{ speaker: "Narrator", text: "Stored narration" }],
         speakerChoice: { kind: "default" },
       }),
     ]),
   );
+  expect(sections).toEqual([{ speaker: "Narrator", text: "Stored narration" }]);
 });
 
 test("stopping a pending preview suppresses its late audio result", async () => {
@@ -266,8 +270,7 @@ test("stopping a pending preview suppresses its late audio result", async () => 
         id="1-0"
         slideIndex={1}
         sectionIndex={0}
-        slideNotes="Delayed preview"
-        section={{ speaker: "Narrator", text: "Delayed preview" }}
+        sections={[{ speaker: "Narrator", text: "Delayed preview" }]}
         mappings={{ Narrator: { voice: narratorVoice } }}
         onFocus={() => {}}
       />
@@ -341,8 +344,7 @@ test("creates MP3 playback for a narration preview", async () => {
         id="1-0"
         slideIndex={1}
         sectionIndex={0}
-        slideNotes="[Narrator]\nLocal narration"
-        section={{ speaker: "Narrator", text: "Local narration" }}
+        sections={[{ speaker: "Narrator", text: "Local narration" }]}
         mappings={{ Narrator: { voice: narratorVoice } }}
         onFocus={() => {}}
       />
@@ -353,4 +355,27 @@ test("creates MP3 playback for a narration preview", async () => {
 
   await vi.waitFor(() => expect(createObjectURL).toHaveBeenCalledOnce());
   expect((createObjectURL.mock.calls[0]![0] as Blob).type).toBe("audio/mpeg");
+});
+
+test("surfaces a contextual narration-preparation failure and stays ready to retry", async () => {
+  const alerted = vi.spyOn(window, "alert").mockImplementation(() => {});
+  const { screen } = await renderSpeakerChoicePreview({
+    sections: [{ speaker: "Narrator", text: "Unnarratable" }],
+    mappings: { Narrator: {} },
+    respond: () =>
+      Promise.reject(
+        new Error(
+          'Narration validation failed for slide 1, section 1, speaker "Narrator": no voice mapping is configured.',
+        ),
+      ),
+  });
+
+  await screen.getByRole("button", { name: "Narrator" }).click();
+
+  await vi.waitFor(() =>
+    expect(alerted).toHaveBeenCalledWith(
+      'Failed to play audio: Narration validation failed for slide 1, section 1, speaker "Narrator": no voice mapping is configured.',
+    ),
+  );
+  await expect.element(screen.getByRole("button", { name: "Narrator" })).toBeEnabled();
 });
