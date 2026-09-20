@@ -19,24 +19,33 @@ export interface SlideNoteEditor {
   activeSectionId: SectionId | undefined;
   /** Identities a later section must not reuse, even after deletions. */
   mintedSectionCount: number;
-  history: readonly (readonly EditorSlide[])[];
+  history: readonly HistorySnapshot[];
   historyIndex: number;
   /** When the author last typed, while that typing is not yet a checkpoint. */
   pendingTypingAt: number | undefined;
 }
 
-/** Where the view should place focus and selection once the edit has rendered. */
-export interface SelectionIntent {
-  sectionId: SectionId;
+interface HistorySnapshot {
+  slides: readonly EditorSlide[];
+  /** Which section was being edited, so undo returns the author to it. */
+  activeSectionId: SectionId | undefined;
+}
+
+export interface TextRange {
   start: number;
   end: number;
+}
+
+/** Where the view should place focus and selection once the edit has rendered. */
+export interface SelectionIntent extends TextRange {
+  sectionId: SectionId;
 }
 
 export interface SsmlInsertion {
   startTag: string;
   /** Omitted for a self-closing tag, which is inserted at the caret. */
   endTag?: string;
-  selection: { start: number; end: number };
+  selection: TextRange;
 }
 
 export interface SsmlResult {
@@ -45,6 +54,20 @@ export interface SsmlResult {
 }
 
 const TYPING_CHECKPOINT_PAUSE_MS = 800;
+
+const FORMAT_KEYS = [
+  "separatorBefore",
+  "speakerPrefix",
+  "speakerSuffix",
+  "promptPrefix",
+  "promptSuffix",
+] as const;
+
+const sameSection = (edited: NarrationSection, saved: NarrationSection) =>
+  edited.text === saved.text &&
+  edited.speaker === saved.speaker &&
+  (edited.prompt || "") === (saved.prompt || "") &&
+  FORMAT_KEYS.every((key) => (edited.format?.[key] || "") === (saved.format?.[key] || ""));
 
 const sectionId = (number: number): SectionId => `section-${number}`;
 
@@ -74,7 +97,7 @@ export function openSlideNoteEditor(
     activeSlidePosition: 0,
     activeSectionId: editorSlides[0]?.sections[0]?.id,
     mintedSectionCount,
-    history: [editorSlides],
+    history: [{ slides: editorSlides, activeSectionId: editorSlides[0]?.sections[0]?.id }],
     historyIndex: 0,
     pendingTypingAt: undefined,
   };
@@ -110,15 +133,24 @@ export function selectSection(editor: SlideNoteEditor, id: SectionId): SlideNote
     return editor;
   }
 
-  return { ...editor, activeSectionId: id };
+  return { ...finalizePendingTyping(editor), activeSectionId: id };
 }
 
-/** Pushes the current structured content as an undo step, dropping any redo tail. */
-function checkpoint(editor: SlideNoteEditor): SlideNoteEditor {
+/**
+ * `returnTo` is the section that was being edited when the change began, which
+ * a later command has usually already moved away from.
+ */
+function checkpoint(
+  editor: SlideNoteEditor,
+  returnTo: SectionId | undefined = editor.activeSectionId,
+): SlideNoteEditor {
   const historyIndex = editor.historyIndex + 1;
+  const history = editor.history.slice(0, historyIndex);
+  history[editor.historyIndex] = { ...history[editor.historyIndex]!, activeSectionId: returnTo };
+
   return {
     ...editor,
-    history: [...editor.history.slice(0, historyIndex), editor.slides],
+    history: [...history, { slides: editor.slides, activeSectionId: editor.activeSectionId }],
     historyIndex,
     pendingTypingAt: undefined,
   };
@@ -152,7 +184,7 @@ function discreteEdit(
 ): SlideNoteEditor {
   const finalized = finalizePendingTyping(editor);
   const next = change(finalized);
-  return next === finalized ? editor : checkpoint(next);
+  return next === finalized ? editor : checkpoint(next, finalized.activeSectionId);
 }
 
 const slidePositionOf = (editor: SlideNoteEditor, id: SectionId): number =>
@@ -176,15 +208,29 @@ function withSlideSections(
 /**
  * Edits one section in place. Untouched formatting metadata travels with the
  * section, so only the changed field is rewritten when notes are formatted.
+ * An edit that changes nothing is not an edit, so it earns no undo step.
  */
-const editSection = (
+function editSection(
   editor: SlideNoteEditor,
   id: SectionId,
   change: (section: EditorSection) => EditorSection,
-): SlideNoteEditor =>
-  withSlideSections(editor, slidePositionOf(editor, id), (sections) =>
-    sections.map((section) => (section.id === id ? change(section) : section)),
+): SlideNoteEditor {
+  const slidePosition = slidePositionOf(editor, id);
+  let changed = false;
+  const edited = withSlideSections(editor, slidePosition, (sections) =>
+    sections.map((section) => {
+      if (section.id !== id) {
+        return section;
+      }
+
+      const updated = change(section);
+      changed = !sameSection(updated, section);
+      return changed ? updated : section;
+    }),
   );
+
+  return changed ? edited : editor;
+}
 
 export const setSectionText = (
   editor: SlideNoteEditor,
@@ -251,13 +297,16 @@ function removeSection(editor: SlideNoteEditor, id: SectionId): SlideNoteEditor 
 }
 
 function restore(editor: SlideNoteEditor, historyIndex: number): SlideNoteEditor {
-  const slides = editor.history[historyIndex]!;
-  const restored = { ...editor, slides, historyIndex };
-  return slides[restored.activeSlidePosition]?.sections.some(
-    (section) => section.id === restored.activeSectionId,
-  )
-    ? restored
-    : { ...restored, activeSectionId: slides[restored.activeSlidePosition]?.sections[0]?.id };
+  const snapshot = editor.history[historyIndex]!;
+  const sections = snapshot.slides[editor.activeSlidePosition]?.sections ?? [];
+  const stillPresent = (id: SectionId | undefined) => sections.some((section) => section.id === id);
+  const activeSectionId = stillPresent(editor.activeSectionId)
+    ? editor.activeSectionId
+    : stillPresent(snapshot.activeSectionId)
+      ? snapshot.activeSectionId
+      : sections[0]?.id;
+
+  return { ...editor, slides: snapshot.slides, historyIndex, activeSectionId };
 }
 
 export const canUndo = (editor: SlideNoteEditor): boolean =>
@@ -311,20 +360,6 @@ export function effectiveSpeaker(editor: SlideNoteEditor, id: SectionId): string
     sections.findIndex((section) => section.id === id),
   );
 }
-
-const FORMAT_KEYS = [
-  "separatorBefore",
-  "speakerPrefix",
-  "speakerSuffix",
-  "promptPrefix",
-  "promptSuffix",
-] as const;
-
-const sameSection = (edited: NarrationSection, saved: NarrationSection) =>
-  edited.text === saved.text &&
-  edited.speaker === saved.speaker &&
-  (edited.prompt || "") === (saved.prompt || "") &&
-  FORMAT_KEYS.every((key) => (edited.format?.[key] || "") === (saved.format?.[key] || ""));
 
 function slideIsDirty(editor: SlideNoteEditor, slide: EditorSlide): boolean {
   const saved = editor.savedSections.get(slide.index);
