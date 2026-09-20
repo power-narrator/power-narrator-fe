@@ -1,4 +1,5 @@
 import {
+  formatNarrationSections,
   getEffectiveSpeaker,
   parseNarrationSections,
   type NarrationSection,
@@ -16,6 +17,8 @@ export interface SlideNoteEditor {
   /** Structured content each slide was last known to hold in PowerPoint. */
   savedSections: ReadonlyMap<number, readonly NarrationSection[]>;
   activeSlidePosition: number;
+  /** The speaker mapping names bracketed lines are currently read against. */
+  speakerNames: readonly string[];
   activeSectionId: SectionId | undefined;
   /** Identities a later section must not reuse, even after deletions. */
   mintedSectionCount: number;
@@ -73,28 +76,45 @@ const sectionId = (number: number): SectionId => `section-${number}`;
 
 const withoutIdentity = ({ id: _id, ...section }: EditorSection): NarrationSection => section;
 
+const baselineOf = (slides: readonly EditorSlide[]) =>
+  new Map<number, readonly NarrationSection[]>(
+    slides.map((slide) => [slide.index, slide.sections.map(withoutIdentity)]),
+  );
+
+const clampSlidePosition = (slides: readonly EditorSlide[], position: number): number =>
+  Math.min(Math.max(position, 0), Math.max(slides.length - 1, 0));
+
+function toEditorSlide(
+  { notes, sections, ...slide }: Slide,
+  speakerNames: readonly string[],
+  mint: () => SectionId,
+): EditorSlide {
+  return {
+    ...slide,
+    // Slides arriving from the load seam are already parsed; only unparsed
+    // notes still need the codec here.
+    sections: (sections ?? parseNarrationSections(notes || "", speakerNames)).map((section) => ({
+      ...section,
+      id: mint(),
+    })),
+  };
+}
+
 export function openSlideNoteEditor(
   slides: readonly Slide[],
   knownSpeakers: Iterable<string>,
 ): SlideNoteEditor {
   const speakerNames = [...knownSpeakers];
   let mintedSectionCount = 0;
-  const editorSlides = slides.map(({ notes, sections, ...slide }) => ({
-    ...slide,
-    // Slides arriving from the load seam are already parsed; only unparsed
-    // notes still need the codec here.
-    sections: (sections ?? parseNarrationSections(notes || "", speakerNames)).map((section) => ({
-      ...section,
-      id: sectionId(mintedSectionCount++),
-    })),
-  }));
+  const editorSlides = slides.map((slide) =>
+    toEditorSlide(slide, speakerNames, () => sectionId(mintedSectionCount++)),
+  );
 
   return {
     slides: editorSlides,
-    savedSections: new Map(
-      editorSlides.map((slide) => [slide.index, slide.sections.map(withoutIdentity)]),
-    ),
+    savedSections: baselineOf(editorSlides),
     activeSlidePosition: 0,
+    speakerNames,
     activeSectionId: editorSlides[0]?.sections[0]?.id,
     mintedSectionCount,
     history: [{ slides: editorSlides, activeSectionId: editorSlides[0]?.sections[0]?.id }],
@@ -114,10 +134,7 @@ export const activeSectionId = (editor: SlideNoteEditor): SectionId | undefined 
 
 export function selectSlide(source: SlideNoteEditor, position: number): SlideNoteEditor {
   const editor = finalizePendingTyping(source);
-  const activeSlidePosition = Math.min(
-    Math.max(position, 0),
-    Math.max(editor.slides.length - 1, 0),
-  );
+  const activeSlidePosition = clampSlidePosition(editor.slides, position);
   const activeSectionId = editor.slides[activeSlidePosition]?.sections[0]?.id;
   if (activeSlidePosition === editor.activeSlidePosition) {
     return activeSections(editor).some((section) => section.id === editor.activeSectionId)
@@ -380,3 +397,144 @@ export const isSlideDirty = (editor: SlideNoteEditor, slideIndex: number): boole
 
 export const hasUnsavedChanges = (editor: SlideNoteEditor): boolean =>
   editor.slides.some((slide) => slideIsDirty(editor, slide));
+
+/** Replaces one slide, leaving every other slide's content, dirty state, and history alone. */
+export function reloadSlide(source: SlideNoteEditor, reloaded: Slide): SlideNoteEditor {
+  const position = source.slides.findIndex((slide) => slide.index === reloaded.index);
+  if (position === -1) {
+    return source;
+  }
+
+  const editor = finalizePendingTyping(source);
+  let mintedSectionCount = editor.mintedSectionCount;
+  const replacement = toEditorSlide(reloaded, editor.speakerNames, () =>
+    sectionId(mintedSectionCount++),
+  );
+  const substitute = (slides: readonly EditorSlide[]): readonly EditorSlide[] =>
+    slides.map((slide, at) => (at === position ? replacement : slide));
+  const savedSections = new Map(editor.savedSections);
+  savedSections.set(replacement.index, replacement.sections.map(withoutIdentity));
+
+  return {
+    ...editor,
+    slides: substitute(editor.slides),
+    savedSections,
+    mintedSectionCount,
+    // The reloaded slide is substituted throughout the history rather than the
+    // history being dropped, so undo still reaches unsaved work on other slides
+    // but can never restore what PowerPoint has just replaced.
+    history: editor.history.map((snapshot) => ({
+      ...snapshot,
+      slides: substitute(snapshot.slides),
+    })),
+    activeSectionId:
+      position === editor.activeSlidePosition
+        ? replacement.sections[0]?.id
+        : editor.activeSectionId,
+  };
+}
+
+/** Replaces the whole presentation, keeping the author on their slide when it survived. */
+export function reloadPresentation(
+  editor: SlideNoteEditor,
+  reloaded: readonly Slide[],
+): SlideNoteEditor {
+  let mintedSectionCount = editor.mintedSectionCount;
+  const mint = () => sectionId(mintedSectionCount++);
+  const slides = reloaded.map((slide) => toEditorSlide(slide, editor.speakerNames, mint));
+  const activeIndex = activeSlide(editor)?.index;
+  const retained = slides.findIndex((slide) => slide.index === activeIndex);
+  const activeSlidePosition =
+    retained === -1 ? clampSlidePosition(slides, editor.activeSlidePosition) : retained;
+  const activeSectionId = slides[activeSlidePosition]?.sections[0]?.id;
+
+  return {
+    ...editor,
+    slides,
+    savedSections: baselineOf(slides),
+    activeSlidePosition,
+    activeSectionId,
+    mintedSectionCount,
+    // Nothing of the replaced presentation survives to undo back to, which also
+    // abandons any open typing group. A view finalizes pending typing before it
+    // asks whether to discard, because a declined reload must keep it.
+    history: [{ slides, activeSectionId }],
+    historyIndex: 0,
+    pendingTypingAt: undefined,
+  };
+}
+
+const sameSpeakerNames = (current: readonly string[], next: readonly string[]) => {
+  const known = new Set(current);
+  const renamed = new Set(next);
+  return known.size === renamed.size && [...renamed].every((name) => known.has(name));
+};
+
+/**
+ * Mapping names decide whether a bracketed line is a speaker tag, so changing
+ * them changes what existing content means. This is the one place an active
+ * session serializes and reparses: current content, saved baselines, and every
+ * history snapshot are reinterpreted together, so undo cannot restore sections
+ * classified under obsolete names.
+ */
+export function reclassifySpeakerTags(
+  source: SlideNoteEditor,
+  knownSpeakers: Iterable<string>,
+): SlideNoteEditor {
+  const speakerNames = [...knownSpeakers];
+  if (sameSpeakerNames(source.speakerNames, speakerNames)) {
+    return source;
+  }
+
+  const editor = finalizePendingTyping(source);
+  let mintedSectionCount = editor.mintedSectionCount;
+  /**
+   * One section at a time, so a section whose text the author gave a divider
+   * line splits into sections of its own without displacing the identities of
+   * the sections that follow it.
+   */
+  const reread = (section: NarrationSection): NarrationSection[] => {
+    const [head, ...split] = parseNarrationSections(
+      formatNarrationSections([section]),
+      speakerNames,
+    );
+    const separatorBefore = section.format?.separatorBefore;
+    return [
+      separatorBefore === undefined
+        ? head!
+        : // Formatting a section alone omits the separator that preceded it.
+          { ...head!, format: { ...head!.format, separatorBefore } },
+      ...split,
+    ];
+  };
+  const rereadSlide = (slide: EditorSlide): EditorSlide => ({
+    ...slide,
+    sections: slide.sections.flatMap((section) => {
+      const [head, ...split] = reread(withoutIdentity(section));
+      return [
+        { ...head!, id: section.id },
+        ...split.map((extra) => ({ ...extra, id: sectionId(mintedSectionCount++) })),
+      ];
+    }),
+  });
+
+  const slides = editor.slides.map(rereadSlide);
+  const sections = slides[editor.activeSlidePosition]?.sections ?? [];
+
+  return {
+    ...editor,
+    slides,
+    speakerNames,
+    savedSections: new Map(
+      [...editor.savedSections].map(([index, saved]) => [index, saved.flatMap(reread)]),
+    ),
+    history: editor.history.map((snapshot) => ({
+      ...snapshot,
+      slides: snapshot.slides.map(rereadSlide),
+    })),
+    activeSectionId: sections.some((section) => section.id === editor.activeSectionId)
+      ? editor.activeSectionId
+      : sections[0]?.id,
+    mintedSectionCount,
+  };
+}
