@@ -118,7 +118,7 @@ export function SectionPreviewButtons({
           ) : (
             <Group gap="xs">
               <Slider
-                style={{ flexGrow: 1 }}
+                flex={1}
                 size="sm"
                 value={preview.currentTime}
                 min={0}

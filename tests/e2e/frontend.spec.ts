@@ -41,7 +41,7 @@ test.describe("PPT Viewer UI Workflows", () => {
   test("loads mocked slides into the viewer", async ({ app, win }) => {
     await expect.poll(() => getConvertPptxCalls(app)).toEqual([{ filePath: FIXTURE_TEST }]);
 
-    const thumbnails = win.getByRole("img", { name: /Slide \d+ thumbnail/ });
+    const thumbnails = win.getByRole("button", { name: /^Slide \d+$/ });
     await expect(thumbnails).toHaveCount(MOCK_SLIDES.length);
     await expect(win.getByRole("img", { name: "Slide 1 preview" })).toBeVisible();
 
