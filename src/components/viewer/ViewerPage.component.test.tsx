@@ -536,3 +536,21 @@ test("advises when the section's effective speaker ignores prompts", async () =>
 
   await expect.element(screen.getByText("This model ignores prompts.")).toBeVisible();
 });
+
+const taggedSlide: Slide = { ...loadedSlide, notes: "[Alice]\nLoaded narration" };
+
+test("shows a bracketed line as the section's speaker once a mapping names it", async () => {
+  installElectronApi({
+    getSpeakerMappings: vi.fn<typeof window.electronAPI.getSpeakerMappings>(() =>
+      Promise.resolve({ Alice: { voice: promptableVoice } }),
+    ),
+  });
+  const { screen } = await renderViewer(vi.fn(), [taggedSlide]);
+
+  await expect
+    .element(screen.getByRole("combobox", { name: "Speaker for slide 1 section 1" }))
+    .toHaveValue("Alice");
+  await expect
+    .element(screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }))
+    .toHaveValue("Loaded narration");
+});
