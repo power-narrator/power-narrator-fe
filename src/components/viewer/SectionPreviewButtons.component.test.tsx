@@ -1,5 +1,5 @@
 import { MantineProvider } from "@mantine/core";
-import { useRef, type PropsWithChildren } from "react";
+import type { PropsWithChildren } from "react";
 import { afterEach, expect, test, vi, type MockInstance } from "vitest";
 import { render } from "vitest-browser-react";
 import type {
@@ -11,6 +11,7 @@ import type { SpeakerMapping, Voice } from "../../../shared/types/tts";
 import { AudioProvider } from "../../context/AudioContext";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
 import { NarrationPreviewProvider } from "./useNarrationPreview";
+import { useSectionTextareas } from "./useSectionTextareas";
 
 const narratorVoice: Voice = {
   provider: "gcp",
@@ -126,8 +127,17 @@ async function renderConcurrentSectionPreviews() {
   return { createObjectUrl, finishPreview, pause, play, screen };
 }
 
-test("previews only the text selected in the live notes editor", async () => {
-  const previewRequests: PreviewNarrationRequest[] = [];
+const liveSection: NarrationSection = {
+  speaker: "Narrator",
+  prompt: "wearily",
+  text: "Stale section text",
+};
+
+/**
+ * Wires the preview to the real textarea adapter, so what the author has
+ * selected in the live editor is what reaches narration preparation.
+ */
+function renderLivePreview(previewRequests: PreviewNarrationRequest[]) {
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
     value: {
@@ -141,28 +151,34 @@ test("previews only the text selected in the live notes editor", async () => {
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
 
   function PreviewHarness() {
-    const editorRef = useRef<HTMLTextAreaElement | null>(null);
+    const textareas = useSectionTextareas();
     return (
       <PreviewProviders>
         <label htmlFor="preview-editor">Narration text</label>
-        <textarea id="preview-editor" ref={editorRef} defaultValue="Read only this phrase please" />
+        <textarea
+          id="preview-editor"
+          ref={(element) => textareas.assign("section-0", element)}
+          defaultValue="Read only this phrase please"
+        />
         <SectionPreviewButtons
-          id="1-0"
+          id="section-0"
           slideIndex={1}
           sectionIndex={0}
-          sections={[{ speaker: "Narrator", prompt: "wearily", text: "Stale section text" }]}
+          sections={[liveSection]}
           mappings={{ Narrator: { voice: narratorVoice } }}
           onFocus={() => {}}
-          getSelectedText={() => {
-            const textarea = editorRef.current;
-            return textarea?.value.slice(textarea.selectionStart, textarea.selectionEnd);
-          }}
+          getSelectedText={() => textareas.selectedTextIn("section-0")}
         />
       </PreviewProviders>
     );
   }
 
-  const screen = await render(<PreviewHarness />);
+  return render(<PreviewHarness />);
+}
+
+test("previews only the text selected in the live notes editor", async () => {
+  const previewRequests: PreviewNarrationRequest[] = [];
+  const screen = await renderLivePreview(previewRequests);
   const editor = screen.getByRole("textbox", { name: "Narration text" });
   (editor.element() as HTMLTextAreaElement).setSelectionRange(5, 21);
 
@@ -172,9 +188,22 @@ test("previews only the text selected in the live notes editor", async () => {
     expect(previewRequests).toContainEqual(
       expect.objectContaining({
         text: "only this phrase",
-        sections: [{ speaker: "Narrator", prompt: "wearily", text: "Stale section text" }],
+        sections: [liveSection],
         speakerChoice: { kind: "override", speaker: "Narrator" },
       }),
+    );
+  });
+});
+
+test("previews the whole live notes editor when nothing is selected", async () => {
+  const previewRequests: PreviewNarrationRequest[] = [];
+  const screen = await renderLivePreview(previewRequests);
+
+  await screen.getByRole("button", { name: "Narrator" }).click();
+
+  await vi.waitFor(() => {
+    expect(previewRequests).toContainEqual(
+      expect.objectContaining({ text: "Read only this phrase please" }),
     );
   });
 });

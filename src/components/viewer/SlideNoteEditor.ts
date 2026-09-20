@@ -1,6 +1,5 @@
 import {
   formatNarrationSections,
-  getEffectiveSpeaker,
   parseNarrationSections,
   type NarrationSection,
 } from "../../../shared/narration/NarrationSections";
@@ -359,14 +358,6 @@ export function insertSsml(editor: SlideNoteEditor, insertion: SsmlInsertion): S
     ),
     selection: { sectionId: id, start: start + startTag.length, end: end + startTag.length },
   };
-}
-
-export function effectiveSpeaker(editor: SlideNoteEditor, id: SectionId): string {
-  const sections = editor.slides[slidePositionOf(editor, id)]?.sections ?? [];
-  return getEffectiveSpeaker(
-    sections,
-    sections.findIndex((section) => section.id === id),
-  );
 }
 
 function slideIsDirty(editor: SlideNoteEditor, slide: EditorSlide): boolean {
