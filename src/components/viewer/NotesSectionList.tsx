@@ -79,6 +79,7 @@ export function NotesSectionList({
       <ScrollArea flex={1}>
         <Stack>
           {sections.map((section, index) => {
+            const sectionLabel = `slide ${slideIndex} section ${index + 1}`;
             const effectiveSpeaker = getEffectiveSpeaker(sections, index);
             const isInherited = section.speaker === "" || section.speaker === DEFAULT_SPEAKER_VALUE;
             const placeholder =
@@ -92,12 +93,12 @@ export function NotesSectionList({
                 withBorder
                 bg="var(--mantine-color-default)"
                 gap="0"
-                key={index} // oxlint-disable-line react/no-array-index-key cannot be unique with data to refocus
+                key={index} // oxlint-disable-line react/no-array-index-key until the viewer edits through SlideNoteEditor identities
                 bdrs="4"
               >
                 <Group p="xs">
                   <SpeakerPrompt
-                    speakerLabel={`slide ${slideIndex} section ${index + 1}`}
+                    speakerLabel={sectionLabel}
                     value={section.prompt}
                     supportsPrompt={
                       mappings[toSynthesisSpeaker(effectiveSpeaker).mappingKey]?.voice
@@ -107,6 +108,7 @@ export function NotesSectionList({
                     rowContent={{
                       leading: (
                         <Select
+                          aria-label={`Speaker for ${sectionLabel}`}
                           data={speakerOptions}
                           value={section.speaker}
                           onChange={(value) => onSpeakerChange(index, value)}
@@ -117,6 +119,7 @@ export function NotesSectionList({
                       ),
                       trailing: (
                         <Button
+                          aria-label={`Remove ${sectionLabel}`}
                           variant="subtle"
                           color="red"
                           size="xs"
