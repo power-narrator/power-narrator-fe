@@ -1,7 +1,11 @@
+import type { NarrationSection } from "../../shared/narration/NarrationSections.js";
+
 export interface SlideManifestEntry {
   index: number;
   image: string;
   notes: string;
+  /** Present once the notes have been parsed at the application seam. */
+  sections?: NarrationSection[];
 }
 
 export interface SlideNotesEntry {

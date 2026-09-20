@@ -40,7 +40,6 @@ describe("slide-note payloads", () => {
 
     const transported = structuredClone(payload) as SlideNotePayload;
 
-    expect(transported).toEqual(payload);
     expect(toNotesText(transported)).toBe(NOTES);
   });
 

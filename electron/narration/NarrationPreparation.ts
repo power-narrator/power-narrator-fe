@@ -1,14 +1,12 @@
 import type { SpeakerMapping, SynthesizedSpeech, Voice } from "../tts/TtsProvider.js";
 import type {
+  NarratedSlideInput,
   NarrationPreparationProgress,
   PreviewNarrationRequest,
 } from "../../shared/types/narration.js";
 import type { SlideAudioEntry } from "../platform/types.js";
 import { getEffectiveSpeaker } from "../../shared/narration/NarrationSections.js";
-import {
-  toNarrationSections,
-  type SlideNotePayload,
-} from "../../shared/narration/slideNotePayload.js";
+import { toNarrationSections } from "../../shared/narration/slideNotePayload.js";
 import {
   DEFAULT_SPEAKER_VALUE,
   getSpeakerNames,
@@ -77,7 +75,7 @@ export class NarrationPreparation {
   }
 
   async prepareBatch(
-    slides: Array<SlideNotePayload & { slideIndex: number }>,
+    slides: NarratedSlideInput[],
     onProgress?: (progress: NarrationPreparationProgress) => void,
   ): Promise<SlideAudioEntry[]> {
     const mappings = await this.mappingSource.getSpeakerMappings();
