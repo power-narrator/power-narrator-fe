@@ -5,34 +5,7 @@ import {
   type NarrationSection,
 } from "../../../shared/narration/NarrationSections";
 import type { Slide } from "../../types/electron";
-import {
-  activeSectionId,
-  activeSections,
-  activeSlide,
-  addSection,
-  beginSave,
-  deleteSection,
-  hasUnsavedChanges,
-  isSlideDirty,
-  canRedo,
-  canUndo,
-  finalizePendingTyping,
-  insertSsml,
-  openSlideNoteEditor,
-  redo,
-  reclassifySpeakerTags,
-  reloadPresentation,
-  reloadSlide,
-  saveSucceeded,
-  selectSection,
-  selectSlide,
-  setSectionPrompt,
-  setSectionSpeaker,
-  setSectionText,
-  undo,
-  type SlideNoteEditor,
-  type SnapshotSlide,
-} from "./SlideNoteEditor";
+import { SlideNoteEditor, type EditorSection, type SnapshotSlide } from "./SlideNoteEditor";
 
 const speakers = ["Alice", "Bob"];
 
@@ -47,29 +20,28 @@ function slide(index: number, notes: string, knownSpeakers: readonly string[] = 
 }
 
 function openedEditor(): SlideNoteEditor {
-  return openSlideNoteEditor(
+  return SlideNoteEditor.open(
     [slide(1, "[Alice]\nFirst narration\n---\nSecond section"), slide(2, "Other narration")],
     speakers,
   );
 }
 
-const sectionTexts = (editor: SlideNoteEditor) =>
-  activeSections(editor).map((section) => section.text);
+const sectionTexts = (editor: SlideNoteEditor) => editor.sections.map((section) => section.text);
 
 /** The sections as they would reach the codec, without renderer-only identities. */
 const formattableSections = (editor: SlideNoteEditor) =>
-  activeSections(editor).map(({ id: _id, ...section }) => section);
+  editor.sections.map(({ id: _id, ...section }) => section);
 
-describe("openSlideNoteEditor", () => {
+describe("opening an editing session", () => {
   it("holds every slide's sections up front", () => {
     const editor = openedEditor();
 
     expect(sectionTexts(editor)).toEqual(["First narration", "Second section"]);
-    expect(sectionTexts(selectSlide(editor, 1))).toEqual(["Other narration"]);
+    expect(sectionTexts(editor.selectSlide(1))).toEqual(["Other narration"]);
   });
 
   it("takes the sections the load seam parsed, without reading notes itself", () => {
-    const editor = openSlideNoteEditor(
+    const editor = SlideNoteEditor.open(
       [
         {
           index: 1,
@@ -81,53 +53,60 @@ describe("openSlideNoteEditor", () => {
       speakers,
     );
 
-    expect(activeSections(editor).map(({ speaker, text }) => ({ speaker, text }))).toEqual([
+    expect(editor.sections.map(({ speaker, text }) => ({ speaker, text }))).toEqual([
       { speaker: "Bob", text: "Parsed" },
     ]);
+  });
+
+  it("lists the slides without the sections only the selected slide shows", () => {
+    const editor = openedEditor();
+
+    expect(editor.slides.map((slide) => slide.index)).toEqual([1, 2]);
+    expect(editor.slides.some((slide) => "sections" in slide)).toBe(false);
   });
 
   it("selects the first slide and its first section", () => {
     const editor = openedEditor();
 
-    expect(activeSlide(editor)?.index).toBe(1);
-    expect(activeSectionId(editor)).toBe(activeSections(editor)[0]?.id);
+    expect(editor.activeSlide?.index).toBe(1);
+    expect(editor.activeSectionId).toBe(editor.sections[0]?.id);
   });
 
   it("starts with no unsaved changes", () => {
-    expect(hasUnsavedChanges(openedEditor())).toBe(false);
+    expect(openedEditor().hasUnsavedChanges).toBe(false);
   });
 
   it("reports no slide when the presentation has none", () => {
-    const editor = openSlideNoteEditor([], speakers);
+    const editor = SlideNoteEditor.open([], speakers);
 
-    expect(activeSlide(editor)).toBeUndefined();
-    expect(activeSections(editor)).toEqual([]);
-    expect(activeSectionId(editor)).toBeUndefined();
+    expect(editor.activeSlide).toBeUndefined();
+    expect(editor.sections).toEqual([]);
+    expect(editor.activeSectionId).toBeUndefined();
   });
 });
 
 describe("navigating slides", () => {
   it("resets the active section when the slide changes", () => {
     const editor = openedEditor();
-    const onSecondSection = selectSection(editor, activeSections(editor)[1]!.id);
+    const onSecondSection = editor.selectSection(editor.sections[1]!.id);
 
-    const moved = selectSlide(onSecondSection, 1);
+    const moved = onSecondSection.selectSlide(1);
 
-    expect(activeSectionId(moved)).toBe(activeSections(moved)[0]?.id);
+    expect(moved.activeSectionId).toBe(moved.sections[0]?.id);
   });
 
   it("clamps selection to an existing slide", () => {
     const editor = openedEditor();
 
-    expect(activeSlide(selectSlide(editor, 7))?.index).toBe(2);
-    expect(activeSlide(selectSlide(editor, -3))?.index).toBe(1);
+    expect(editor.selectSlide(7).activeSlide?.index).toBe(2);
+    expect(editor.selectSlide(-3).activeSlide?.index).toBe(1);
   });
 
   it("ignores selecting a section that is not on the active slide", () => {
     const editor = openedEditor();
-    const foreignId = activeSections(selectSlide(editor, 1))[0]!.id;
+    const foreignId = editor.selectSlide(1).sections[0]!.id;
 
-    expect(activeSectionId(selectSection(editor, foreignId))).toBe(activeSectionId(editor));
+    expect(editor.selectSection(foreignId).activeSectionId).toBe(editor.activeSectionId);
   });
 });
 
@@ -135,25 +114,25 @@ describe("editing section text", () => {
   it("updates only the edited section", () => {
     const editor = openedEditor();
 
-    const edited = setSectionText(editor, activeSections(editor)[0]!.id, "Rewritten");
+    const edited = editor.setSectionText(editor.sections[0]!.id, "Rewritten");
 
     expect(sectionTexts(edited)).toEqual(["Rewritten", "Second section"]);
   });
 
   it("keeps section identities stable across edits", () => {
     const editor = openedEditor();
-    const ids = activeSections(editor).map((section) => section.id);
+    const ids = editor.sections.map((section) => section.id);
 
-    const edited = setSectionText(editor, ids[0]!, "Rewritten");
+    const edited = editor.setSectionText(ids[0]!, "Rewritten");
 
-    expect(activeSections(edited).map((section) => section.id)).toEqual(ids);
+    expect(edited.sections.map((section) => section.id)).toEqual(ids);
   });
 
   it("gives every section across the presentation a distinct identity", () => {
     const editor = openedEditor();
     const ids = [
-      ...activeSections(editor).map((section) => section.id),
-      ...activeSections(selectSlide(editor, 1)).map((section) => section.id),
+      ...editor.sections.map((section) => section.id),
+      ...editor.selectSlide(1).sections.map((section) => section.id),
     ];
 
     expect(new Set(ids).size).toBe(ids.length);
@@ -162,7 +141,7 @@ describe("editing section text", () => {
   it("ignores edits to an unknown section", () => {
     const editor = openedEditor();
 
-    expect(sectionTexts(setSectionText(editor, "missing", "Rewritten"))).toEqual(
+    expect(sectionTexts(editor.setSectionText("missing", "Rewritten"))).toEqual(
       sectionTexts(editor),
     );
   });
@@ -172,53 +151,35 @@ describe("dirty state", () => {
   it("marks the edited slide dirty", () => {
     const editor = openedEditor();
 
-    const edited = setSectionText(editor, activeSections(editor)[0]!.id, "Rewritten");
+    const edited = editor.setSectionText(editor.sections[0]!.id, "Rewritten");
 
-    expect(isSlideDirty(edited, 1)).toBe(true);
-    expect(isSlideDirty(edited, 2)).toBe(false);
-    expect(hasUnsavedChanges(edited)).toBe(true);
+    expect(edited.isSlideDirty(1)).toBe(true);
+    expect(edited.isSlideDirty(2)).toBe(false);
+    expect(edited.hasUnsavedChanges).toBe(true);
   });
 
   it("clears dirty state when the saved content is restored manually", () => {
     const editor = openedEditor();
-    const sectionId = activeSections(editor)[0]!.id;
+    const sectionId = editor.sections[0]!.id;
 
-    const restored = setSectionText(
-      setSectionText(editor, sectionId, "Rewritten"),
-      sectionId,
-      "First narration",
-    );
+    const restored = editor
+      .setSectionText(sectionId, "Rewritten")
+      .setSectionText(sectionId, "First narration");
 
-    expect(isSlideDirty(restored, 1)).toBe(false);
-    expect(hasUnsavedChanges(restored)).toBe(false);
+    expect(restored.isSlideDirty(1)).toBe(false);
+    expect(restored.hasUnsavedChanges).toBe(false);
   });
 
-  it("ignores formatting-metadata key order when comparing with the saved baseline", () => {
+  it("refuses to be edited through the sections it hands out", () => {
     const editor = openedEditor();
-    const sectionId = activeSections(editor)[0]!.id;
-    const reordered = {
-      ...editor,
-      slides: editor.slides.map((slide, position) =>
-        position === 0
-          ? {
-              ...slide,
-              sections: slide.sections.map((section) =>
-                section.id === sectionId
-                  ? {
-                      ...section,
-                      format: {
-                        speakerSuffix: section.format?.speakerSuffix,
-                        speakerPrefix: section.format?.speakerPrefix,
-                      },
-                    }
-                  : section,
-              ),
-            }
-          : slide,
-      ),
-    };
+    const [section] = editor.sections;
 
-    expect(isSlideDirty(reordered, 1)).toBe(false);
+    expect(() => {
+      (section as { text: string }).text = "Tampered";
+    }).toThrow(TypeError);
+    expect(() => (editor.sections as EditorSection[]).pop()).toThrow(TypeError);
+    expect(sectionTexts(editor)).toEqual(["First narration", "Second section"]);
+    expect(editor.hasUnsavedChanges).toBe(false);
   });
 });
 
@@ -226,23 +187,23 @@ describe("editing speakers", () => {
   it("changes only the edited section's speaker", () => {
     const editor = openedEditor();
 
-    const edited = setSectionSpeaker(editor, activeSections(editor)[1]!.id, "Bob");
+    const edited = editor.setSectionSpeaker(editor.sections[1]!.id, "Bob");
 
-    expect(activeSections(edited).map((section) => section.speaker)).toEqual(["Alice", "Bob"]);
+    expect(edited.sections.map((section) => section.speaker)).toEqual(["Alice", "Bob"]);
   });
 
   it("keeps the existing speaker-tag formatting of an edited tag", () => {
-    const editor = openSlideNoteEditor([slide(1, "[  Alice  ]\nText")], speakers);
+    const editor = SlideNoteEditor.open([slide(1, "[  Alice  ]\nText")], speakers);
 
-    const edited = setSectionSpeaker(editor, activeSections(editor)[0]!.id, "Bob");
+    const edited = editor.setSectionSpeaker(editor.sections[0]!.id, "Bob");
 
     expect(formatNarrationSections(formattableSections(edited))).toBe("[  Bob  ]\nText");
   });
 
   it("uses canonical formatting for a speaker tag the section did not have", () => {
-    const editor = openSlideNoteEditor([slide(1, "Text")], speakers);
+    const editor = SlideNoteEditor.open([slide(1, "Text")], speakers);
 
-    const edited = setSectionSpeaker(editor, activeSections(editor)[0]!.id, "Bob");
+    const edited = editor.setSectionSpeaker(editor.sections[0]!.id, "Bob");
 
     expect(formatNarrationSections(formattableSections(edited))).toBe("[Bob]\nText");
   });
@@ -250,9 +211,9 @@ describe("editing speakers", () => {
   it("clears the speaker when no speaker is chosen", () => {
     const editor = openedEditor();
 
-    const edited = setSectionSpeaker(editor, activeSections(editor)[0]!.id, null);
+    const edited = editor.setSectionSpeaker(editor.sections[0]!.id, null);
 
-    expect(activeSections(edited)[0]?.speaker).toBe("");
+    expect(edited.sections[0]?.speaker).toBe("");
   });
 });
 
@@ -260,40 +221,35 @@ describe("editing inline prompts", () => {
   it("sets the prompt of only the edited section", () => {
     const editor = openedEditor();
 
-    const edited = setSectionPrompt(editor, activeSections(editor)[0]!.id, "whispering");
+    const edited = editor.setSectionPrompt(editor.sections[0]!.id, "whispering");
 
-    expect(activeSections(edited).map((section) => section.prompt)).toEqual([
-      "whispering",
-      undefined,
-    ]);
+    expect(edited.sections.map((section) => section.prompt)).toEqual(["whispering", undefined]);
   });
 
   it("treats an empty prompt as no prompt", () => {
     const editor = openedEditor();
-    const sectionId = activeSections(editor)[0]!.id;
+    const sectionId = editor.sections[0]!.id;
 
-    const cleared = setSectionPrompt(
-      setSectionPrompt(editor, sectionId, "whispering"),
-      sectionId,
-      "",
-    );
+    const cleared = editor
+      .setSectionPrompt(sectionId, "whispering")
+      .setSectionPrompt(sectionId, "");
 
-    expect(activeSections(cleared)[0]?.prompt).toBeUndefined();
-    expect(isSlideDirty(cleared, 1)).toBe(false);
+    expect(cleared.sections[0]?.prompt).toBeUndefined();
+    expect(cleared.isSlideDirty(1)).toBe(false);
   });
 
   it("keeps the existing prompt formatting of an edited prompt", () => {
-    const editor = openSlideNoteEditor([slide(1, "[prompt:calm]\nText")], speakers);
+    const editor = SlideNoteEditor.open([slide(1, "[prompt:calm]\nText")], speakers);
 
-    const edited = setSectionPrompt(editor, activeSections(editor)[0]!.id, "excited");
+    const edited = editor.setSectionPrompt(editor.sections[0]!.id, "excited");
 
     expect(formatNarrationSections(formattableSections(edited))).toBe("[prompt:excited]\nText");
   });
 
   it("uses canonical formatting for a prompt the section did not have", () => {
-    const editor = openSlideNoteEditor([slide(1, "Text")], speakers);
+    const editor = SlideNoteEditor.open([slide(1, "Text")], speakers);
 
-    const edited = setSectionPrompt(editor, activeSections(editor)[0]!.id, "excited");
+    const edited = editor.setSectionPrompt(editor.sections[0]!.id, "excited");
 
     expect(formatNarrationSections(formattableSections(edited))).toBe("[prompt: excited]\nText");
   });
@@ -303,30 +259,30 @@ describe("adding sections", () => {
   it("appends an empty section to the active slide and selects it", () => {
     const editor = openedEditor();
 
-    const added = addSection(editor);
+    const added = editor.addSection();
 
     expect(sectionTexts(added)).toEqual(["First narration", "Second section", ""]);
-    expect(activeSectionId(added)).toBe(activeSections(added)[2]?.id);
+    expect(added.activeSectionId).toBe(added.sections[2]?.id);
   });
 
   it("gives the added section an identity distinct from every other section", () => {
-    const editor = addSection(addSection(openedEditor()));
+    const editor = openedEditor().addSection().addSection();
     const ids = [
-      ...activeSections(editor).map((section) => section.id),
-      ...activeSections(selectSlide(editor, 1)).map((section) => section.id),
+      ...editor.sections.map((section) => section.id),
+      ...editor.selectSlide(1).sections.map((section) => section.id),
     ];
 
     expect(new Set(ids).size).toBe(ids.length);
   });
 
   it("separates the added section with canonical formatting", () => {
-    const editor = addSection(openSlideNoteEditor([slide(1, "Text")], speakers));
+    const editor = SlideNoteEditor.open([slide(1, "Text")], speakers).addSection();
 
     expect(formatNarrationSections(formattableSections(editor))).toBe("Text\n---\n");
   });
 
   it("marks the slide dirty", () => {
-    expect(isSlideDirty(addSection(openedEditor()), 1)).toBe(true);
+    expect(openedEditor().addSection().isSlideDirty(1)).toBe(true);
   });
 });
 
@@ -334,60 +290,60 @@ describe("deleting sections", () => {
   it("removes only the deleted section", () => {
     const editor = openedEditor();
 
-    const deleted = deleteSection(editor, activeSections(editor)[0]!.id);
+    const deleted = editor.deleteSection(editor.sections[0]!.id);
 
     expect(sectionTexts(deleted)).toEqual(["Second section"]);
   });
 
   it("keeps the identities of the remaining sections", () => {
     const editor = openedEditor();
-    const remainingId = activeSections(editor)[1]!.id;
+    const remainingId = editor.sections[1]!.id;
 
-    const deleted = deleteSection(editor, activeSections(editor)[0]!.id);
+    const deleted = editor.deleteSection(editor.sections[0]!.id);
 
-    expect(activeSections(deleted).map((section) => section.id)).toEqual([remainingId]);
+    expect(deleted.sections.map((section) => section.id)).toEqual([remainingId]);
   });
 
   it("selects the following section when the active one is deleted", () => {
     const editor = openedEditor();
-    const followingId = activeSections(editor)[1]!.id;
+    const followingId = editor.sections[1]!.id;
 
-    const deleted = deleteSection(editor, activeSections(editor)[0]!.id);
+    const deleted = editor.deleteSection(editor.sections[0]!.id);
 
-    expect(activeSectionId(deleted)).toBe(followingId);
+    expect(deleted.activeSectionId).toBe(followingId);
   });
 
   it("selects the preceding section when the last one is deleted", () => {
     const editor = openedEditor();
-    const [first, last] = activeSections(editor);
+    const [first, last] = editor.sections;
 
-    const deleted = deleteSection(selectSection(editor, last!.id), last!.id);
+    const deleted = editor.selectSection(last!.id).deleteSection(last!.id);
 
-    expect(activeSectionId(deleted)).toBe(first!.id);
+    expect(deleted.activeSectionId).toBe(first!.id);
   });
 
   it("keeps the active section when a different one is deleted", () => {
     const editor = openedEditor();
-    const activeId = activeSections(editor)[1]!.id;
+    const activeId = editor.sections[1]!.id;
 
-    const deleted = deleteSection(selectSection(editor, activeId), activeSections(editor)[0]!.id);
+    const deleted = editor.selectSection(activeId).deleteSection(editor.sections[0]!.id);
 
-    expect(activeSectionId(deleted)).toBe(activeId);
+    expect(deleted.activeSectionId).toBe(activeId);
   });
 
   it("reports no active section once the slide has none left", () => {
-    const editor = openSlideNoteEditor([slide(1, "Only")], speakers);
+    const editor = SlideNoteEditor.open([slide(1, "Only")], speakers);
 
-    const deleted = deleteSection(editor, activeSections(editor)[0]!.id);
+    const deleted = editor.deleteSection(editor.sections[0]!.id);
 
-    expect(activeSections(deleted)).toEqual([]);
-    expect(activeSectionId(deleted)).toBeUndefined();
+    expect(deleted.sections).toEqual([]);
+    expect(deleted.activeSectionId).toBeUndefined();
   });
 
   it("ignores deleting an unknown section", () => {
     const editor = openedEditor();
 
-    expect(deleteSection(editor, "missing")).toBe(editor);
+    expect(editor.deleteSection("missing")).toBe(editor);
   });
 });
 
@@ -401,7 +357,7 @@ describe("typing checkpoints", () => {
   });
 
   const typeInFirstSection = (editor: SlideNoteEditor, text: string) =>
-    setSectionText(editor, activeSections(editor)[0]!.id, text);
+    editor.setSectionText(editor.sections[0]!.id, text);
 
   it("groups typing into one undo step until the author pauses", () => {
     let editor = openedEditor();
@@ -412,7 +368,7 @@ describe("typing checkpoints", () => {
     vi.advanceTimersByTime(100);
     editor = typeInFirstSection(editor, "Fin");
 
-    expect(sectionTexts(undo(editor))).toEqual(["First narration", "Second section"]);
+    expect(sectionTexts(editor.undo())).toEqual(["First narration", "Second section"]);
   });
 
   it("starts a new undo step after an 800 ms pause", () => {
@@ -422,67 +378,67 @@ describe("typing checkpoints", () => {
     vi.advanceTimersByTime(800);
     editor = typeInFirstSection(editor, "After pause");
 
-    expect(sectionTexts(undo(editor))[0]).toBe("Before pause");
-    expect(sectionTexts(undo(undo(editor)))[0]).toBe("First narration");
+    expect(sectionTexts(editor.undo())[0]).toBe("Before pause");
+    expect(sectionTexts(editor.undo().undo())[0]).toBe("First narration");
   });
 
   it("groups inline-prompt typing the same way", () => {
     let editor = openedEditor();
-    const id = activeSections(editor)[0]!.id;
+    const id = editor.sections[0]!.id;
 
-    editor = setSectionPrompt(editor, id, "Cheer");
+    editor = editor.setSectionPrompt(id, "Cheer");
     vi.advanceTimersByTime(100);
-    editor = setSectionPrompt(editor, id, "Cheerful");
+    editor = editor.setSectionPrompt(id, "Cheerful");
 
-    expect(activeSections(undo(editor))[0]?.prompt).toBeUndefined();
+    expect(editor.undo().sections[0]?.prompt).toBeUndefined();
   });
 
   it("finalizes pending typing before navigating to another slide", () => {
     let editor = openedEditor();
 
     editor = typeInFirstSection(editor, "Typed");
-    editor = selectSlide(selectSlide(editor, 1), 0);
+    editor = editor.selectSlide(1).selectSlide(0);
 
     expect(sectionTexts(editor)[0]).toBe("Typed");
-    expect(sectionTexts(undo(editor))[0]).toBe("First narration");
+    expect(sectionTexts(editor.undo())[0]).toBe("First narration");
   });
 
   it("finalizes pending typing on request, for view actions the editor does not own", () => {
     let editor = openedEditor();
 
     editor = typeInFirstSection(editor, "Typed");
-    editor = finalizePendingTyping(editor);
+    editor = editor.finalizePendingTyping();
 
-    expect(canRedo(editor)).toBe(false);
-    expect(sectionTexts(undo(editor))[0]).toBe("First narration");
-    expect(sectionTexts(redo(undo(editor)))[0]).toBe("Typed");
+    expect(editor.canRedo).toBe(false);
+    expect(sectionTexts(editor.undo())[0]).toBe("First narration");
+    expect(sectionTexts(editor.undo().redo())[0]).toBe("Typed");
   });
 
   it("finalizes pending typing before another section is selected", () => {
     let editor = openedEditor();
-    const [first, second] = activeSections(editor);
+    const [first, second] = editor.sections;
 
     editor = typeInFirstSection(editor, "Typed");
-    editor = setSectionText(selectSection(editor, second!.id), second!.id, "Also typed");
+    editor = editor.selectSection(second!.id).setSectionText(second!.id, "Also typed");
 
-    const undone = undo(editor);
+    const undone = editor.undo();
     expect(sectionTexts(undone)).toEqual(["Typed", "Second section"]);
-    expect(sectionTexts(undo(undone))[0]).toBe("First narration");
-    expect(activeSectionId(undone)).toBe(second!.id);
+    expect(sectionTexts(undone.undo())[0]).toBe("First narration");
+    expect(undone.activeSectionId).toBe(second!.id);
     expect(first).toBeDefined();
   });
 
   it("keeps pending typing and the next discrete action as separate undo steps", () => {
     let editor = openedEditor();
-    const [, second] = activeSections(editor);
+    const [, second] = editor.sections;
 
     editor = typeInFirstSection(editor, "Typed");
-    editor = setSectionSpeaker(editor, second!.id, "Bob");
+    editor = editor.setSectionSpeaker(second!.id, "Bob");
 
-    const undone = undo(editor);
-    expect(activeSections(undone)[1]?.speaker).toBe("");
+    const undone = editor.undo();
+    expect(undone.sections[1]?.speaker).toBe("");
     expect(sectionTexts(undone)[0]).toBe("Typed");
-    expect(sectionTexts(undo(undone))[0]).toBe("First narration");
+    expect(sectionTexts(undone.undo())[0]).toBe("First narration");
   });
 });
 
@@ -490,95 +446,95 @@ describe("undo and redo", () => {
   it("reports what history offers", () => {
     const editor = openedEditor();
 
-    expect(canUndo(editor)).toBe(false);
-    expect(canRedo(editor)).toBe(false);
+    expect(editor.canUndo).toBe(false);
+    expect(editor.canRedo).toBe(false);
 
-    const added = addSection(editor);
-    expect(canUndo(added)).toBe(true);
-    expect(canRedo(added)).toBe(false);
-    expect(canRedo(undo(added))).toBe(true);
-    expect(canUndo(undo(added))).toBe(false);
+    const added = editor.addSection();
+    expect(added.canUndo).toBe(true);
+    expect(added.canRedo).toBe(false);
+    expect(added.undo().canRedo).toBe(true);
+    expect(added.undo().canUndo).toBe(false);
   });
 
   it("restores structured sections without reparsing notes", () => {
     const editor = openedEditor();
     const formatted = formattableSections(editor);
 
-    const speaking = setSectionSpeaker(editor, activeSections(editor)[1]!.id, "Bob");
+    const speaking = editor.setSectionSpeaker(editor.sections[1]!.id, "Bob");
 
-    expect(formattableSections(undo(speaking))).toEqual(formatted);
-    expect(activeSections(redo(undo(speaking)))[1]?.speaker).toBe("Bob");
+    expect(formattableSections(speaking.undo())).toEqual(formatted);
+    expect(speaking.undo().redo().sections[1]?.speaker).toBe("Bob");
   });
 
   it("checkpoints an added section immediately and clears its stale selection", () => {
-    const editor = addSection(openedEditor());
-    const addedId = activeSectionId(editor);
+    const editor = openedEditor().addSection();
+    const addedId = editor.activeSectionId;
 
-    const undone = undo(editor);
+    const undone = editor.undo();
 
-    expect(activeSections(undone)).toHaveLength(2);
-    expect(activeSectionId(undone)).not.toBe(addedId);
-    expect(activeSectionId(undone)).toBe(activeSections(undone)[0]?.id);
+    expect(undone.sections).toHaveLength(2);
+    expect(undone.activeSectionId).not.toBe(addedId);
+    expect(undone.activeSectionId).toBe(undone.sections[0]?.id);
   });
 
   it("checkpoints a deleted section immediately", () => {
     const editor = openedEditor();
 
-    const deleted = deleteSection(editor, activeSections(editor)[0]!.id);
+    const deleted = editor.deleteSection(editor.sections[0]!.id);
 
-    expect(sectionTexts(undo(deleted))).toEqual(["First narration", "Second section"]);
+    expect(sectionTexts(deleted.undo())).toEqual(["First narration", "Second section"]);
   });
 
   it("drops the redo tail once a new checkpoint is made", () => {
-    const editor = undo(addSection(openedEditor()));
+    const editor = openedEditor().addSection().undo();
 
-    const speaking = setSectionSpeaker(editor, activeSections(editor)[0]!.id, "Bob");
+    const speaking = editor.setSectionSpeaker(editor.sections[0]!.id, "Bob");
 
-    expect(canRedo(speaking)).toBe(false);
-    expect(activeSections(redo(speaking))).toHaveLength(2);
+    expect(speaking.canRedo).toBe(false);
+    expect(speaking.redo().sections).toHaveLength(2);
   });
 
   it("leaves dirty state matching the restored content", () => {
     const opened = openedEditor();
-    const editor = setSectionText(opened, activeSections(opened)[0]!.id, "Typed");
+    const editor = opened.setSectionText(opened.sections[0]!.id, "Typed");
 
-    expect(hasUnsavedChanges(editor)).toBe(true);
-    expect(hasUnsavedChanges(undo(editor))).toBe(false);
+    expect(editor.hasUnsavedChanges).toBe(true);
+    expect(editor.undo().hasUnsavedChanges).toBe(false);
   });
 
   it("ignores an edit that changes nothing", () => {
     const editor = openedEditor();
-    const [first] = activeSections(editor);
+    const [first] = editor.sections;
 
-    expect(setSectionSpeaker(editor, first!.id, "Alice")).toBe(editor);
-    expect(setSectionText(editor, first!.id, "First narration")).toBe(editor);
-    expect(setSectionPrompt(editor, first!.id, undefined)).toBe(editor);
-    expect(canUndo(setSectionText(editor, first!.id, "First narration"))).toBe(false);
+    expect(editor.setSectionSpeaker(first!.id, "Alice")).toBe(editor);
+    expect(editor.setSectionText(first!.id, "First narration")).toBe(editor);
+    expect(editor.setSectionPrompt(first!.id, undefined)).toBe(editor);
+    expect(editor.setSectionText(first!.id, "First narration").canUndo).toBe(false);
   });
 
   it("returns the author to the section they were editing before the change", () => {
     const editor = openedEditor();
-    const second = activeSections(editor)[1]!;
+    const second = editor.sections[1]!;
 
-    const added = addSection(selectSection(editor, second.id));
+    const added = editor.selectSection(second.id).addSection();
 
-    expect(activeSectionId(undo(added))).toBe(second.id);
+    expect(added.undo().activeSectionId).toBe(second.id);
   });
 
   it("does nothing beyond either end of the history", () => {
     const editor = openedEditor();
 
-    expect(sectionTexts(undo(editor))).toEqual(sectionTexts(editor));
-    expect(sectionTexts(redo(editor))).toEqual(sectionTexts(editor));
+    expect(sectionTexts(editor.undo())).toEqual(sectionTexts(editor));
+    expect(sectionTexts(editor.redo())).toEqual(sectionTexts(editor));
   });
 });
 
 describe("inserting SSML", () => {
   it("wraps the selected text and reports the selection to restore", () => {
     const editor = openedEditor();
-    const id = activeSections(editor)[0]!.id;
+    const id = editor.sections[0]!.id;
 
-    const result = insertSsml(editor, {
+    const result = editor.insertSsml({
       startTag: '<emphasis level="strong">',
       endTag: "</emphasis>",
       selection: { start: 0, end: 5 },
@@ -593,7 +549,7 @@ describe("inserting SSML", () => {
   it("inserts a self-closing tag at the caret", () => {
     const editor = openedEditor();
 
-    const result = insertSsml(editor, {
+    const result = editor.insertSsml({
       startTag: '<break time="500ms"/>',
       selection: { start: 5, end: 5 },
     });
@@ -605,9 +561,9 @@ describe("inserting SSML", () => {
 
   it("applies to the active section", () => {
     const editor = openedEditor();
-    const second = activeSections(editor)[1]!;
+    const second = editor.sections[1]!;
 
-    const result = insertSsml(selectSection(editor, second.id), {
+    const result = editor.selectSection(second.id).insertSsml({
       startTag: "<p>",
       endTag: "</p>",
       selection: { start: 0, end: 6 },
@@ -619,23 +575,23 @@ describe("inserting SSML", () => {
 
   it("creates its own undo step after finalizing pending typing", () => {
     const opened = openedEditor();
-    const editor = setSectionText(opened, activeSections(opened)[0]!.id, "Typed");
+    const editor = opened.setSectionText(opened.sections[0]!.id, "Typed");
 
-    const { editor: tagged } = insertSsml(editor, {
+    const { editor: tagged } = editor.insertSsml({
       startTag: "<p>",
       endTag: "</p>",
       selection: { start: 0, end: 5 },
     });
 
     expect(sectionTexts(tagged)[0]).toBe("<p>Typed</p>");
-    expect(sectionTexts(undo(tagged))[0]).toBe("Typed");
-    expect(sectionTexts(undo(undo(tagged)))[0]).toBe("First narration");
+    expect(sectionTexts(tagged.undo())[0]).toBe("Typed");
+    expect(sectionTexts(tagged.undo().undo())[0]).toBe("First narration");
   });
 
   it("reports no selection intent when no section is active", () => {
-    const editor = openSlideNoteEditor([], speakers);
+    const editor = SlideNoteEditor.open([], speakers);
 
-    const result = insertSsml(editor, { startTag: "<p>", selection: { start: 0, end: 0 } });
+    const result = editor.insertSsml({ startTag: "<p>", selection: { start: 0, end: 0 } });
 
     expect(result.editor).toBe(editor);
     expect(result.selection).toBeUndefined();
@@ -645,184 +601,184 @@ describe("inserting SSML", () => {
 describe("reloading one slide", () => {
   it("replaces that slide's content and its saved baseline", () => {
     const opened = openedEditor();
-    const edited = setSectionText(opened, activeSections(opened)[0]!.id, "Typed");
+    const edited = opened.setSectionText(opened.sections[0]!.id, "Typed");
 
-    const reloaded = reloadSlide(edited, slide(1, "Reloaded narration"));
+    const reloaded = edited.reloadSlide(slide(1, "Reloaded narration"));
 
     expect(sectionTexts(reloaded)).toEqual(["Reloaded narration"]);
-    expect(isSlideDirty(reloaded, 1)).toBe(false);
+    expect(reloaded.isSlideDirty(1)).toBe(false);
   });
 
   it("leaves unsaved work on other slides alone", () => {
     const opened = openedEditor();
-    const otherSlide = selectSlide(opened, 1);
-    const edited = setSectionText(otherSlide, activeSections(otherSlide)[0]!.id, "Unsaved");
+    const otherSlide = opened.selectSlide(1);
+    const edited = otherSlide.setSectionText(otherSlide.sections[0]!.id, "Unsaved");
 
-    const reloaded = reloadSlide(edited, slide(1, "Reloaded narration"));
+    const reloaded = edited.reloadSlide(slide(1, "Reloaded narration"));
 
     expect(sectionTexts(reloaded)).toEqual(["Unsaved"]);
-    expect(isSlideDirty(reloaded, 2)).toBe(true);
-    expect(hasUnsavedChanges(reloaded)).toBe(true);
+    expect(reloaded.isSlideDirty(2)).toBe(true);
+    expect(reloaded.hasUnsavedChanges).toBe(true);
   });
 
   it("selects the first section of the reloaded slide when it is the active one", () => {
-    const editor = reloadSlide(openedEditor(), slide(1, "[Bob]\nOne\n---\nTwo"));
+    const editor = openedEditor().reloadSlide(slide(1, "[Bob]\nOne\n---\nTwo"));
 
-    expect(activeSectionId(editor)).toBe(activeSections(editor)[0]?.id);
+    expect(editor.activeSectionId).toBe(editor.sections[0]?.id);
     expect(sectionTexts(editor)).toEqual(["One", "Two"]);
   });
 
   it("ignores a slide the presentation does not contain", () => {
     const editor = openedEditor();
 
-    expect(reloadSlide(editor, slide(7, "Nowhere"))).toBe(editor);
+    expect(editor.reloadSlide(slide(7, "Nowhere"))).toBe(editor);
   });
 
   it("leaves no history able to restore the replaced content", () => {
     const opened = openedEditor();
-    const edited = setSectionText(opened, activeSections(opened)[0]!.id, "Typed");
+    const edited = opened.setSectionText(opened.sections[0]!.id, "Typed");
 
-    const reloaded = reloadSlide(edited, slide(1, "Reloaded narration"));
+    const reloaded = edited.reloadSlide(slide(1, "Reloaded narration"));
 
-    expect(sectionTexts(undo(reloaded))).toEqual(["Reloaded narration"]);
-    expect(sectionTexts(undo(undo(reloaded)))).toEqual(["Reloaded narration"]);
+    expect(sectionTexts(reloaded.undo())).toEqual(["Reloaded narration"]);
+    expect(sectionTexts(reloaded.undo().undo())).toEqual(["Reloaded narration"]);
   });
 
   it("keeps other slides undoable, finalizing pending typing into their history", () => {
     const opened = openedEditor();
-    const otherSlide = selectSlide(opened, 1);
-    const edited = setSectionText(otherSlide, activeSections(otherSlide)[0]!.id, "Unsaved");
+    const otherSlide = opened.selectSlide(1);
+    const edited = otherSlide.setSectionText(otherSlide.sections[0]!.id, "Unsaved");
 
-    const undone = undo(reloadSlide(edited, slide(1, "Reloaded narration")));
+    const undone = edited.reloadSlide(slide(1, "Reloaded narration")).undo();
 
     expect(sectionTexts(undone)).toEqual(["Other narration"]);
-    expect(sectionTexts(selectSlide(undone, 0))).toEqual(["Reloaded narration"]);
+    expect(sectionTexts(undone.selectSlide(0))).toEqual(["Reloaded narration"]);
   });
 });
 
 describe("reloading the presentation", () => {
   it("replaces every slide and saved baseline", () => {
     const opened = openedEditor();
-    const edited = setSectionText(opened, activeSections(opened)[0]!.id, "Typed");
+    const edited = opened.setSectionText(opened.sections[0]!.id, "Typed");
 
-    const reloaded = reloadPresentation(edited, [slide(1, "One"), slide(2, "Two")]);
+    const reloaded = edited.reloadPresentation([slide(1, "One"), slide(2, "Two")]);
 
     expect(sectionTexts(reloaded)).toEqual(["One"]);
-    expect(sectionTexts(selectSlide(reloaded, 1))).toEqual(["Two"]);
-    expect(hasUnsavedChanges(reloaded)).toBe(false);
-    expect(canUndo(reloaded)).toBe(false);
+    expect(sectionTexts(reloaded.selectSlide(1))).toEqual(["Two"]);
+    expect(reloaded.hasUnsavedChanges).toBe(false);
+    expect(reloaded.canUndo).toBe(false);
   });
 
   it("retains the active slide when the reload still contains it", () => {
-    const editor = selectSlide(openedEditor(), 1);
+    const editor = openedEditor().selectSlide(1);
 
-    const reloaded = reloadPresentation(editor, [slide(2, "Still here"), slide(3, "New")]);
+    const reloaded = editor.reloadPresentation([slide(2, "Still here"), slide(3, "New")]);
 
-    expect(activeSlide(reloaded)?.index).toBe(2);
+    expect(reloaded.activeSlide?.index).toBe(2);
     expect(sectionTexts(reloaded)).toEqual(["Still here"]);
   });
 
   it("selects the nearest valid slide when the reload removed the active one", () => {
-    const editor = selectSlide(openedEditor(), 1);
+    const editor = openedEditor().selectSlide(1);
 
-    const reloaded = reloadPresentation(editor, [slide(1, "Only slide")]);
+    const reloaded = editor.reloadPresentation([slide(1, "Only slide")]);
 
-    expect(activeSlide(reloaded)?.index).toBe(1);
-    expect(activeSectionId(reloaded)).toBe(activeSections(reloaded)[0]?.id);
+    expect(reloaded.activeSlide?.index).toBe(1);
+    expect(reloaded.activeSectionId).toBe(reloaded.sections[0]?.id);
   });
 
   it("survives a reload that contains no slides", () => {
-    const reloaded = reloadPresentation(openedEditor(), []);
+    const reloaded = openedEditor().reloadPresentation([]);
 
-    expect(activeSections(reloaded)).toEqual([]);
-    expect(activeSectionId(reloaded)).toBeUndefined();
-    expect(hasUnsavedChanges(reloaded)).toBe(false);
+    expect(reloaded.sections).toEqual([]);
+    expect(reloaded.activeSectionId).toBeUndefined();
+    expect(reloaded.hasUnsavedChanges).toBe(false);
   });
 });
 
 describe("reclassifying speaker tags", () => {
-  const unmapped = () => openSlideNoteEditor([slide(1, "[Alice]\nGreeting", [])], []);
+  const unmapped = () => SlideNoteEditor.open([slide(1, "[Alice]\nGreeting", [])], []);
 
   it("recognizes a bracketed line once its mapping name is added", () => {
-    const editor = reclassifySpeakerTags(unmapped(), ["Alice"]);
+    const editor = unmapped().reclassifySpeakerTags(["Alice"]);
 
-    expect(activeSections(editor)[0]).toMatchObject({ speaker: "Alice", text: "Greeting" });
+    expect(editor.sections[0]).toMatchObject({ speaker: "Alice", text: "Greeting" });
   });
 
   it("returns a bracketed line to narration text once its mapping name is removed", () => {
-    const editor = reclassifySpeakerTags(
-      openSlideNoteEditor([slide(1, "[Alice]\nGreeting", ["Alice"])], ["Alice"]),
-      [],
-    );
+    const editor = SlideNoteEditor.open(
+      [slide(1, "[Alice]\nGreeting", ["Alice"])],
+      ["Alice"],
+    ).reclassifySpeakerTags([]);
 
-    expect(activeSections(editor)[0]).toMatchObject({ speaker: "", text: "[Alice]\nGreeting" });
+    expect(editor.sections[0]).toMatchObject({ speaker: "", text: "[Alice]\nGreeting" });
   });
 
   it("keeps the section identities the view is rendering", () => {
     const opened = unmapped();
 
-    const editor = reclassifySpeakerTags(opened, ["Alice"]);
+    const editor = opened.reclassifySpeakerTags(["Alice"]);
 
-    expect(activeSections(editor)[0]?.id).toBe(activeSections(opened)[0]?.id);
-    expect(activeSectionId(editor)).toBe(activeSectionId(opened));
+    expect(editor.sections[0]?.id).toBe(opened.sections[0]?.id);
+    expect(editor.activeSectionId).toBe(opened.activeSectionId);
   });
 
   it("reinterprets saved baselines, so untouched content stays clean", () => {
-    const editor = reclassifySpeakerTags(unmapped(), ["Alice"]);
+    const editor = unmapped().reclassifySpeakerTags(["Alice"]);
 
-    expect(hasUnsavedChanges(editor)).toBe(false);
+    expect(editor.hasUnsavedChanges).toBe(false);
   });
 
   it("keeps edited content dirty across the reinterpretation", () => {
     const opened = unmapped();
-    const edited = setSectionText(opened, activeSections(opened)[0]!.id, "[Alice]\nEdited");
+    const edited = opened.setSectionText(opened.sections[0]!.id, "[Alice]\nEdited");
 
-    expect(hasUnsavedChanges(reclassifySpeakerTags(edited, ["Alice"]))).toBe(true);
+    expect(edited.reclassifySpeakerTags(["Alice"]).hasUnsavedChanges).toBe(true);
   });
 
   it("reinterprets undo history, so undo never restores an obsolete classification", () => {
     const opened = unmapped();
-    const added = addSection(opened);
+    const added = opened.addSection();
 
-    const editor = undo(reclassifySpeakerTags(added, ["Alice"]));
+    const editor = added.reclassifySpeakerTags(["Alice"]).undo();
 
-    expect(activeSections(editor)).toHaveLength(1);
-    expect(activeSections(editor)[0]).toMatchObject({ speaker: "Alice", text: "Greeting" });
+    expect(editor.sections).toHaveLength(1);
+    expect(editor.sections[0]).toMatchObject({ speaker: "Alice", text: "Greeting" });
   });
 
   it("finalizes pending typing before reinterpreting", () => {
     const opened = unmapped();
-    const typed = setSectionText(opened, activeSections(opened)[0]!.id, "[Alice]\nTyped");
+    const typed = opened.setSectionText(opened.sections[0]!.id, "[Alice]\nTyped");
 
-    const editor = undo(reclassifySpeakerTags(typed, ["Alice"]));
+    const editor = typed.reclassifySpeakerTags(["Alice"]).undo();
 
-    expect(activeSections(editor)[0]).toMatchObject({ speaker: "Alice", text: "Greeting" });
+    expect(editor.sections[0]).toMatchObject({ speaker: "Alice", text: "Greeting" });
   });
 
   it("does nothing when the mapping names have not changed", () => {
     const editor = openedEditor();
 
-    expect(reclassifySpeakerTags(editor, speakers)).toBe(editor);
-    expect(reclassifySpeakerTags(editor, ["Bob", "Alice"])).toBe(editor);
+    expect(editor.reclassifySpeakerTags(speakers)).toBe(editor);
+    expect(editor.reclassifySpeakerTags(["Bob", "Alice"])).toBe(editor);
   });
 
   it("mints identities only for the sections a reinterpreted divider splits off", () => {
-    const opened = openSlideNoteEditor([slide(1, "[Alice]\nGreeting\n---\nSecond", [])], []);
-    const [first, second] = activeSections(opened);
-    const split = setSectionText(opened, first!.id, "One\n---\nTwo");
+    const opened = SlideNoteEditor.open([slide(1, "[Alice]\nGreeting\n---\nSecond", [])], []);
+    const [first, second] = opened.sections;
+    const split = opened.setSectionText(first!.id, "One\n---\nTwo");
 
-    const editor = reclassifySpeakerTags(split, ["Alice"]);
+    const editor = split.reclassifySpeakerTags(["Alice"]);
 
     expect(sectionTexts(editor)).toEqual(["One", "Two", "Second"]);
-    expect(activeSections(editor)[0]?.id).toBe(first!.id);
-    expect(activeSections(editor)[2]?.id).toBe(second!.id);
+    expect(editor.sections[0]?.id).toBe(first!.id);
+    expect(editor.sections[2]?.id).toBe(second!.id);
   });
 
   it("leaves a slide whose sections were all deleted empty", () => {
     const opened = unmapped();
-    const emptied = deleteSection(opened, activeSections(opened)[0]!.id);
+    const emptied = opened.deleteSection(opened.sections[0]!.id);
 
-    expect(activeSections(reclassifySpeakerTags(emptied, ["Alice"]))).toEqual([]);
+    expect(emptied.reclassifySpeakerTags(["Alice"]).sections).toEqual([]);
   });
 });
 
@@ -830,7 +786,7 @@ describe("saving", () => {
   it("submits exactly the structured content the slides hold", () => {
     const editor = openedEditor();
 
-    const { snapshot } = beginSave(editor);
+    const { snapshot } = editor.beginSave();
 
     expect(snapshot.slides.map((slide) => slide.index)).toEqual([1, 2]);
     expect(snapshot.slides[0]?.sections).toEqual(formattableSections(editor));
@@ -839,22 +795,22 @@ describe("saving", () => {
   it("submits only the requested slides", () => {
     const editor = openedEditor();
 
-    expect(beginSave(editor, [2]).snapshot.slides.map((slide) => slide.index)).toEqual([2]);
-    expect(beginSave(editor, [7]).snapshot.slides).toEqual([]);
+    expect(editor.beginSave([2]).snapshot.slides.map((slide) => slide.index)).toEqual([2]);
+    expect(editor.beginSave([7]).snapshot.slides).toEqual([]);
   });
 
   it("finalizes pending typing, so the submitted content is its own undo step", () => {
     const editor = openedEditor();
-    const sectionId = activeSections(editor)[0]!.id;
+    const sectionId = editor.sections[0]!.id;
 
-    const submitted = beginSave(setSectionText(editor, sectionId, "Typed")).editor;
+    const submitted = editor.setSectionText(sectionId, "Typed").beginSave().editor;
 
-    expect(sectionTexts(undo(submitted))).toEqual(["First narration", "Second section"]);
-    expect(sectionTexts(redo(undo(submitted)))).toEqual(["Typed", "Second section"]);
+    expect(sectionTexts(submitted.undo())).toEqual(["First narration", "Second section"]);
+    expect(sectionTexts(submitted.undo().redo())).toEqual(["Typed", "Second section"]);
   });
 
   it("refuses to be altered after submission", () => {
-    const { snapshot } = beginSave(openedEditor());
+    const { snapshot } = openedEditor().beginSave();
 
     expect(() => {
       (snapshot.slides[0]!.sections as NarrationSection[])[0]!.text = "Tampered";
@@ -864,112 +820,115 @@ describe("saving", () => {
 
   it("leaves the live editor free to keep changing while the operation runs", () => {
     const editor = openedEditor();
-    const { editor: submitted } = beginSave(editor);
+    const { editor: submitted, snapshot } = editor.beginSave();
 
-    expect(Object.isFrozen(activeSections(submitted)[0]?.format)).toBe(false);
+    const newer = submitted.setSectionText(submitted.sections[0]!.id, "Written while saving");
+
+    expect(sectionTexts(newer)[0]).toBe("Written while saving");
+    expect(snapshot.slides[0]?.sections[0]?.text).toBe("First narration");
   });
 
   it("clears dirty state for the slides the save committed", () => {
     const editor = openedEditor();
-    const edited = setSectionText(editor, activeSections(editor)[0]!.id, "Rewritten");
-    const { editor: submitted, snapshot } = beginSave(edited);
+    const edited = editor.setSectionText(editor.sections[0]!.id, "Rewritten");
+    const { editor: submitted, snapshot } = edited.beginSave();
 
-    const saved = saveSucceeded(submitted, snapshot);
+    const saved = submitted.saveSucceeded(snapshot);
 
-    expect(isSlideDirty(saved, 1)).toBe(false);
-    expect(hasUnsavedChanges(saved)).toBe(false);
+    expect(saved.isSlideDirty(1)).toBe(false);
+    expect(saved.hasUnsavedChanges).toBe(false);
   });
 
   it("clears dirty state across every slide a whole-presentation save committed", () => {
     const editor = openedEditor();
-    const firstEdited = setSectionText(editor, activeSections(editor)[0]!.id, "Rewritten");
-    const onSecond = selectSlide(firstEdited, 1);
-    const bothEdited = setSectionText(onSecond, activeSections(onSecond)[0]!.id, "Also rewritten");
-    const { editor: submitted, snapshot } = beginSave(bothEdited);
+    const firstEdited = editor.setSectionText(editor.sections[0]!.id, "Rewritten");
+    const onSecond = firstEdited.selectSlide(1);
+    const bothEdited = onSecond.setSectionText(onSecond.sections[0]!.id, "Also rewritten");
+    const { editor: submitted, snapshot } = bothEdited.beginSave();
 
-    const saved = saveSucceeded(submitted, snapshot);
+    const saved = submitted.saveSucceeded(snapshot);
 
-    expect(isSlideDirty(saved, 1)).toBe(false);
-    expect(isSlideDirty(saved, 2)).toBe(false);
-    expect(hasUnsavedChanges(saved)).toBe(false);
+    expect(saved.isSlideDirty(1)).toBe(false);
+    expect(saved.isSlideDirty(2)).toBe(false);
+    expect(saved.hasUnsavedChanges).toBe(false);
   });
 
   it("leaves other slides dirty when one slide is saved", () => {
     const editor = openedEditor();
-    const firstEdited = setSectionText(editor, activeSections(editor)[0]!.id, "Rewritten");
-    const onSecond = selectSlide(firstEdited, 1);
-    const bothEdited = setSectionText(onSecond, activeSections(onSecond)[0]!.id, "Also rewritten");
-    const { editor: submitted, snapshot } = beginSave(bothEdited, [1]);
+    const firstEdited = editor.setSectionText(editor.sections[0]!.id, "Rewritten");
+    const onSecond = firstEdited.selectSlide(1);
+    const bothEdited = onSecond.setSectionText(onSecond.sections[0]!.id, "Also rewritten");
+    const { editor: submitted, snapshot } = bothEdited.beginSave([1]);
 
-    const saved = saveSucceeded(submitted, snapshot);
+    const saved = submitted.saveSucceeded(snapshot);
 
-    expect(isSlideDirty(saved, 1)).toBe(false);
-    expect(isSlideDirty(saved, 2)).toBe(true);
-    expect(hasUnsavedChanges(saved)).toBe(true);
+    expect(saved.isSlideDirty(1)).toBe(false);
+    expect(saved.isSlideDirty(2)).toBe(true);
+    expect(saved.hasUnsavedChanges).toBe(true);
   });
 
   it("keeps edits made after submission dirty once the older save succeeds", () => {
     const editor = openedEditor();
-    const sectionId = activeSections(editor)[0]!.id;
-    const { editor: submitted, snapshot } = beginSave(setSectionText(editor, sectionId, "Sent"));
-    const newer = setSectionText(submitted, sectionId, "Written while saving");
+    const sectionId = editor.sections[0]!.id;
+    const { editor: submitted, snapshot } = editor.setSectionText(sectionId, "Sent").beginSave();
+    const newer = submitted.setSectionText(sectionId, "Written while saving");
 
-    const saved = saveSucceeded(newer, snapshot);
+    const saved = newer.saveSucceeded(snapshot);
 
     expect(sectionTexts(saved)).toEqual(["Written while saving", "Second section"]);
-    expect(isSlideDirty(saved, 1)).toBe(true);
+    expect(saved.isSlideDirty(1)).toBe(true);
   });
 
   it("clears dirty state again when the newer edit is restored to the saved content", () => {
     const editor = openedEditor();
-    const sectionId = activeSections(editor)[0]!.id;
-    const { editor: submitted, snapshot } = beginSave(setSectionText(editor, sectionId, "Sent"));
-    const newer = setSectionText(submitted, sectionId, "Written while saving");
+    const sectionId = editor.sections[0]!.id;
+    const { editor: submitted, snapshot } = editor.setSectionText(sectionId, "Sent").beginSave();
+    const newer = submitted.setSectionText(sectionId, "Written while saving");
 
-    const restored = setSectionText(saveSucceeded(newer, snapshot), sectionId, "Sent");
+    const restored = newer.saveSucceeded(snapshot).setSectionText(sectionId, "Sent");
 
-    expect(isSlideDirty(restored, 1)).toBe(false);
-    expect(hasUnsavedChanges(restored)).toBe(false);
+    expect(restored.isSlideDirty(1)).toBe(false);
+    expect(restored.hasUnsavedChanges).toBe(false);
   });
 
   it("keeps the submitted content dirty while a save has not succeeded", () => {
     const editor = openedEditor();
-    const edited = setSectionText(editor, activeSections(editor)[0]!.id, "Rewritten");
+    const edited = editor.setSectionText(editor.sections[0]!.id, "Rewritten");
 
-    const failed = beginSave(edited).editor;
+    const failed = edited.beginSave().editor;
 
-    expect(isSlideDirty(failed, 1)).toBe(true);
-    expect(hasUnsavedChanges(failed)).toBe(true);
+    expect(failed.isSlideDirty(1)).toBe(true);
+    expect(failed.hasUnsavedChanges).toBe(true);
   });
 
   it("commits the retry of a failed save", () => {
     const editor = openedEditor();
-    const edited = setSectionText(editor, activeSections(editor)[0]!.id, "Rewritten");
-    const failed = beginSave(edited).editor;
-    const retry = beginSave(failed);
+    const edited = editor.setSectionText(editor.sections[0]!.id, "Rewritten");
+    const failed = edited.beginSave().editor;
+    const retry = failed.beginSave();
 
-    expect(hasUnsavedChanges(saveSucceeded(retry.editor, retry.snapshot))).toBe(false);
+    expect(retry.editor.saveSucceeded(retry.snapshot).hasUnsavedChanges).toBe(false);
   });
 
   it("keeps the reloaded content of a slide PowerPoint replaced while the save ran", () => {
     const editor = openedEditor();
-    const edited = setSectionText(editor, activeSections(editor)[0]!.id, "Submitted");
-    const { editor: submitted, snapshot } = beginSave(edited, [1]);
-    const reloaded = reloadSlide(submitted, slide(1, "PowerPoint replaced this"));
+    const edited = editor.setSectionText(editor.sections[0]!.id, "Submitted");
+    const { editor: submitted, snapshot } = edited.beginSave([1]);
+    const reloaded = submitted.reloadSlide(slide(1, "PowerPoint replaced this"));
 
-    const saved = saveSucceeded(reloaded, snapshot);
+    const saved = reloaded.saveSucceeded(snapshot);
 
     expect(sectionTexts(saved)).toEqual(["PowerPoint replaced this"]);
-    expect(isSlideDirty(saved, 1)).toBe(false);
+    expect(saved.isSlideDirty(1)).toBe(false);
   });
 
   it("ignores a slide the presentation no longer contains", () => {
     const editor = openedEditor();
-    const { snapshot } = beginSave(editor, [2]);
+    const { snapshot } = editor.beginSave([2]);
 
-    const saved = saveSucceeded(reloadPresentation(editor, [slide(1, "Only slide")]), snapshot);
+    const saved = editor.reloadPresentation([slide(1, "Only slide")]).saveSucceeded(snapshot);
 
     expect(saved.slides.map((editorSlide) => editorSlide.index)).toEqual([1]);
-    expect(hasUnsavedChanges(saved)).toBe(false);
+    expect(saved.hasUnsavedChanges).toBe(false);
   });
 });
