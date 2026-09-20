@@ -4,6 +4,10 @@ Power Narrator prepares spoken narration from PowerPoint slide notes for preview
 
 ## Language
 
+**Slide-note section**:
+A speaker-attributable unit of a slide's presenter notes: its narration text, optionally preceded by a speaker tag and an inline prompt. Sections are how the application works with notes everywhere inside the PowerPoint seam; note syntax is a persistence representation, parsed on load and formatted only on write-back.
+_Avoid_: Note block, narration block, note segment
+
 **Narration preparation**:
 The conversion of slide-note sections and speaker mappings into synthesized audio suitable for preview or PowerPoint insertion.
 _Avoid_: Speech pipeline, audio generation flow
@@ -54,3 +58,11 @@ The speaker prompt configured on a speaker mapping, applied to every section tha
 **Inline prompt**:
 The speaker prompt written into a single slide-note section, applied only to that section and never inherited by later sections. It is appended to the preset prompt rather than replacing it.
 _Avoid_: Section prompt, override prompt
+
+**Slide number**:
+The 1-based ordinal identifying a slide within its presentation, and the only way persistence, playback, and audio insertion address one. A slide's place in a loaded array is a separate thing: 0-based, called an index, and never sent across the PowerPoint seam.
+_Avoid_: Slide index, slide position, slide id
+
+**Section identity**:
+The token the editor mints for each slide-note section so that per-section view state and selection follow their own section through insertions and deletions above it. It lives only for one renderer editing session — never written into PowerPoint, minted afresh on reload — and does not determine narration audio position, which still derives from current section order.
+_Avoid_: Stable section index, section key, persistent id
