@@ -130,7 +130,7 @@ export function NotesSectionList({
                 </Group>
                 <Divider />
                 <SectionPreviewButtons
-                  id={`${slideIndex}-${section.id}`}
+                  id={section.id}
                   slideIndex={slideIndex}
                   sectionIndex={index}
                   sections={sections}

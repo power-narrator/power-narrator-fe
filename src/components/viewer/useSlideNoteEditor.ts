@@ -79,17 +79,22 @@ export function useSlideNoteEditor(
   return {
     slides: editor.slides,
     activeSlidePosition: editor.activeSlidePosition,
-    activeSlide: activeSlide(editor),
+    activeSlideSrc: activeSlide(editor)?.src ?? "",
+    /** The active slide's PowerPoint number, which persistence and playback address it by. */
+    activeSlideNumber: activeSlide(editor)?.index ?? editor.activeSlidePosition + 1,
     sections: activeSections(editor),
     activeSectionId: editor.activeSectionId,
     canUndo: canUndo(editor),
     canRedo: canRedo(editor),
-    /** The focus and selection an edit asked the view to restore once rendered. */
     selectionIntent,
     selectionRestored,
 
-    wouldDiscard: (slideIndex?: number) =>
-      slideIndex === undefined ? dirty : isSlideDirty(editor, slideIndex),
+    // Read from the last command's editor, not the render's, so a caller that
+    // finalizes pending typing before asking is answered about what it just left.
+    wouldDiscard: (slideNumber?: number) =>
+      slideNumber === undefined
+        ? hasUnsavedChanges(latest.current)
+        : isSlideDirty(latest.current, slideNumber),
 
     selectSlide: (position: number) => command((current) => selectSlide(current, position)),
     selectSection: (id: SectionId) => command((current) => selectSection(current, id)),

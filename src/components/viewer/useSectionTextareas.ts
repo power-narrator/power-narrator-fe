@@ -34,15 +34,10 @@ export function useSectionTextareas() {
       : textarea.value.slice(textarea.selectionStart, textarea.selectionEnd);
   }, []);
 
-  const restore = useCallback((intent: SelectionIntent): boolean => {
+  const restore = useCallback((intent: SelectionIntent) => {
     const textarea = textareas.current.get(intent.sectionId);
-    if (!textarea) {
-      return false;
-    }
-
-    textarea.focus();
-    textarea.setSelectionRange(intent.start, intent.end);
-    return true;
+    textarea?.focus();
+    textarea?.setSelectionRange(intent.start, intent.end);
   }, []);
 
   return useMemo(

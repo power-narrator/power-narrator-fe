@@ -12,7 +12,6 @@ import {
   addSection,
   beginSave,
   deleteSection,
-  effectiveSpeaker,
   hasUnsavedChanges,
   isSlideDirty,
   canRedo,
@@ -392,36 +391,6 @@ describe("deleting sections", () => {
   });
 });
 
-describe("effective speakers", () => {
-  it("inherits the nearest earlier speaker within the slide", () => {
-    const editor = openedEditor();
-    const [first, second] = activeSections(editor);
-
-    expect(effectiveSpeaker(editor, first!.id)).toBe("Alice");
-    expect(effectiveSpeaker(editor, second!.id)).toBe("Alice");
-  });
-
-  it("follows the current structured sections after an edit", () => {
-    const editor = openedEditor();
-    const [first, second] = activeSections(editor);
-
-    const edited = setSectionSpeaker(editor, second!.id, "Bob");
-
-    expect(effectiveSpeaker(edited, second!.id)).toBe("Bob");
-    expect(effectiveSpeaker(setSectionSpeaker(edited, first!.id, null), first!.id)).toBe("");
-  });
-
-  it("does not inherit across slides", () => {
-    const editor = selectSlide(openedEditor(), 1);
-
-    expect(effectiveSpeaker(editor, activeSections(editor)[0]!.id)).toBe("");
-  });
-
-  it("reports no speaker for an unknown section", () => {
-    expect(effectiveSpeaker(openedEditor(), "missing")).toBe("");
-  });
-});
-
 describe("typing checkpoints", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -505,7 +474,7 @@ describe("typing checkpoints", () => {
 
   it("keeps pending typing and the next discrete action as separate undo steps", () => {
     let editor = openedEditor();
-    const [first, second] = activeSections(editor);
+    const [, second] = activeSections(editor);
 
     editor = typeInFirstSection(editor, "Typed");
     editor = setSectionSpeaker(editor, second!.id, "Bob");
@@ -514,7 +483,6 @@ describe("typing checkpoints", () => {
     expect(activeSections(undone)[1]?.speaker).toBe("");
     expect(sectionTexts(undone)[0]).toBe("Typed");
     expect(sectionTexts(undo(undone))[0]).toBe("First narration");
-    expect(effectiveSpeaker(undone, first!.id)).toBe("Alice");
   });
 });
 

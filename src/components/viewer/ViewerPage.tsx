@@ -24,6 +24,13 @@ interface ViewerPageProps {
   onOpenSettings: () => void;
 }
 
+type RemoveAudioKey = "removeAudio" | "removeAllAudio";
+
+const REMOVE_AUDIO_STATUS: Record<RemoveAudioKey, string> = {
+  removeAudio: "Removing audio...",
+  removeAllAudio: "Removing all audio...",
+};
+
 function alertError(label: string, error: unknown) {
   const message = getErrorMessage(error);
   console.error(`${label}:`, error);
@@ -56,7 +63,7 @@ export function ViewerPage({
 
   const busy = operation.busy;
   const slides = editor.slides;
-  const activeSlideNumber = editor.activeSlide?.index ?? editor.activeSlidePosition + 1;
+  const activeSlideNumber = editor.activeSlideNumber;
 
   const headerActionStates: Record<ViewerHeaderActionKey, ActionButtonState> = {
     reloadAllSlides: operation.actionState("reloadAllSlides"),
@@ -277,10 +284,10 @@ export function ViewerPage({
     );
   };
 
-  const runRemoveAudio = (owner: "removeAudio" | "removeAllAudio", slideIndices: number[]) =>
+  const runRemoveAudio = (owner: RemoveAudioKey, slideIndices: number[]) =>
     operation.run(
       owner,
-      owner === "removeAudio" ? "Removing audio..." : "Removing all audio...",
+      REMOVE_AUDIO_STATUS[owner],
       async (command) => {
         const result = await electronAPI.removeAudio({ filePath, slideIndices });
         if (!result.success) {
@@ -336,7 +343,7 @@ export function ViewerPage({
           <Split orientation="horizontal" h="100%">
             <Split.Pane initialHeight="30%">
               <SlidePreviewPane
-                activeSlideSrc={editor.activeSlide?.src ?? ""}
+                activeSlideSrc={editor.activeSlideSrc}
                 slideNumber={activeSlideNumber}
               />
             </Split.Pane>
