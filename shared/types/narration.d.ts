@@ -1,5 +1,4 @@
 import type { NarrationSection } from "../narration/NarrationSections.js";
-import type { SlideNotePayload } from "../narration/slideNotePayload.js";
 
 export type PreviewSpeakerChoice =
   | { kind: "effective" }
@@ -20,18 +19,19 @@ export interface NarrationPreviewResult {
   mediaType: string;
 }
 
-export type NarratedSlideSaveRequest = SlideNotePayload & {
-  filePath: string;
+export interface NarratedSlideInput {
   slideIndex: number;
-};
+  /** The author's structured sections, in the order narration positions follow. */
+  sections: readonly NarrationSection[];
+}
 
-export type NarratedSlideInput = SlideNotePayload & {
-  slideIndex: number;
+export type NarratedSlideSaveRequest = NarratedSlideInput & {
+  filePath: string;
 };
 
 export interface NarratedPresentationSaveRequest {
   filePath: string;
-  slides: NarratedSlideInput[];
+  slides: readonly NarratedSlideInput[];
 }
 
 export interface NarrationPreparationProgress {

@@ -6,10 +6,8 @@ import type {
 } from "../../shared/types/narration.js";
 import type { SlideAudioEntry } from "../platform/types.js";
 import { getEffectiveSpeaker } from "../../shared/narration/NarrationSections.js";
-import { toNarrationSections } from "../../shared/narration/slideNotePayload.js";
 import {
   DEFAULT_SPEAKER_VALUE,
-  getSpeakerNames,
   toSynthesisSpeaker,
   type SynthesisSpeaker,
 } from "../../shared/narration/speaker.js";
@@ -75,26 +73,26 @@ export class NarrationPreparation {
   }
 
   async prepareBatch(
-    slides: NarratedSlideInput[],
+    slides: readonly NarratedSlideInput[],
     onProgress?: (progress: NarrationPreparationProgress) => void,
   ): Promise<SlideAudioEntry[]> {
     const mappings = await this.mappingSource.getSpeakerMappings();
-    const prepared = slides.flatMap((slide) => {
-      const sections = toNarrationSections(slide, getSpeakerNames(mappings));
-
-      return sections.flatMap((section, sectionIndex) => {
+    const prepared = slides.flatMap((slide) =>
+      // Narration positions follow the submitted section order; mappings resolve
+      // voices and prompts here, never which bracketed lines are speaker tags.
+      slide.sections.flatMap((section, sectionIndex) => {
         const text = section.text.trim();
         if (!text) {
           return [];
         }
 
-        const speaker = getEffectiveSpeaker(sections, sectionIndex);
+        const speaker = getEffectiveSpeaker(slide.sections, sectionIndex);
 
         return [
           this.planSection(mappings, slide.slideIndex, sectionIndex, text, speaker, section.prompt),
         ];
-      });
-    });
+      }),
+    );
 
     const synthesized = await this.synthesizeSections(prepared, onProgress);
 

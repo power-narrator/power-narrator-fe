@@ -13,7 +13,6 @@ import {
   formatNarrationSections,
   parseNarrationSections,
 } from "../shared/narration/NarrationSections.js";
-import { toNotesText } from "../shared/narration/slideNotePayload.js";
 
 type PrepareNarrationPreview = (
   payload: PreviewNarrationRequest,
@@ -88,7 +87,7 @@ it("stops delivering progress after a narrated presentation save settles", async
   const saving = electron.state.exposedApi!.saveNarratedPresentation(
     {
       filePath: "/slides/talk.pptx",
-      slides: [{ slideIndex: 1, notes: "Narrate this" }],
+      slides: [{ slideIndex: 1, sections: [{ speaker: "", text: "Narrate this" }] }],
     },
     (progress) => observedProgress.push(progress),
   );
@@ -145,5 +144,5 @@ it("carries structured slide-note sections across the narrated presentation save
 
   const [, payload] = electron.ipcRenderer.invoke.mock.lastCall!;
   const delivered = structuredClone(payload) as NarratedPresentationSaveRequest;
-  expect(toNotesText(delivered.slides[0]!)).toBe(notes);
+  expect(formatNarrationSections(delivered.slides[0]!.sections)).toBe(notes);
 });
