@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatNarrationSections } from "../../../shared/narration/NarrationSections";
 import type { Slide } from "../../types/electron";
 import {
@@ -10,12 +10,18 @@ import {
   effectiveSpeaker,
   hasUnsavedChanges,
   isSlideDirty,
+  canRedo,
+  canUndo,
+  finalizePendingTyping,
+  insertSsml,
   openSlideNoteEditor,
+  redo,
   selectSection,
   selectSlide,
   setSectionPrompt,
   setSectionSpeaker,
   setSectionText,
+  undo,
   type SlideNoteEditor,
 } from "./SlideNoteEditor";
 
@@ -399,5 +405,227 @@ describe("effective speakers", () => {
 
   it("reports no speaker for an unknown section", () => {
     expect(effectiveSpeaker(openedEditor(), "missing")).toBe("");
+  });
+});
+
+describe("typing checkpoints", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const typeInFirstSection = (editor: SlideNoteEditor, text: string) =>
+    setSectionText(editor, activeSections(editor)[0]!.id, text);
+
+  it("groups typing into one undo step until the author pauses", () => {
+    let editor = openedEditor();
+
+    editor = typeInFirstSection(editor, "F");
+    vi.advanceTimersByTime(100);
+    editor = typeInFirstSection(editor, "Fi");
+    vi.advanceTimersByTime(100);
+    editor = typeInFirstSection(editor, "Fin");
+
+    expect(sectionTexts(undo(editor))).toEqual(["First narration", "Second section"]);
+  });
+
+  it("starts a new undo step after an 800 ms pause", () => {
+    let editor = openedEditor();
+
+    editor = typeInFirstSection(editor, "Before pause");
+    vi.advanceTimersByTime(800);
+    editor = typeInFirstSection(editor, "After pause");
+
+    expect(sectionTexts(undo(editor))[0]).toBe("Before pause");
+    expect(sectionTexts(undo(undo(editor)))[0]).toBe("First narration");
+  });
+
+  it("groups inline-prompt typing the same way", () => {
+    let editor = openedEditor();
+    const id = activeSections(editor)[0]!.id;
+
+    editor = setSectionPrompt(editor, id, "Cheer");
+    vi.advanceTimersByTime(100);
+    editor = setSectionPrompt(editor, id, "Cheerful");
+
+    expect(activeSections(undo(editor))[0]?.prompt).toBeUndefined();
+  });
+
+  it("finalizes pending typing before navigating to another slide", () => {
+    let editor = openedEditor();
+
+    editor = typeInFirstSection(editor, "Typed");
+    editor = selectSlide(selectSlide(editor, 1), 0);
+
+    expect(sectionTexts(editor)[0]).toBe("Typed");
+    expect(sectionTexts(undo(editor))[0]).toBe("First narration");
+  });
+
+  it("finalizes pending typing on request, for view actions the editor does not own", () => {
+    let editor = openedEditor();
+
+    editor = typeInFirstSection(editor, "Typed");
+    editor = finalizePendingTyping(editor);
+
+    expect(canRedo(editor)).toBe(false);
+    expect(sectionTexts(undo(editor))[0]).toBe("First narration");
+    expect(sectionTexts(redo(undo(editor)))[0]).toBe("Typed");
+  });
+
+  it("keeps pending typing and the next discrete action as separate undo steps", () => {
+    let editor = openedEditor();
+    const [first, second] = activeSections(editor);
+
+    editor = typeInFirstSection(editor, "Typed");
+    editor = setSectionSpeaker(editor, second!.id, "Bob");
+
+    const undone = undo(editor);
+    expect(activeSections(undone)[1]?.speaker).toBe("");
+    expect(sectionTexts(undone)[0]).toBe("Typed");
+    expect(sectionTexts(undo(undone))[0]).toBe("First narration");
+    expect(effectiveSpeaker(undone, first!.id)).toBe("Alice");
+  });
+});
+
+describe("undo and redo", () => {
+  it("reports what history offers", () => {
+    const editor = openedEditor();
+
+    expect(canUndo(editor)).toBe(false);
+    expect(canRedo(editor)).toBe(false);
+
+    const added = addSection(editor);
+    expect(canUndo(added)).toBe(true);
+    expect(canRedo(added)).toBe(false);
+    expect(canRedo(undo(added))).toBe(true);
+    expect(canUndo(undo(added))).toBe(false);
+  });
+
+  it("restores structured sections without reparsing notes", () => {
+    const editor = openedEditor();
+    const formatted = formattableSections(editor);
+
+    const speaking = setSectionSpeaker(editor, activeSections(editor)[1]!.id, "Bob");
+
+    expect(formattableSections(undo(speaking))).toEqual(formatted);
+    expect(activeSections(redo(undo(speaking)))[1]?.speaker).toBe("Bob");
+  });
+
+  it("checkpoints an added section immediately and clears its stale selection", () => {
+    const editor = addSection(openedEditor());
+    const addedId = activeSectionId(editor);
+
+    const undone = undo(editor);
+
+    expect(activeSections(undone)).toHaveLength(2);
+    expect(activeSectionId(undone)).not.toBe(addedId);
+    expect(activeSectionId(undone)).toBe(activeSections(undone)[0]?.id);
+  });
+
+  it("checkpoints a deleted section immediately", () => {
+    const editor = openedEditor();
+
+    const deleted = deleteSection(editor, activeSections(editor)[0]!.id);
+
+    expect(sectionTexts(undo(deleted))).toEqual(["First narration", "Second section"]);
+  });
+
+  it("drops the redo tail once a new checkpoint is made", () => {
+    const editor = undo(addSection(openedEditor()));
+
+    const speaking = setSectionSpeaker(editor, activeSections(editor)[0]!.id, "Bob");
+
+    expect(canRedo(speaking)).toBe(false);
+    expect(activeSections(redo(speaking))).toHaveLength(2);
+  });
+
+  it("leaves dirty state matching the restored content", () => {
+    const editor = setSectionText(openedEditor(), activeSections(openedEditor())[0]!.id, "Typed");
+
+    expect(hasUnsavedChanges(editor)).toBe(true);
+    expect(hasUnsavedChanges(undo(editor))).toBe(false);
+  });
+
+  it("does nothing beyond either end of the history", () => {
+    const editor = openedEditor();
+
+    expect(sectionTexts(undo(editor))).toEqual(sectionTexts(editor));
+    expect(sectionTexts(redo(editor))).toEqual(sectionTexts(editor));
+  });
+});
+
+describe("inserting SSML", () => {
+  it("wraps the selected text and reports the selection to restore", () => {
+    const editor = openedEditor();
+    const id = activeSections(editor)[0]!.id;
+
+    const result = insertSsml(editor, {
+      startTag: '<emphasis level="strong">',
+      endTag: "</emphasis>",
+      selection: { start: 0, end: 5 },
+    });
+
+    expect(sectionTexts(result.editor)[0]).toBe(
+      '<emphasis level="strong">First</emphasis> narration',
+    );
+    expect(result.selection).toEqual({ sectionId: id, start: 25, end: 30 });
+  });
+
+  it("inserts a self-closing tag at the caret", () => {
+    const editor = openedEditor();
+
+    const result = insertSsml(editor, {
+      startTag: '<break time="500ms"/>',
+      selection: { start: 5, end: 5 },
+    });
+
+    expect(sectionTexts(result.editor)[0]).toBe('First<break time="500ms"/> narration');
+    expect(result.selection?.start).toBe(26);
+    expect(result.selection?.end).toBe(26);
+  });
+
+  it("applies to the active section", () => {
+    const editor = openedEditor();
+    const second = activeSections(editor)[1]!;
+
+    const result = insertSsml(selectSection(editor, second.id), {
+      startTag: "<p>",
+      endTag: "</p>",
+      selection: { start: 0, end: 6 },
+    });
+
+    expect(sectionTexts(result.editor)).toEqual(["First narration", "<p>Second</p> section"]);
+    expect(result.selection?.sectionId).toBe(second.id);
+  });
+
+  it("creates its own undo step after finalizing pending typing", () => {
+    vi.useFakeTimers();
+    try {
+      const editor = setSectionText(openedEditor(), activeSections(openedEditor())[0]!.id, "Typed");
+
+      const { editor: tagged } = insertSsml(editor, {
+        startTag: "<p>",
+        endTag: "</p>",
+        selection: { start: 0, end: 5 },
+      });
+
+      expect(sectionTexts(tagged)[0]).toBe("<p>Typed</p>");
+      expect(sectionTexts(undo(tagged))[0]).toBe("Typed");
+      expect(sectionTexts(undo(undo(tagged)))[0]).toBe("First narration");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports no selection intent when no section is active", () => {
+    const editor = openSlideNoteEditor([], speakers);
+
+    const result = insertSsml(editor, { startTag: "<p>", selection: { start: 0, end: 0 } });
+
+    expect(result.editor).toBe(editor);
+    expect(result.selection).toBeUndefined();
   });
 });
