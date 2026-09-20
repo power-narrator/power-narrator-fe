@@ -1,31 +1,30 @@
+import type { SlideNotePayload } from "../narration/slideNotePayload.js";
+
 export type PreviewSpeakerChoice =
   | { kind: "effective" }
   | { kind: "default" }
   | { kind: "override"; speaker: string };
 
-export interface PreviewNarrationRequest {
+export type PreviewNarrationRequest = SlideNotePayload & {
   slideIndex: number;
   sectionIndex: number;
-  notes: string;
   text: string;
   speakerChoice: PreviewSpeakerChoice;
-}
+};
 
 export interface NarrationPreviewResult {
   audio: Uint8Array;
   mediaType: string;
 }
 
-export interface NarratedSlideSaveRequest {
+export type NarratedSlideSaveRequest = SlideNotePayload & {
   filePath: string;
   slideIndex: number;
-  notes: string;
-}
+};
 
-export interface NarratedSlideInput {
+export type NarratedSlideInput = SlideNotePayload & {
   slideIndex: number;
-  notes: string;
-}
+};
 
 export interface NarratedPresentationSaveRequest {
   filePath: string;

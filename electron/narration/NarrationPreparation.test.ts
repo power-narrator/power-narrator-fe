@@ -435,4 +435,43 @@ describe("NarrationPreparation inline prompts", () => {
 
     expect(generateSpeech).toHaveBeenCalledWith("First", narratorVoice, "almost whispering");
   });
+
+  it("previews structured sections without parsing note text", async () => {
+    const { preparation, generateSpeech } = createPreparation();
+
+    await expect(
+      preparation.preparePreview({
+        slideIndex: 2,
+        sectionIndex: 1,
+        sections: [
+          { speaker: "Narrator", text: "First" },
+          { speaker: "", prompt: "wearily", text: "Second" },
+        ],
+        text: "Second",
+        speakerChoice: { kind: "effective" },
+      }),
+    ).resolves.toEqual({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
+    expect(generateSpeech).toHaveBeenCalledWith("Second", narratorVoice, "wearily");
+  });
+
+  it("prepares a batch from structured sections without parsing note text", async () => {
+    const { preparation, generateSpeech } = createPreparation();
+
+    await expect(
+      preparation.prepareBatch([
+        {
+          slideIndex: 3,
+          sections: [
+            { speaker: "Narrator", text: "First" },
+            { speaker: "", text: "   " },
+            { speaker: "", text: "Third" },
+          ],
+        },
+      ]),
+    ).resolves.toEqual([
+      { index: 3, sectionIndex: 0, audioData: new Uint8Array([1, 2, 3]) },
+      { index: 3, sectionIndex: 2, audioData: new Uint8Array([1, 2, 3]) },
+    ]);
+    expect(generateSpeech.mock.calls.map(([text]) => text)).toEqual(["First", "Third"]);
+  });
 });

@@ -6,6 +6,7 @@ import type { BasicPptResult, SlideAudioEntry, SlideNotesEntry } from "../platfo
 import { TtsManager } from "../tts/TtsManager.js";
 import type { SpeakerMapping, SynthesizedSpeech, TtsProvider, Voice } from "../tts/TtsProvider.js";
 import type { NarrationPreparationProgress } from "../../shared/types/narration.js";
+import { parseNarrationSections } from "../../shared/narration/NarrationSections.js";
 import { NarrationPreparation } from "./NarrationPreparation.js";
 import { NarratedPresentationSaver } from "./NarratedPresentationSaver.js";
 
@@ -393,5 +394,34 @@ describe("NarratedPresentationSaver", () => {
 
     expect(powerpoint.committedNotes).toEqual(new Map([[7, "[Narrator]\nOnly slide"]]));
     expect(powerpoint.insertedAudio).toEqual(new Map([[7, new Map([[0, new Uint8Array([1])]])]]));
+  });
+
+  it("writes untouched structured notes back byte for byte", async () => {
+    const { powerpoint, saver } = createSaver();
+    const notes = "  [ Narrator ]  \n[p: almost whispering]\nFirst\n\n-----\nSecond\n";
+
+    await expect(
+      saver.savePresentation({
+        filePath: "/slides/talk.pptx",
+        slides: [{ slideIndex: 2, sections: parseNarrationSections(notes, ["Narrator"]) }],
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(powerpoint.committedNotes).toEqual(new Map([[2, notes]]));
+  });
+
+  it("saves one slide from structured sections", async () => {
+    const { powerpoint, saver } = createSaver();
+
+    await expect(
+      saver.saveSlide({
+        filePath: "/slides/talk.pptx",
+        slideIndex: 1,
+        sections: [{ speaker: "Narrator", text: "Only" }],
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(powerpoint.committedNotes).toEqual(new Map([[1, "[Narrator]\nOnly"]]));
+    expect(powerpoint.insertedAudio).toEqual(new Map([[1, new Map([[0, new Uint8Array([1])]])]]));
   });
 });
