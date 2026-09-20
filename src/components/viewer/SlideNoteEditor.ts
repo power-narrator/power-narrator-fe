@@ -19,7 +19,32 @@ export interface SlideNoteEditor {
   activeSectionId: SectionId | undefined;
   /** Identities a later section must not reuse, even after deletions. */
   mintedSectionCount: number;
+  history: readonly (readonly EditorSlide[])[];
+  historyIndex: number;
+  /** When the author last typed, while that typing is not yet a checkpoint. */
+  pendingTypingAt: number | undefined;
 }
+
+/** Where the view should place focus and selection once the edit has rendered. */
+export interface SelectionIntent {
+  sectionId: SectionId;
+  start: number;
+  end: number;
+}
+
+export interface SsmlInsertion {
+  startTag: string;
+  /** Omitted for a self-closing tag, which is inserted at the caret. */
+  endTag?: string;
+  selection: { start: number; end: number };
+}
+
+export interface SsmlResult {
+  editor: SlideNoteEditor;
+  selection: SelectionIntent | undefined;
+}
+
+const TYPING_CHECKPOINT_PAUSE_MS = 800;
 
 const sectionId = (number: number): SectionId => `section-${number}`;
 
@@ -49,6 +74,9 @@ export function openSlideNoteEditor(
     activeSlidePosition: 0,
     activeSectionId: editorSlides[0]?.sections[0]?.id,
     mintedSectionCount,
+    history: [editorSlides],
+    historyIndex: 0,
+    pendingTypingAt: undefined,
   };
 }
 
@@ -61,7 +89,8 @@ export const activeSections = (editor: SlideNoteEditor): readonly EditorSection[
 export const activeSectionId = (editor: SlideNoteEditor): SectionId | undefined =>
   editor.activeSectionId;
 
-export function selectSlide(editor: SlideNoteEditor, position: number): SlideNoteEditor {
+export function selectSlide(source: SlideNoteEditor, position: number): SlideNoteEditor {
+  const editor = finalizePendingTyping(source);
   const activeSlidePosition = Math.min(
     Math.max(position, 0),
     Math.max(editor.slides.length - 1, 0),
@@ -82,6 +111,48 @@ export function selectSection(editor: SlideNoteEditor, id: SectionId): SlideNote
   }
 
   return { ...editor, activeSectionId: id };
+}
+
+/** Pushes the current structured content as an undo step, dropping any redo tail. */
+function checkpoint(editor: SlideNoteEditor): SlideNoteEditor {
+  const historyIndex = editor.historyIndex + 1;
+  return {
+    ...editor,
+    history: [...editor.history.slice(0, historyIndex), editor.slides],
+    historyIndex,
+    pendingTypingAt: undefined,
+  };
+}
+
+/**
+ * Closes an open typing group, so the typing and whatever the author does next
+ * remain separate undo steps.
+ */
+export const finalizePendingTyping = (editor: SlideNoteEditor): SlideNoteEditor =>
+  editor.pendingTypingAt === undefined ? editor : checkpoint(editor);
+
+/** Typing joins the open group until the author pauses. */
+function typingEdit(
+  editor: SlideNoteEditor,
+  change: (editor: SlideNoteEditor) => SlideNoteEditor,
+): SlideNoteEditor {
+  const typedAt = Date.now();
+  const base =
+    editor.pendingTypingAt !== undefined &&
+    typedAt - editor.pendingTypingAt >= TYPING_CHECKPOINT_PAUSE_MS
+      ? checkpoint(editor)
+      : editor;
+  const next = change(base);
+  return next === base ? editor : { ...next, pendingTypingAt: typedAt };
+}
+
+function discreteEdit(
+  editor: SlideNoteEditor,
+  change: (editor: SlideNoteEditor) => SlideNoteEditor,
+): SlideNoteEditor {
+  const finalized = finalizePendingTyping(editor);
+  const next = change(finalized);
+  return next === finalized ? editor : checkpoint(next);
 }
 
 const slidePositionOf = (editor: SlideNoteEditor, id: SectionId): number =>
@@ -119,26 +190,34 @@ export const setSectionText = (
   editor: SlideNoteEditor,
   id: SectionId,
   text: string,
-): SlideNoteEditor => editSection(editor, id, (section) => ({ ...section, text }));
+): SlideNoteEditor =>
+  typingEdit(editor, (typing) => editSection(typing, id, (section) => ({ ...section, text })));
 
 export const setSectionSpeaker = (
   editor: SlideNoteEditor,
   id: SectionId,
   speaker: string | null,
 ): SlideNoteEditor =>
-  editSection(editor, id, (section) => ({ ...section, speaker: speaker || "" }));
+  discreteEdit(editor, (discrete) =>
+    editSection(discrete, id, (section) => ({ ...section, speaker: speaker || "" })),
+  );
 
 export const setSectionPrompt = (
   editor: SlideNoteEditor,
   id: SectionId,
   prompt: string | undefined,
 ): SlideNoteEditor =>
-  editSection(editor, id, ({ prompt: _prompt, ...section }) =>
-    prompt ? { ...section, prompt } : section,
+  typingEdit(editor, (typing) =>
+    editSection(typing, id, ({ prompt: _prompt, ...section }) =>
+      prompt ? { ...section, prompt } : section,
+    ),
   );
 
 /** A section carrying no formatting metadata is formatted canonically. */
-export function addSection(editor: SlideNoteEditor): SlideNoteEditor {
+export const addSection = (editor: SlideNoteEditor): SlideNoteEditor =>
+  discreteEdit(editor, appendSection);
+
+function appendSection(editor: SlideNoteEditor): SlideNoteEditor {
   if (!activeSlide(editor)) {
     return editor;
   }
@@ -155,7 +234,10 @@ export function addSection(editor: SlideNoteEditor): SlideNoteEditor {
   };
 }
 
-export function deleteSection(editor: SlideNoteEditor, id: SectionId): SlideNoteEditor {
+export const deleteSection = (editor: SlideNoteEditor, id: SectionId): SlideNoteEditor =>
+  discreteEdit(editor, (discrete) => removeSection(discrete, id));
+
+function removeSection(editor: SlideNoteEditor, id: SectionId): SlideNoteEditor {
   const slidePosition = slidePositionOf(editor, id);
   let nearest: EditorSection | undefined;
   const removed = withSlideSections(editor, slidePosition, (sections) => {
@@ -166,6 +248,60 @@ export function deleteSection(editor: SlideNoteEditor, id: SectionId): SlideNote
   });
 
   return editor.activeSectionId === id ? { ...removed, activeSectionId: nearest?.id } : removed;
+}
+
+function restore(editor: SlideNoteEditor, historyIndex: number): SlideNoteEditor {
+  const slides = editor.history[historyIndex]!;
+  const restored = { ...editor, slides, historyIndex };
+  return slides[restored.activeSlidePosition]?.sections.some(
+    (section) => section.id === restored.activeSectionId,
+  )
+    ? restored
+    : { ...restored, activeSectionId: slides[restored.activeSlidePosition]?.sections[0]?.id };
+}
+
+export const canUndo = (editor: SlideNoteEditor): boolean =>
+  editor.historyIndex > 0 || editor.pendingTypingAt !== undefined;
+
+export const canRedo = (editor: SlideNoteEditor): boolean =>
+  editor.pendingTypingAt === undefined && editor.historyIndex < editor.history.length - 1;
+
+export function undo(source: SlideNoteEditor): SlideNoteEditor {
+  const editor = finalizePendingTyping(source);
+  return editor.historyIndex === 0 ? editor : restore(editor, editor.historyIndex - 1);
+}
+
+export function redo(source: SlideNoteEditor): SlideNoteEditor {
+  const editor = finalizePendingTyping(source);
+  return editor.historyIndex >= editor.history.length - 1
+    ? editor
+    : restore(editor, editor.historyIndex + 1);
+}
+
+/**
+ * Wraps the given selection of the active section, or inserts a self-closing
+ * tag at its caret, and reports where the view should put focus afterwards.
+ */
+export function insertSsml(editor: SlideNoteEditor, insertion: SsmlInsertion): SsmlResult {
+  const { startTag, endTag = "", selection } = insertion;
+  const id = editor.activeSectionId;
+  const section = activeSections(editor).find((candidate) => candidate.id === id);
+  if (!id || !section) {
+    return { editor, selection: undefined };
+  }
+
+  const text = section.text || "";
+  const start = Math.min(Math.max(selection.start, 0), text.length);
+  const end = Math.min(Math.max(selection.end, start), text.length);
+  const tagged =
+    text.slice(0, start) + startTag + text.slice(start, end) + endTag + text.slice(end);
+
+  return {
+    editor: discreteEdit(editor, (discrete) =>
+      editSection(discrete, id, (current) => ({ ...current, text: tagged })),
+    ),
+    selection: { sectionId: id, start: start + startTag.length, end: end + startTag.length },
+  };
 }
 
 export function effectiveSpeaker(editor: SlideNoteEditor, id: SectionId): string {
