@@ -1,33 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Slide } from "../../types/electron";
 import {
-  activeSections,
-  activeSlide,
-  addSection,
-  beginSave,
-  canRedo,
-  canUndo,
-  deleteSection,
-  finalizePendingTyping,
-  hasUnsavedChanges,
-  insertSsml,
-  isSlideDirty,
-  openSlideNoteEditor,
-  reclassifySpeakerTags,
-  redo,
-  reloadPresentation,
-  reloadSlide,
-  saveSucceeded,
-  selectSection,
-  selectSlide,
-  setSectionPrompt,
-  setSectionSpeaker,
-  setSectionText,
-  undo,
+  SlideNoteEditor,
   type SaveSnapshot,
   type SectionId,
   type SelectionIntent,
-  type SlideNoteEditor,
   type SsmlInsertion,
 } from "./SlideNoteEditor";
 
@@ -42,7 +19,7 @@ export function useSlideNoteEditor(
   speakerNames: readonly string[],
   onUnsavedChangesChange: (hasUnsavedChanges: boolean) => void,
 ) {
-  const [editor, setEditor] = useState(() => openSlideNoteEditor(initialSlides, speakerNames));
+  const [editor, setEditor] = useState(() => SlideNoteEditor.open(initialSlides, speakerNames));
   const [selectionIntent, setSelectionIntent] = useState<SelectionIntent>();
   const latest = useRef(editor);
 
@@ -60,7 +37,7 @@ export function useSlideNoteEditor(
     reportUnsavedChanges.current = onUnsavedChangesChange;
   });
 
-  const dirty = hasUnsavedChanges(editor);
+  const dirty = editor.hasUnsavedChanges;
   useEffect(() => {
     reportUnsavedChanges.current(dirty);
   }, [dirty]);
@@ -73,19 +50,19 @@ export function useSlideNoteEditor(
   );
 
   useEffect(() => {
-    command((current) => reclassifySpeakerTags(current, speakerNames));
+    command((current) => current.reclassifySpeakerTags(speakerNames));
   }, [command, speakerNames]);
 
   return {
     slides: editor.slides,
     activeSlidePosition: editor.activeSlidePosition,
-    activeSlideSrc: activeSlide(editor)?.src ?? "",
+    activeSlideSrc: editor.activeSlide?.src ?? "",
     /** The active slide's PowerPoint number, which persistence and playback address it by. */
-    activeSlideNumber: activeSlide(editor)?.index ?? editor.activeSlidePosition + 1,
-    sections: activeSections(editor),
+    activeSlideNumber: editor.activeSlide?.index ?? editor.activeSlidePosition + 1,
+    sections: editor.sections,
     activeSectionId: editor.activeSectionId,
-    canUndo: canUndo(editor),
-    canRedo: canRedo(editor),
+    canUndo: editor.canUndo,
+    canRedo: editor.canRedo,
     selectionIntent,
     selectionRestored,
 
@@ -93,43 +70,43 @@ export function useSlideNoteEditor(
     // finalizes pending typing before asking is answered about what it just left.
     wouldDiscard: (slideNumber?: number) =>
       slideNumber === undefined
-        ? hasUnsavedChanges(latest.current)
-        : isSlideDirty(latest.current, slideNumber),
+        ? latest.current.hasUnsavedChanges
+        : latest.current.isSlideDirty(slideNumber),
 
-    selectSlide: (position: number) => command((current) => selectSlide(current, position)),
-    selectSection: (id: SectionId) => command((current) => selectSection(current, id)),
+    selectSlide: (position: number) => command((current) => current.selectSlide(position)),
+    selectSection: (id: SectionId) => command((current) => current.selectSection(id)),
     setSectionText: (id: SectionId, text: string) =>
-      command((current) => setSectionText(current, id, text)),
+      command((current) => current.setSectionText(id, text)),
     setSectionPrompt: (id: SectionId, prompt: string | undefined) =>
-      command((current) => setSectionPrompt(current, id, prompt)),
+      command((current) => current.setSectionPrompt(id, prompt)),
     setSectionSpeaker: (id: SectionId, speaker: string | null) =>
-      command((current) => setSectionSpeaker(current, id, speaker)),
-    addSection: () => command(addSection),
-    deleteSection: (id: SectionId) => command((current) => deleteSection(current, id)),
+      command((current) => current.setSectionSpeaker(id, speaker)),
+    addSection: () => command((current) => current.addSection()),
+    deleteSection: (id: SectionId) => command((current) => current.deleteSection(id)),
     insertSsml: (insertion: SsmlInsertion) => {
       let intent: SelectionIntent | undefined;
       command((current) => {
-        const result = insertSsml(current, insertion);
+        const result = current.insertSsml(insertion);
         intent = result.selection;
         return result.editor;
       });
       setSelectionIntent(intent);
     },
-    undo: () => command(undo),
-    redo: () => command(redo),
+    undo: () => command((current) => current.undo()),
+    redo: () => command((current) => current.redo()),
     /** For the actions the editor does not own: opening settings, and reload confirmation. */
-    finalizePendingTyping: () => command(finalizePendingTyping),
+    finalizePendingTyping: () => command((current) => current.finalizePendingTyping()),
 
-    submitSave: (slideIndices?: readonly number[]): SaveSnapshot => {
-      const submission = beginSave(latest.current, slideIndices);
+    submitSave: (slideNumbers?: readonly number[]): SaveSnapshot => {
+      const submission = latest.current.beginSave(slideNumbers);
       command(() => submission.editor);
       return submission.snapshot;
     },
     saveSucceeded: (snapshot: SaveSnapshot) =>
-      command((current) => saveSucceeded(current, snapshot)),
-    reloadSlide: (reloaded: Slide) => command((current) => reloadSlide(current, reloaded)),
+      command((current) => current.saveSucceeded(snapshot)),
+    reloadSlide: (reloaded: Slide) => command((current) => current.reloadSlide(reloaded)),
     reloadPresentation: (reloaded: readonly Slide[]) =>
-      command((current) => reloadPresentation(current, reloaded)),
+      command((current) => current.reloadPresentation(reloaded)),
   };
 }
 
