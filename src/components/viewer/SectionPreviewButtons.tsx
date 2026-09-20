@@ -1,7 +1,7 @@
 import { ActionIcon, Box, Button, Center, Group, Loader, Slider, Stack, Text } from "@mantine/core";
 import { IconHistory, IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react";
 import type { NarrationSection } from "../../../shared/narration/NarrationSections";
-import { DEFAULT_SPEAKER_VALUE, getSpeakerNames } from "../../../shared/narration/speaker";
+import { DEFAULT_SPEAKER_VALUE } from "../../../shared/narration/speaker";
 import { getSpeakerOptions } from "../../utils/viewer";
 import type { SpeakerMapping } from "../../../shared/types/tts";
 import { useNarrationPreview } from "./useNarrationPreview";
@@ -10,8 +10,7 @@ interface SectionPreviewButtonsProps {
   id: string;
   slideIndex: number;
   sectionIndex: number;
-  slideNotes: string;
-  section: NarrationSection;
+  sections: readonly NarrationSection[];
   mappings: Record<string, SpeakerMapping>;
   onFocus: () => void;
   getTextarea?: () => HTMLTextAreaElement | null;
@@ -27,8 +26,7 @@ export function SectionPreviewButtons({
   id,
   slideIndex,
   sectionIndex,
-  slideNotes,
-  section,
+  sections,
   mappings,
   onFocus,
   getTextarea,
@@ -37,9 +35,7 @@ export function SectionPreviewButtons({
     id,
     slideIndex,
     sectionIndex,
-    slideNotes,
-    speakerNames: getSpeakerNames(mappings),
-    section,
+    sections,
     onFocus,
     getTextarea,
   });
@@ -73,7 +69,7 @@ export function SectionPreviewButtons({
                     : { kind: "override", speaker: speaker.value },
                 )
               }
-              disabled={!section.text || (preview.isGenerating && !isActive)}
+              disabled={!preview.sectionText || (preview.isGenerating && !isActive)}
               leftSection={
                 isActive ? (
                   <IconPlayerStop size={12} />
@@ -106,7 +102,7 @@ export function SectionPreviewButtons({
 
             void preview.play({ kind: "effective" });
           }}
-          disabled={!section.text}
+          disabled={!preview.sectionText}
         >
           {isAnyPreviewActive ? <IconPlayerStop size={12} /> : <IconPlayerPlay size={12} />}
         </ActionIcon>

@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { SpeakerMapping, SynthesizedSpeech, TtsProvider, Voice } from "../tts/TtsProvider.js";
 import { TtsManager } from "../tts/TtsManager.js";
+import type { NarrationSection } from "../../shared/narration/NarrationSections.js";
 import { NarrationPreparation, NarrationPreparationError } from "./NarrationPreparation.js";
 
 const narratorVoice: Voice = {
@@ -35,6 +36,11 @@ afterEach(() => {
 });
 
 const defaultMappings: Record<string, SpeakerMapping> = { Narrator: { voice: narratorVoice } };
+
+const FIRST_SECOND: NarrationSection[] = [
+  { speaker: "Narrator", text: "First" },
+  { speaker: "", text: "Second" },
+];
 
 function createPreparation(mappings: Record<string, SpeakerMapping> = defaultMappings) {
   const generateSpeech = vi
@@ -72,7 +78,7 @@ describe("NarrationPreparation", () => {
     const request = {
       slideIndex: 2,
       sectionIndex: 0,
-      notes: "[Narrator]\nHello",
+      sections: [{ speaker: "Narrator", text: "Hello" }],
       text: " Hello ",
       speakerChoice: { kind: "effective" as const },
     };
@@ -123,7 +129,7 @@ describe("NarrationPreparation", () => {
       preparation.preparePreview({
         slideIndex: 2,
         sectionIndex: 0,
-        notes: "[Narrator]\nStored text",
+        sections: [{ speaker: "Narrator", text: "Stored text" }],
         text: "  Live renderer text  \n",
         speakerChoice: { kind: "effective" },
       }),
@@ -138,7 +144,7 @@ describe("NarrationPreparation", () => {
     const preview = preparation.preparePreview({
       slideIndex: 4,
       sectionIndex: 1,
-      notes: "[Narrator]\nFirst\n---\nSecond",
+      sections: FIRST_SECOND,
       text: "Second",
       speakerChoice: { kind: "effective" },
     });
@@ -153,6 +159,7 @@ describe("NarrationPreparation", () => {
 
   it.each<[string, SpeakerMapping | undefined]>([
     ["unconfigured", {}],
+    ["absent", undefined],
     ["prompt-only", { prompt: "Whisper" }],
     ["unknown provider", { voice: { ...narratorVoice, provider: "unknown" } }],
   ])("rejects a %s mapping before synthesis with preview context", async (_, mapping) => {
@@ -163,26 +170,11 @@ describe("NarrationPreparation", () => {
       preparation.preparePreview({
         slideIndex: 4,
         sectionIndex: 1,
-        notes: "[Narrator]\nFirst\n---\nSecond",
+        sections: FIRST_SECOND,
         text: "Second",
         speakerChoice: { kind: "effective" },
       }),
     ).rejects.toThrow(/slide 4, section 2, speaker "Narrator"/);
-    expect(generateSpeech).not.toHaveBeenCalled();
-  });
-
-  it("falls back to the default speaker when no mapping carries the tagged name", async () => {
-    const { preparation, generateSpeech } = createPreparation({});
-
-    await expect(
-      preparation.preparePreview({
-        slideIndex: 4,
-        sectionIndex: 1,
-        notes: "[Narrator]\nFirst\n---\nSecond",
-        text: "Second",
-        speakerChoice: { kind: "effective" },
-      }),
-    ).rejects.toThrow(/slide 4, section 2, speaker "Default"/);
     expect(generateSpeech).not.toHaveBeenCalled();
   });
 
@@ -195,7 +187,7 @@ describe("NarrationPreparation", () => {
     await preparation.preparePreview({
       slideIndex: 3,
       sectionIndex: 1,
-      notes: "[Narrator]\nFirst\n---\nSecond",
+      sections: FIRST_SECOND,
       text: "Inherited",
       speakerChoice: { kind: "effective" },
     });
@@ -212,7 +204,7 @@ describe("NarrationPreparation", () => {
     await preparation.preparePreview({
       slideIndex: 4,
       sectionIndex: 0,
-      notes: "No speaker on this slide",
+      sections: [{ speaker: "", text: "No speaker on this slide" }],
       text: "Defaulted",
       speakerChoice: { kind: "effective" },
     });
@@ -220,7 +212,7 @@ describe("NarrationPreparation", () => {
     expect(generateSpeech).toHaveBeenCalledWith("Defaulted", defaultVoice, undefined);
   });
 
-  it("uses a temporary preview speaker without changing the supplied notes", async () => {
+  it("uses a temporary preview speaker without changing the supplied sections", async () => {
     const { preparation, generateSpeech } = createPreparation({
       Narrator: { voice: narratorVoice },
       Guest: { voice: guestVoice },
@@ -228,7 +220,7 @@ describe("NarrationPreparation", () => {
     const request = {
       slideIndex: 1,
       sectionIndex: 0,
-      notes: "[Narrator]\nWelcome",
+      sections: [{ speaker: "Narrator", text: "Welcome" }],
       text: "Welcome",
       speakerChoice: { kind: "override" as const, speaker: "Guest" },
     };
@@ -236,7 +228,7 @@ describe("NarrationPreparation", () => {
     await preparation.preparePreview(request);
 
     expect(generateSpeech).toHaveBeenCalledWith("Welcome", guestVoice, undefined);
-    expect(request.notes).toBe("[Narrator]\nWelcome");
+    expect(request.sections).toEqual([{ speaker: "Narrator", text: "Welcome" }]);
   });
 
   it("treats an explicit Default preview as an override of the effective speaker", async () => {
@@ -248,7 +240,7 @@ describe("NarrationPreparation", () => {
     await preparation.preparePreview({
       slideIndex: 1,
       sectionIndex: 0,
-      notes: "[Narrator]\nWelcome",
+      sections: [{ speaker: "Narrator", text: "Welcome" }],
       text: "Welcome",
       speakerChoice: { kind: "default" },
     });
@@ -263,7 +255,7 @@ describe("NarrationPreparation", () => {
       preparation.preparePreview({
         slideIndex: 4,
         sectionIndex: 0,
-        notes: "[Narrator]\nHello",
+        sections: [{ speaker: "Narrator", text: "Hello" }],
         text: "Hello",
         speakerChoice: { kind: "effective" },
       }),
@@ -290,7 +282,7 @@ describe("NarrationPreparation", () => {
       preparation.preparePreview({
         slideIndex: 1,
         sectionIndex: 0,
-        notes: "[Narrator]\nStored",
+        sections: [{ speaker: "Narrator", text: "Stored" }],
         text: " \n\t ",
         speakerChoice: { kind: "effective" },
       }),
@@ -345,7 +337,7 @@ describe("NarrationPreparation prompts", () => {
     await preparation.preparePreview({
       slideIndex: 1,
       sectionIndex: 0,
-      notes: "[Narrator]\nFirst",
+      sections: [{ speaker: "Narrator", text: "First" }],
       text: "First",
       speakerChoice: { kind: "effective" },
     });
@@ -406,7 +398,7 @@ describe("NarrationPreparation inline prompts", () => {
     await preparation.preparePreview({
       slideIndex: 1,
       sectionIndex: 0,
-      notes: "[Narrator]\n[p: almost whispering]\nFirst",
+      sections: [{ speaker: "Narrator", prompt: "almost whispering", text: "First" }],
       text: "First",
       speakerChoice: { kind: "effective" },
     });
@@ -436,7 +428,7 @@ describe("NarrationPreparation inline prompts", () => {
     expect(generateSpeech).toHaveBeenCalledWith("First", narratorVoice, "almost whispering");
   });
 
-  it("previews structured sections without parsing note text", async () => {
+  it("previews selected text with its section's effective speaker and inline prompt", async () => {
     const { preparation, generateSpeech } = createPreparation();
 
     await expect(
@@ -445,13 +437,13 @@ describe("NarrationPreparation inline prompts", () => {
         sectionIndex: 1,
         sections: [
           { speaker: "Narrator", text: "First" },
-          { speaker: "", prompt: "wearily", text: "Second" },
+          { speaker: "", prompt: "wearily", text: "Second sentence and more" },
         ],
-        text: "Second",
+        text: "Second sentence",
         speakerChoice: { kind: "effective" },
       }),
     ).resolves.toEqual({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
-    expect(generateSpeech).toHaveBeenCalledWith("Second", narratorVoice, "wearily");
+    expect(generateSpeech).toHaveBeenCalledWith("Second sentence", narratorVoice, "wearily");
   });
 
   it("prepares a batch from structured sections without parsing note text", async () => {

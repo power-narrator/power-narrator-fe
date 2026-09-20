@@ -633,7 +633,6 @@ export function ViewerPage({
                   sections={activeSections}
                   mappings={mappings}
                   slideIndex={activeSlide.index}
-                  slideNotes={activeSlide.notes || ""}
                   onFocusSection={setActiveSectionIndex}
                   onSpeakerChange={handleSpeakerChange}
                   onSectionTextChange={handleSectionTextChange}

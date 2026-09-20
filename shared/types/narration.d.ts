@@ -1,3 +1,4 @@
+import type { NarrationSection } from "../narration/NarrationSections.js";
 import type { SlideNotePayload } from "../narration/slideNotePayload.js";
 
 export type PreviewSpeakerChoice =
@@ -5,12 +6,14 @@ export type PreviewSpeakerChoice =
   | { kind: "default" }
   | { kind: "override"; speaker: string };
 
-export type PreviewNarrationRequest = SlideNotePayload & {
+export interface PreviewNarrationRequest {
+  /** The author's current slide-note sections, in the order narration positions follow. */
+  sections: readonly NarrationSection[];
   slideIndex: number;
   sectionIndex: number;
   text: string;
   speakerChoice: PreviewSpeakerChoice;
-};
+}
 
 export interface NarrationPreviewResult {
   audio: Uint8Array;

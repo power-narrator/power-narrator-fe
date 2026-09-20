@@ -53,7 +53,7 @@ export class NarrationPreparation {
     }
 
     const mappings = await this.mappingSource.getSpeakerMappings();
-    const sections = toNarrationSections(request, getSpeakerNames(mappings));
+    const { sections } = request;
     const speaker =
       request.speakerChoice.kind === "effective"
         ? getEffectiveSpeaker(sections, request.sectionIndex)

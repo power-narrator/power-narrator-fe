@@ -9,7 +9,10 @@ import type {
   NarrationPreviewResult,
   PreviewNarrationRequest,
 } from "../shared/types/narration.js";
-import { parseNarrationSections } from "../shared/narration/NarrationSections.js";
+import {
+  formatNarrationSections,
+  parseNarrationSections,
+} from "../shared/narration/NarrationSections.js";
 import { toNotesText } from "../shared/narration/slideNotePayload.js";
 
 type PrepareNarrationPreview = (
@@ -114,16 +117,17 @@ it("carries structured slide-note sections across the preview channel", async ()
 
   await electron.state.exposedApi!.prepareNarrationPreview({
     slideIndex: 1,
-    sectionIndex: 0,
+    sectionIndex: 1,
     sections: parseNarrationSections(notes, ["Narrator"]),
-    text: "First",
+    text: "Second",
     speakerChoice: { kind: "effective" },
   });
 
   const [channel, payload] = electron.ipcRenderer.invoke.mock.lastCall!;
   expect(channel).toBe("prepare-narration-preview");
   const delivered = structuredClone(payload) as PreviewNarrationRequest;
-  expect(toNotesText(delivered)).toBe(notes);
+  expect(delivered.sectionIndex).toBe(1);
+  expect(formatNarrationSections(delivered.sections)).toBe(notes);
 });
 
 it("carries structured slide-note sections across the narrated presentation save channel", async () => {
