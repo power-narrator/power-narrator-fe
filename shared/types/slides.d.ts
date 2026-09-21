@@ -1,5 +1,5 @@
 import type { NarrationSection } from "../narration/NarrationSections.js";
-import type { SlideIndex } from "../slides/slideCoordinates.js";
+import type { SlideIndex, SlideNumber } from "../slides/slideCoordinates.js";
 import type { Result } from "./result.js";
 
 /**
@@ -11,9 +11,10 @@ export interface StructuredSlide {
   slideIndex: SlideIndex;
   /**
    * The legacy 1-based representation, kept beside the slide index until every
-   * workflow addresses slides by index.
+   * workflow addresses slides by index. Branded so that, while it is still
+   * named `index`, it cannot be read as one.
    */
-  index: number;
+  index: SlideNumber;
   image: string;
   src: string;
   sections: NarrationSection[];

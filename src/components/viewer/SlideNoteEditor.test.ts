@@ -4,7 +4,7 @@ import {
   parseNarrationSections,
   type NarrationSection,
 } from "../../../shared/narration/NarrationSections";
-import { slideIndexFromLegacyNumber } from "../../../shared/slides/slideCoordinates";
+import { slideIndexFromLegacyNumber, toSlideNumber } from "../../../shared/slides/slideCoordinates";
 import type { Slide } from "../../types/electron";
 import { SlideNoteEditor, type EditorSection, type SnapshotSlide } from "./SlideNoteEditor";
 
@@ -14,7 +14,7 @@ const speakers = ["Alice", "Bob"];
 function slide(index: number, notes: string, knownSpeakers: readonly string[] = speakers): Slide {
   return {
     slideIndex: slideIndexFromLegacyNumber(index),
-    index,
+    index: toSlideNumber(index),
     image: `slide-${index}.png`,
     src: `slide-${index}`,
     sections: parseNarrationSections(notes, knownSpeakers),
@@ -47,7 +47,7 @@ describe("opening an editing session", () => {
       [
         {
           slideIndex: slideIndexFromLegacyNumber(1),
-          index: 1,
+          index: toSlideNumber(1),
           image: "slide-1.png",
           src: "slide-1",
           sections: [{ speaker: "Bob", text: "Parsed" }],

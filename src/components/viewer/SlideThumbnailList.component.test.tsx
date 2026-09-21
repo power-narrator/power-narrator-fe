@@ -1,21 +1,21 @@
 import { MantineProvider } from "@mantine/core";
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
-import { slideIndexFromLegacyNumber } from "../../../shared/slides/slideCoordinates";
+import { slideIndexFromLegacyNumber, toSlideNumber } from "../../../shared/slides/slideCoordinates";
 import type { Slide } from "../../types/electron";
 import { SlideThumbnailList } from "./SlideThumbnailList";
 
 const slides: Slide[] = [
   {
     slideIndex: slideIndexFromLegacyNumber(1),
-    index: 1,
+    index: toSlideNumber(1),
     image: "one.png",
     src: "one.png",
     sections: [],
   },
   {
     slideIndex: slideIndexFromLegacyNumber(2),
-    index: 2,
+    index: toSlideNumber(2),
     image: "two.png",
     src: "two.png",
     sections: [],
