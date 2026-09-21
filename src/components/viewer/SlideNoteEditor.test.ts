@@ -849,6 +849,18 @@ describe("saving", () => {
     ]);
   });
 
+  it("commits both overlapping saves when they complete in the order submitted", () => {
+    const editor = openedEditor();
+    const sectionId = editor.sections[0]!.id;
+    const older = editor.setSectionText(sectionId, "Older").beginSave();
+    const newer = older.editor.setSectionText(sectionId, "Newer").beginSave();
+
+    const settled = newer.editor.saveSucceeded(older.snapshot).saveSucceeded(newer.snapshot);
+
+    expect(settled.isSlideDirty(1)).toBe(false);
+    expect(settled.hasUnsavedChanges).toBe(false);
+  });
+
   it("keeps the newer baseline when an older overlapping save completes last", () => {
     const editor = openedEditor();
     const sectionId = editor.sections[0]!.id;
