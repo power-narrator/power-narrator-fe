@@ -31,12 +31,9 @@ export const slideNumberOf = (index: SlideIndex): SlideNumber => (index + 1) as 
 export const slideIndexOf = (number: SlideNumber): SlideIndex => (number - 1) as SlideIndex;
 
 /**
- * The compatibility seam for workflows still carrying the 1-based
- * representation as a plain number. Converting through these keeps a legacy
- * value from being read as a slide index, and a slide index from reaching a
- * legacy caller unconverted.
+ * The compatibility seam for workflows still handing over the 1-based
+ * representation as a plain number, which keeps such a value from being read
+ * as a slide index on the way in.
  */
 export const slideIndexFromLegacyNumber = (legacyOneBased: number): SlideIndex =>
   slideIndexOf(toSlideNumber(legacyOneBased));
-
-export const legacySlideNumber = (index: SlideIndex): number => slideNumberOf(index);

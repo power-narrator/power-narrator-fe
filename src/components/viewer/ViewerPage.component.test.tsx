@@ -7,7 +7,7 @@ import {
 } from "../../../shared/narration/NarrationSections";
 import type { NarratedSaveResult } from "../../../shared/types/narration";
 import { AudioProvider } from "../../context/AudioContext";
-import { slideIndexFromLegacyNumber } from "../../../shared/slides/slideCoordinates";
+import { slideIndexFromLegacyNumber, toSlideNumber } from "../../../shared/slides/slideCoordinates";
 import type { Slide } from "../../types/electron";
 import { SettingsProvider } from "../../context/SettingsContext";
 import { ViewerPage } from "./ViewerPage";
@@ -17,7 +17,7 @@ import { NarrationPreviewProvider } from "./useNarrationPreview";
 function loadedWith(notes: string, knownSpeakers: readonly string[] = []): Slide {
   return {
     slideIndex: slideIndexFromLegacyNumber(1),
-    index: 1,
+    index: toSlideNumber(1),
     image: "slide-one.png",
     src: "slide-one",
     sections: parseNarrationSections(notes, knownSpeakers),
@@ -152,7 +152,8 @@ test("shows the sections of the slide whose thumbnail is chosen", async () => {
   installElectronApi();
   const secondSlide: Slide = {
     ...loadedWith("Second slide narration"),
-    index: 2,
+    slideIndex: slideIndexFromLegacyNumber(2),
+    index: toSlideNumber(2),
     image: "slide-two.png",
   };
   const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
@@ -340,7 +341,12 @@ test("removes audio for every slide", async () => {
   );
   installElectronApi({ removeAudio });
   vi.spyOn(window, "alert").mockImplementation(() => {});
-  const secondSlide: Slide = { ...loadedSlide, index: 2, image: "slide-two.png" };
+  const secondSlide: Slide = {
+    ...loadedSlide,
+    slideIndex: slideIndexFromLegacyNumber(2),
+    index: toSlideNumber(2),
+    image: "slide-two.png",
+  };
   const { screen } = await renderViewer(vi.fn<() => void>(), [loadedSlide, secondSlide]);
 
   await screen.getByRole("button", { name: "Remove All Audio", exact: true }).click();

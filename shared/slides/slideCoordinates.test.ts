@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  legacySlideNumber,
   slideIndexFromLegacyNumber,
   slideIndexOf,
   slideNumberOf,
@@ -27,7 +26,6 @@ describe("slide coordinates", () => {
 
   it("converts legacy 1-based values at the compatibility seam", () => {
     expect(slideIndexFromLegacyNumber(3)).toBe(2);
-    expect(legacySlideNumber(toSlideIndex(2))).toBe(3);
   });
 
   it("rejects values that cannot be the ordinal they claim to be", () => {

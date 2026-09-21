@@ -1,5 +1,5 @@
 import { parseNarrationSections } from "../../shared/narration/NarrationSections.js";
-import { slideIndexFromLegacyNumber } from "../../shared/slides/slideCoordinates.js";
+import { slideIndexFromLegacyNumber, toSlideNumber } from "../../shared/slides/slideCoordinates.js";
 import type {
   StructuredSlide,
   StructuredSlideResult,
@@ -13,11 +13,12 @@ import type { SlidePptResult, SlidesPptResult, SlideWithSrc } from "../platform/
  * adapters' 1-based slide numbers are converted here for the same reason.
  */
 const parseSlide = (
-  { notes, ...slide }: SlideWithSrc,
+  { notes, index, ...slide }: SlideWithSrc,
   knownSpeakers: Iterable<string>,
 ): StructuredSlide => ({
   ...slide,
-  slideIndex: slideIndexFromLegacyNumber(slide.index),
+  slideIndex: slideIndexFromLegacyNumber(index),
+  index: toSlideNumber(index),
   sections: parseNarrationSections(notes, knownSpeakers),
 });
 
