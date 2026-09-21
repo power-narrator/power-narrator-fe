@@ -30,6 +30,7 @@ const alternateNarratorVoice: Voice = {
 const temporaryDirectories: string[] = [];
 
 class FakePowerPointAdapter {
+  /** Keyed by the 0-based slide index the PowerPoint contract now carries. */
   readonly committedNotes = new Map<number, string>();
   readonly insertedAudio = new Map<number, Map<number, Uint8Array>>();
   readonly removedAudio = new Set<number>();
@@ -42,7 +43,7 @@ class FakePowerPointAdapter {
   >((_filePath, slides) => {
     if (this.notesResult.success) {
       for (const slide of slides) {
-        this.committedNotes.set(slide.index, slide.notes);
+        this.committedNotes.set(slide.slideIndex, slide.notes);
       }
     }
     return Promise.resolve(this.notesResult);
@@ -54,10 +55,11 @@ class FakePowerPointAdapter {
     const result = this.audioResults.shift() ?? { success: true as const };
     if (result.success) {
       for (const audio of slidesAudio) {
-        const slideAudio = this.insertedAudio.get(audio.index) ?? new Map<number, Uint8Array>();
+        const slideAudio =
+          this.insertedAudio.get(audio.slideIndex) ?? new Map<number, Uint8Array>();
         slideAudio.set(audio.sectionIndex, audio.audioData);
-        this.insertedAudio.set(audio.index, slideAudio);
-        this.removedAudio.delete(audio.index);
+        this.insertedAudio.set(audio.slideIndex, slideAudio);
+        this.removedAudio.delete(audio.slideIndex);
       }
     }
     return Promise.resolve(result);
@@ -154,8 +156,8 @@ describe("NarratedPresentationSaver", () => {
     ).resolves.toEqual({ success: true });
 
     expect(generateSpeech).not.toHaveBeenCalled();
-    expect(powerpoint.committedNotes).toEqual(new Map([[4, "[Narrator]\n  \n---\n\t"]]));
-    expect(powerpoint.removedAudio).toEqual(new Set([4]));
+    expect(powerpoint.committedNotes).toEqual(new Map([[3, "[Narrator]\n  \n---\n\t"]]));
+    expect(powerpoint.removedAudio).toEqual(new Set([3]));
     expect(powerpoint.insertedAudio).toEqual(new Map());
     expect(powerpoint.saveNotes.mock.invocationCallOrder[0]).toBeLessThan(
       powerpoint.removeAudio.mock.invocationCallOrder[0]!,
@@ -178,7 +180,7 @@ describe("NarratedPresentationSaver", () => {
       message: "remove failed",
     });
 
-    expect(powerpoint.committedNotes).toEqual(new Map([[4, "  "]]));
+    expect(powerpoint.committedNotes).toEqual(new Map([[3, "  "]]));
     expect(powerpoint.removedAudio).toEqual(new Set());
     expect(powerpoint.insertedAudio).toEqual(new Map());
   });
@@ -242,20 +244,20 @@ describe("NarratedPresentationSaver", () => {
     ]);
     expect(powerpoint.committedNotes).toEqual(
       new Map([
-        [9, nineNotes],
-        [3, threeNotes],
+        [8, nineNotes],
+        [2, threeNotes],
       ]),
     );
     expect(powerpoint.insertedAudio).toEqual(
       new Map([
         [
-          9,
+          8,
           new Map([
             [0, new Uint8Array([1])],
             [2, new Uint8Array([2])],
           ]),
         ],
-        [3, new Map([[0, new Uint8Array([3])]])],
+        [2, new Map([[0, new Uint8Array([3])]])],
       ]),
     );
   });
@@ -325,7 +327,7 @@ describe("NarratedPresentationSaver", () => {
         message: partial ? "audio failed" : "notes failed",
       });
       expect(powerpoint.committedNotes).toEqual(
-        partial ? new Map([[2, "[Narrator]\nHello"]]) : new Map(),
+        partial ? new Map([[1, "[Narrator]\nHello"]]) : new Map(),
       );
       expect(powerpoint.insertedAudio).toEqual(new Map());
       expect(powerpoint.removedAudio).toEqual(new Set());
@@ -395,8 +397,8 @@ describe("NarratedPresentationSaver", () => {
       }),
     ).resolves.toEqual({ success: true });
 
-    expect(powerpoint.committedNotes).toEqual(new Map([[7, "[Narrator]\nOnly slide"]]));
-    expect(powerpoint.insertedAudio).toEqual(new Map([[7, new Map([[0, new Uint8Array([1])]])]]));
+    expect(powerpoint.committedNotes).toEqual(new Map([[6, "[Narrator]\nOnly slide"]]));
+    expect(powerpoint.insertedAudio).toEqual(new Map([[6, new Map([[0, new Uint8Array([1])]])]]));
   });
 
   it("writes untouched structured notes back byte for byte", async () => {
@@ -410,6 +412,6 @@ describe("NarratedPresentationSaver", () => {
       }),
     ).resolves.toEqual({ success: true });
 
-    expect(powerpoint.committedNotes).toEqual(new Map([[2, notes]]));
+    expect(powerpoint.committedNotes).toEqual(new Map([[1, notes]]));
   });
 });

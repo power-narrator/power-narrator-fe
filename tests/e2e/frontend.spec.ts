@@ -64,7 +64,10 @@ test.describe("PPT Viewer UI Workflows", () => {
       .toEqual([
         {
           filePath: FIXTURE_TEST,
-          slides: MOCK_SLIDES.map((slide) => ({ index: slide.index, notes: slide.notes })),
+          slides: MOCK_SLIDES.map((slide) => ({
+            slideIndex: slide.slideIndex,
+            notes: slide.notes,
+          })),
         },
       ]);
     await expect
@@ -73,7 +76,7 @@ test.describe("PPT Viewer UI Workflows", () => {
         {
           filePath: FIXTURE_TEST,
           slidesAudio: MOCK_SLIDES.map((slide) => ({
-            index: slide.index,
+            slideIndex: slide.slideIndex,
             sectionIndex: 0,
             audioData: new Uint8Array(DETERMINISTIC_MP3_BYTES),
           })),

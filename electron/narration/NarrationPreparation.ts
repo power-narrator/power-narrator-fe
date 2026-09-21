@@ -12,6 +12,7 @@ import {
   type SynthesisSpeaker,
 } from "../../shared/narration/speaker.js";
 import { toSpeakerPrompt } from "../../shared/narration/prompt.js";
+import { slideIndexFromLegacyNumber } from "../../shared/slides/slideCoordinates.js";
 
 export interface SpeakerMappingSource {
   getSpeakerMappings(): Record<string, SpeakerMapping> | Promise<Record<string, SpeakerMapping>>;
@@ -97,7 +98,7 @@ export class NarrationPreparation {
     const synthesized = await this.synthesizeSections(prepared, onProgress);
 
     return synthesized.map(({ slideIndex, sectionIndex, speech }) => ({
-      index: slideIndex,
+      slideIndex: slideIndexFromLegacyNumber(slideIndex),
       sectionIndex,
       audioData: new Uint8Array(speech.audio),
     }));

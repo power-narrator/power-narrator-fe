@@ -6,6 +6,7 @@ import type {
 } from "../../shared/types/narration.js";
 import type { PptProvider } from "../platform/PptProvider.js";
 import { formatNarrationSections } from "../../shared/narration/NarrationSections.js";
+import { slideIndexFromLegacyNumber } from "../../shared/slides/slideCoordinates.js";
 import { NarrationPreparation, NarrationPreparationError } from "./NarrationPreparation.js";
 
 type SavePowerPoint = Pick<PptProvider, "saveNotes" | "insertAudio" | "removeAudio">;
@@ -58,7 +59,7 @@ export class NarratedPresentationSaver {
         // Raw note text exists only from here on: structured sections are
         // formatted immediately before PowerPoint takes them.
         request.slides.map((slide) => ({
-          index: slide.slideIndex,
+          slideIndex: slideIndexFromLegacyNumber(slide.slideIndex),
           notes: formatNarrationSections(slide.sections),
         })),
       );
@@ -74,9 +75,9 @@ export class NarratedPresentationSaver {
       };
     }
 
-    const slidesWithAudio = new Set(audio.map((entry) => entry.index));
+    const slidesWithAudio = new Set(audio.map((entry) => entry.slideIndex));
     const slidesWithoutAudio = request.slides
-      .map((slide) => slide.slideIndex)
+      .map((slide) => slideIndexFromLegacyNumber(slide.slideIndex))
       .filter((slideIndex) => !slidesWithAudio.has(slideIndex));
 
     let audioResult;

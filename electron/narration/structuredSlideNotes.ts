@@ -1,5 +1,5 @@
 import { parseNarrationSections } from "../../shared/narration/NarrationSections.js";
-import { slideIndexFromLegacyNumber, toSlideNumber } from "../../shared/slides/slideCoordinates.js";
+import { slideNumberOf } from "../../shared/slides/slideCoordinates.js";
 import type {
   StructuredSlide,
   StructuredSlideResult,
@@ -10,15 +10,15 @@ import type { SlidePptResult, SlidesPptResult, SlideWithSrc } from "../platform/
 /**
  * Notes are parsed here, immediately outside the PowerPoint adapters, so raw
  * note syntax never travels further into the application than this seam. The
- * adapters' 1-based slide numbers are converted here for the same reason.
+ * legacy 1-based slide number is derived here for the same reason.
  */
 const parseSlide = (
-  { notes, index, ...slide }: SlideWithSrc,
+  { notes, slideIndex, ...slide }: SlideWithSrc,
   knownSpeakers: Iterable<string>,
 ): StructuredSlide => ({
   ...slide,
-  slideIndex: slideIndexFromLegacyNumber(index),
-  index: toSlideNumber(index),
+  slideIndex,
+  index: slideNumberOf(slideIndex),
   sections: parseNarrationSections(notes, knownSpeakers),
 });
 

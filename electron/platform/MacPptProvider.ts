@@ -3,6 +3,12 @@ import path from "node:path";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import type { NativePlatformProvider, PptProvider } from "./PptProvider.js";
+import {
+  FIRST_SLIDE_INDEX,
+  slideIndexFromLegacyNumber,
+  slideNumberOf,
+  type SlideIndex,
+} from "../../shared/slides/slideCoordinates.js";
 import { getErrorMessage } from "./errors.js";
 import {
   APP_NAME,
@@ -54,23 +60,26 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
   }
 
   private mergeSlideData(images: SlideImageMap, notes: SlideNotesMap): SlideManifestEntry[] {
-    return Object.keys(images)
-      .map(Number)
+    return [...images.keys()]
       .toSorted((a, b) => a - b)
-      .map((index) => ({
-        index,
-        image: images[index]?.image || "",
-        notes: notes[index] || "",
+      .map((slideIndex) => ({
+        slideIndex,
+        image: images.get(slideIndex)?.image || "",
+        notes: notes.get(slideIndex) || "",
       }));
   }
 
+  /** The manifest addresses slides by the 1-based number PowerPoint exports. */
   private readImageManifest(manifestPath: string): SlideImageMap {
-    const slides = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as SlideManifestEntry[];
-    const images: SlideImageMap = {};
+    const slides = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Array<{
+      index?: unknown;
+      image?: string;
+    }>;
+    const images = new Map<SlideIndex, { image: string }>();
 
-    for (const slide of slides) {
-      if (typeof slide.index === "number") {
-        images[slide.index] = { image: slide.image || "" };
+    for (const { index, image } of slides) {
+      if (typeof index === "number" && Number.isInteger(index) && index >= 1) {
+        images.set(slideIndexFromLegacyNumber(index), { image: image || "" });
       }
     }
 
@@ -80,27 +89,27 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
   private parseNotesExportFile(filePath: string): SlideNotesMap {
     const content = fs.readFileSync(filePath, "utf8");
     const lines = content.split(/\r\n|\n|\r/);
-    const notes: SlideNotesMap = {};
-    let currentSlideIndex: number | null = null;
+    const notes = new Map<SlideIndex, string>();
+    let currentSlideNumber: number | null = null;
     let currentLines: string[] = [];
 
     for (const line of lines) {
       if (line.startsWith("###SLIDE_START### ")) {
-        currentSlideIndex = Number(line.slice("###SLIDE_START### ".length));
+        currentSlideNumber = Number(line.slice("###SLIDE_START### ".length));
         currentLines = [];
         continue;
       }
 
       if (line === "###SLIDE_END###") {
-        if (currentSlideIndex !== null && !Number.isNaN(currentSlideIndex)) {
-          notes[currentSlideIndex] = currentLines.join("\n");
+        if (currentSlideNumber !== null && Number.isInteger(currentSlideNumber)) {
+          notes.set(slideIndexFromLegacyNumber(currentSlideNumber), currentLines.join("\n"));
         }
-        currentSlideIndex = null;
+        currentSlideNumber = null;
         currentLines = [];
         continue;
       }
 
-      if (currentSlideIndex !== null) {
+      if (currentSlideNumber !== null) {
         currentLines.push(line);
       }
     }
@@ -210,25 +219,26 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
    * Closes the currently active PowerPoint presentation.
    *
    * @param filePath - The path to the PowerPoint file to close.
-   * @returns A promise resolving to the slide index the user was on before closing, or 1 if it fails.
+   * @returns A promise resolving to the slide the user was on before closing,
+   * or the first slide if PowerPoint reports nothing usable. AppleScript
+   * answers with a 1-based slide number, converted here.
    */
-  async closePresentation(filePath: string): Promise<number> {
+  async closePresentation(filePath: string): Promise<SlideIndex> {
     try {
       const closeScript = resolveScriptPath("close-presentation.applescript");
       const childClose = spawn("osascript", [closeScript, filePath]);
-      const slideIndex = await new Promise<number>((resolve) => {
+      return await new Promise<SlideIndex>((resolve) => {
         let out = "";
         childClose.stdout.on("data", (d: Buffer) => (out += d.toString()));
         childClose.on("close", () => {
           const trimmed = out.trim();
-          const parsed = trimmed === "" ? Number.NaN : Math.trunc(Number(trimmed));
-          resolve(Number.isNaN(parsed) ? 1 : parsed);
+          const slideNumber = trimmed === "" ? Number.NaN : Math.trunc(Number(trimmed));
+          resolve(slideNumber >= 1 ? slideIndexFromLegacyNumber(slideNumber) : FIRST_SLIDE_INDEX);
         });
       });
-      return slideIndex;
     } catch (e) {
       console.error("Failed to close presentation", e);
-      return 1;
+      return FIRST_SLIDE_INDEX;
     }
   }
 
@@ -236,12 +246,16 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
    * Reopens a presentation and navigates to the specified slide index.
    *
    * @param filePath - The path to the PowerPoint file to open.
-   * @param slideIndex - The slide index to navigate to.
+   * @param slideIndex - The slide to navigate to.
    */
-  async reopenPresentation(filePath: string, slideIndex: number): Promise<void> {
+  async reopenPresentation(filePath: string, slideIndex: SlideIndex): Promise<void> {
     try {
       const reopenScript = resolveScriptPath("reopen-presentation.applescript");
-      const childReopen = spawn("osascript", [reopenScript, filePath, slideIndex.toString()]);
+      const childReopen = spawn("osascript", [
+        reopenScript,
+        filePath,
+        slideNumberOf(slideIndex).toString(),
+      ]);
       await new Promise<void>((resolve) => {
         childReopen.on("close", () => resolve());
       });
@@ -276,13 +290,15 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
 
   async reloadSlideImage(
     filePath: string,
-    slideIndex: number,
+    slideIndex: SlideIndex,
     outputDir: string,
   ): Promise<ReloadSlideImageResult> {
+    const slideNumber = slideNumberOf(slideIndex);
+
     try {
       const scriptResult = await this.runAppleScriptJson<{ image: string }>(
         "export-slide-images.applescript",
-        [filePath, outputDir, slideIndex.toString()],
+        [filePath, outputDir, slideNumber.toString()],
       );
       if (!scriptResult.success) {
         return { success: false, message: scriptResult.message || "Slide image export failed." };
@@ -290,7 +306,10 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
 
       const image = scriptResult.data.image;
       if (!image) {
-        return { success: false, message: `Could not find exported image for slide ${slideIndex}` };
+        return {
+          success: false,
+          message: `Could not find exported image for slide ${slideNumber}`,
+        };
       }
 
       return { success: true, image };
@@ -323,13 +342,17 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
-  async readSlideNotes(filePath: string, slideIndex: number): Promise<ReadSlideNotesResult> {
+  async readSlideNotes(filePath: string, slideIndex: SlideIndex): Promise<ReadSlideNotesResult> {
     const officeContainer = this.getOfficeContainerPath();
     const paramsPath = path.join(officeContainer, "export_slide_notes_params.txt");
     const outputPath = path.join(officeContainer, `export_slide_notes_${Date.now()}.txt`);
 
     try {
-      fs.writeFileSync(paramsPath, `${filePath}|${slideIndex}|${outputPath}`, "utf8");
+      fs.writeFileSync(
+        paramsPath,
+        `${filePath}|${slideNumberOf(slideIndex)}|${outputPath}`,
+        "utf8",
+      );
       const scriptResult = await this.runAppleScriptJson("trigger-macro.applescript", [
         "ExportSlideNotes",
         filePath,
@@ -339,7 +362,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       }
 
       const notes = this.parseNotesExportFile(outputPath);
-      return { success: true, notes: notes[slideIndex] || "" };
+      return { success: true, notes: notes.get(slideIndex) || "" };
     } catch (e: unknown) {
       return { success: false, message: getErrorMessage(e) };
     } finally {
@@ -363,10 +386,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     const notesResult = await this.readAllSlideNotes(filePath);
     if (!notesResult.success) {
       return notesResult;
-    }
-
-    if (!imageResult.images || !notesResult.notes) {
-      return { success: false, message: "Image or notes export returned no data." };
     }
 
     try {
@@ -402,13 +421,14 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       let batchParams = "";
       for (const slide of slidesAudio) {
         const buffer = Buffer.from(slide.audioData);
-        const slideDir = path.join(audioSessionDir, `slide_${slide.index}`);
+        const slideNumber = slideNumberOf(slide.slideIndex);
+        const slideDir = path.join(audioSessionDir, `slide_${slideNumber}`);
         fs.mkdirSync(slideDir, { recursive: true });
         const audioFileName = buildPptAudioFileName(slide.sectionIndex);
         const audioFilePath = path.join(slideDir, audioFileName);
 
         fs.writeFileSync(audioFilePath, buffer);
-        batchParams += `${filePath}|${slide.index}|${audioFilePath}\n`;
+        batchParams += `${filePath}|${slideNumber}|${audioFilePath}\n`;
       }
 
       const paramsPath = path.join(officeContainer, "insert_audio_params.txt");
@@ -436,15 +456,17 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
    * Removes audio from the specified slides.
    *
    * @param filePath - The path to the PowerPoint file.
-   * @param slideIndices - The 1-based indices of the slides to update.
+   * @param slideIndices - The slides to update. The macro takes 1-based slide
+   * numbers, derived here.
    * @returns A promise resolving to the success status of the operation.
    */
-  async removeAudio(filePath: string, slideIndices: number[]): Promise<BasicPptResult> {
+  async removeAudio(filePath: string, slideIndices: SlideIndex[]): Promise<BasicPptResult> {
     const officeContainer = this.getOfficeContainerPath();
     const paramsPath = path.join(officeContainer, "remove_audio_params.txt");
 
     try {
-      const paramsContent = `${filePath}|${slideIndices.join(",")}`;
+      const slideNumbers = slideIndices.map(slideNumberOf);
+      const paramsContent = `${filePath}|${slideNumbers.join(",")}`;
       fs.writeFileSync(paramsPath, paramsContent, "utf8");
 
       const scriptResult = await this.runAppleScriptJson("trigger-macro.applescript", [
@@ -474,7 +496,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
 
     let dataContent = "";
     for (const s of slides) {
-      dataContent += `###SLIDE_START### ${s.index}\n${s.notes || ""}\n###SLIDE_END###\n`;
+      dataContent += `###SLIDE_START### ${slideNumberOf(s.slideIndex)}\n${s.notes || ""}\n###SLIDE_END###\n`;
     }
 
     const dataPath = path.join(officeContainer, `notes_data_${Date.now()}.txt`);
@@ -535,12 +557,12 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
   /**
    * Enters presentation mode and navigates to the specified slide.
    *
-   * @param slideIndex - The index of the slide to start playing from.
+   * @param slideIndex - The slide to start playing from.
    * @returns A promise resolving to the success status.
    */
-  async playSlide(filePath: string, slideIndex: number): Promise<BasicPptResult> {
+  async playSlide(filePath: string, slideIndex: SlideIndex): Promise<BasicPptResult> {
     const scriptResult = await this.runAppleScriptJson("play-slide.applescript", [
-      slideIndex.toString(),
+      slideNumberOf(slideIndex).toString(),
       filePath,
     ]);
     if (!scriptResult.success) {
@@ -554,13 +576,13 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
    * Reloads an individual slide by re-exporting its image and fetching its notes.
    *
    * @param filePath - The path to the PowerPoint file.
-   * @param slideIndex - The index of the slide to reload.
+   * @param slideIndex - The slide to reload.
    * @param outputDir - The directory where the reloaded slide assets should be updated.
    * @returns A promise resolving to the fresh set of slides or an error message.
    */
   async reloadSlide(
     filePath: string,
-    slideIndex: number,
+    slideIndex: SlideIndex,
     outputDir: string,
   ): Promise<SlidePptResult> {
     const imageResult = await this.reloadSlideImage(filePath, slideIndex, outputDir);

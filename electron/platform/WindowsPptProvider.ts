@@ -1,3 +1,4 @@
+import { FIRST_SLIDE_INDEX, type SlideIndex } from "../../shared/slides/slideCoordinates.js";
 import type { NativePlatformProvider, PptProvider } from "./PptProvider.js";
 import type {
   BasicPptResult,
@@ -21,7 +22,7 @@ export class WindowsPptProvider implements PptProvider, NativePlatformProvider {
     return Promise.resolve({ success: false, message: "insertAudio not supported on Windows yet" });
   }
 
-  removeAudio(_filePath: string, _slideIndices: number[]): Promise<BasicPptResult> {
+  removeAudio(_filePath: string, _slideIndices: SlideIndex[]): Promise<BasicPptResult> {
     return Promise.resolve({ success: false, message: "removeAudio not supported on Windows yet" });
   }
 
@@ -36,7 +37,7 @@ export class WindowsPptProvider implements PptProvider, NativePlatformProvider {
     });
   }
 
-  playSlide(_filePath: string, _slideIndex: number): Promise<BasicPptResult> {
+  playSlide(_filePath: string, _slideIndex: SlideIndex): Promise<BasicPptResult> {
     return Promise.resolve({ success: false, message: "playSlide not supported on Windows yet" });
   }
 
@@ -49,7 +50,7 @@ export class WindowsPptProvider implements PptProvider, NativePlatformProvider {
 
   reloadSlideImage(
     _filePath: string,
-    _slideIndex: number,
+    _slideIndex: SlideIndex,
     _outputDir: string,
   ): Promise<ReloadSlideImageResult> {
     return Promise.resolve({
@@ -58,11 +59,11 @@ export class WindowsPptProvider implements PptProvider, NativePlatformProvider {
     });
   }
 
-  closePresentation(_filePath: string): Promise<number> {
-    return Promise.resolve(1);
+  closePresentation(_filePath: string): Promise<SlideIndex> {
+    return Promise.resolve(FIRST_SLIDE_INDEX);
   }
 
-  reopenPresentation(_filePath: string, _slideIndex: number): Promise<void> {
+  reopenPresentation(_filePath: string, _slideIndex: SlideIndex): Promise<void> {
     return Promise.resolve();
   }
 
@@ -73,14 +74,18 @@ export class WindowsPptProvider implements PptProvider, NativePlatformProvider {
     });
   }
 
-  readSlideNotes(_filePath: string, _slideIndex: number): Promise<ReadSlideNotesResult> {
+  readSlideNotes(_filePath: string, _slideIndex: SlideIndex): Promise<ReadSlideNotesResult> {
     return Promise.resolve({
       success: false,
       message: "readSlideNotes not supported on Windows yet",
     });
   }
 
-  reloadSlide(_filePath: string, _slideIndex: number, _outputDir: string): Promise<SlidePptResult> {
+  reloadSlide(
+    _filePath: string,
+    _slideIndex: SlideIndex,
+    _outputDir: string,
+  ): Promise<SlidePptResult> {
     return Promise.resolve({ success: false, message: "reloadSlide not supported on Windows yet" });
   }
 }

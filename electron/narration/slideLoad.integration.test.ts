@@ -17,10 +17,10 @@ const mappings: Record<string, SpeakerMapping> = {
   },
 };
 
-const rawSlide = (index: number, notes: string) => ({
-  index,
-  image: `slide-${index}.png`,
-  src: `app://slide-${index}.png`,
+const rawSlide = (slideNumber: number, notes: string) => ({
+  slideIndex: slideIndexFromLegacyNumber(slideNumber),
+  image: `slide-${slideNumber}.png`,
+  src: `app://slide-${slideNumber}.png`,
   notes,
 });
 

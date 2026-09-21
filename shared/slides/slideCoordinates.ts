@@ -37,3 +37,6 @@ export const slideIndexOf = (number: SlideNumber): SlideIndex => (number - 1) as
  */
 export const slideIndexFromLegacyNumber = (legacyOneBased: number): SlideIndex =>
   slideIndexOf(toSlideNumber(legacyOneBased));
+
+/** The index of the first slide in any presentation. */
+export const FIRST_SLIDE_INDEX = toSlideIndex(0);

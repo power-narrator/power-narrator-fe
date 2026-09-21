@@ -1,3 +1,4 @@
+import type { SlideIndex } from "../../shared/slides/slideCoordinates.js";
 import type {
   BasicPptResult,
   ExportSlideImagesResult,
@@ -14,22 +15,23 @@ import type {
 export interface PptProvider {
   convertPptx(filePath: string, outputDir: string): Promise<SlidesPptResult>;
   insertAudio(filePath: string, slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult>;
-  removeAudio(filePath: string, slideIndices: number[]): Promise<BasicPptResult>;
+  removeAudio(filePath: string, slideIndices: SlideIndex[]): Promise<BasicPptResult>;
   readAllSlideNotes(filePath: string): Promise<ReadAllSlideNotesResult>;
-  readSlideNotes(filePath: string, slideIndex: number): Promise<ReadSlideNotesResult>;
+  readSlideNotes(filePath: string, slideIndex: SlideIndex): Promise<ReadSlideNotesResult>;
   saveNotes(filePath: string, slides: SlideNotesEntry[]): Promise<BasicPptResult>;
-  reloadSlide(filePath: string, slideIndex: number, outputDir: string): Promise<SlidePptResult>;
+  reloadSlide(filePath: string, slideIndex: SlideIndex, outputDir: string): Promise<SlidePptResult>;
 }
 
 export interface NativePlatformProvider {
   generateVideo(filePath: string, videoOutputPath: string): Promise<VideoPptResult>;
-  playSlide(filePath: string, slideIndex: number): Promise<BasicPptResult>;
+  playSlide(filePath: string, slideIndex: SlideIndex): Promise<BasicPptResult>;
   exportSlideImages(filePath: string, outputDir: string): Promise<ExportSlideImagesResult>;
   reloadSlideImage(
     filePath: string,
-    slideIndex: number,
+    slideIndex: SlideIndex,
     outputDir: string,
   ): Promise<ReloadSlideImageResult>;
-  closePresentation(filePath: string): Promise<number>;
-  reopenPresentation(filePath: string, slideIndex: number): Promise<void>;
+  /** Resolves to the slide the author was on, defaulting to the first slide. */
+  closePresentation(filePath: string): Promise<SlideIndex>;
+  reopenPresentation(filePath: string, slideIndex: SlideIndex): Promise<void>;
 }

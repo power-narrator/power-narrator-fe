@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { toSlideIndex } from "../../shared/slides/slideCoordinates.js";
 import { completeSlideReload } from "./slideReload.js";
 import type { ReadSlideNotesResult } from "./types.js";
 
@@ -56,7 +57,7 @@ describe("completeSlideReload", () => {
       const loadNotes = vi.fn<() => Promise<ReadSlideNotesResult>>(loadNotesImplementation);
       const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
-      const result = await completeSlideReload(outputDir, 2, stagedImage, loadNotes);
+      const result = await completeSlideReload(outputDir, toSlideIndex(1), stagedImage, loadNotes);
 
       expect(result).toEqual({ success: false, message: expectedMessage });
       expect(loadNotes).toHaveBeenCalledOnce();
@@ -79,7 +80,7 @@ describe("completeSlideReload", () => {
       const stagedImagePath = createStagedImage ? writeFixture(outputDir, stagedImage) : null;
       const loadNotes = vi.fn<() => Promise<ReadSlideNotesResult>>();
 
-      const result = await completeSlideReload(outputDir, 2, stagedImage, loadNotes);
+      const result = await completeSlideReload(outputDir, toSlideIndex(1), stagedImage, loadNotes);
 
       expect(result).toEqual({
         success: false,
