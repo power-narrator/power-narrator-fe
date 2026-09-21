@@ -5,10 +5,7 @@ import type { ActionButtonState } from "../../types/viewer";
 import type { Slide, SlideElectronResult } from "../../types/electron";
 import { useSettings } from "../../context/useSettings";
 import { getSpeakerNames } from "../../../shared/narration/speaker";
-import {
-  slideIndexFromLegacyNumber,
-  type SlideIndex,
-} from "../../../shared/slides/slideCoordinates";
+import { slideNumberOf, type SlideIndex } from "../../../shared/slides/slideCoordinates";
 import { getErrorMessage } from "../../utils/errors";
 import { NotesSectionList } from "./NotesSectionList";
 import { SlideActionsBar, type SlideActionBarKey } from "./SlideActionsBar";
@@ -67,10 +64,11 @@ export function ViewerPage({
 
   const busy = operation.busy;
   const slides = editor.slides;
-  const activeSlideNumber = editor.activeSlideNumber;
-  // The editor still identifies its active slide by the 1-based number, so the
-  // address every PowerPoint operation takes is derived here at the boundary.
-  const activeSlideIndex = slideIndexFromLegacyNumber(activeSlideNumber);
+  const activeSlideIndex = editor.activeSlideIndex;
+  // Authors name slides as PowerPoint does, so the 1-based number is derived
+  // here, at the boundary where the interface speaks to them.
+  const activeSlideNumber =
+    activeSlideIndex === undefined ? undefined : slideNumberOf(activeSlideIndex);
 
   const headerActionStates: Record<ViewerHeaderActionKey, ActionButtonState> = {
     reloadAllSlides: operation.actionState("reloadAllSlides"),
@@ -79,11 +77,18 @@ export function ViewerPage({
     generateVideo: operation.actionState("generateVideo"),
   };
 
+  // A presentation with no slides has no slide to act on, so every slide action
+  // is unavailable rather than addressing whichever slide was loaded last.
+  const slideActionState = (key: SlideActionBarKey): ActionButtonState => {
+    const state = operation.actionState(key);
+    return activeSlideIndex === undefined ? { ...state, busy: true } : state;
+  };
+
   const slideActionStates: Record<SlideActionBarKey, ActionButtonState> = {
-    reloadSlide: operation.actionState("reloadSlide"),
-    saveSlide: operation.actionState("saveSlide"),
-    playSlide: operation.actionState("playSlide"),
-    removeAudio: operation.actionState("removeAudio"),
+    reloadSlide: slideActionState("reloadSlide"),
+    saveSlide: slideActionState("saveSlide"),
+    playSlide: slideActionState("playSlide"),
+    removeAudio: slideActionState("removeAudio"),
   };
 
   const { selectionIntent, selectionRestored } = editor;
@@ -96,7 +101,7 @@ export function ViewerPage({
     selectionRestored();
   }, [selectionIntent, selectionRestored, textareas]);
 
-  async function confirmDiscardChanges(slideIndex?: number) {
+  async function confirmDiscardChanges(slideIndex?: SlideIndex) {
     return !editor.wouldDiscard(slideIndex) || electronAPI.confirmDiscardNarrationChanges();
   }
 
@@ -136,7 +141,7 @@ export function ViewerPage({
       {
         filePath,
         slides: snapshot.slides.map((slide) => ({
-          slideIndex: slideIndexFromLegacyNumber(slide.index),
+          slideIndex: slide.slideIndex,
           sections: slide.sections,
         })),
       },
@@ -196,12 +201,16 @@ export function ViewerPage({
       (error) => alertError("Save error", error),
     );
 
-  const handleSaveSlide = () =>
-    operation.run(
+  const handleSaveSlide = () => {
+    if (activeSlideIndex === undefined) {
+      return;
+    }
+
+    return operation.run(
       "saveSlide",
       `Saving slide ${activeSlideNumber}...`,
       async (command) => {
-        const snapshot = editor.submitSave([activeSlideNumber]);
+        const snapshot = editor.submitSave([activeSlideIndex]);
         const submitted = snapshot.slides[0];
         if (!submitted) {
           command.clearStatus();
@@ -210,7 +219,7 @@ export function ViewerPage({
 
         const result = await electronAPI.saveNarratedSlide({
           filePath,
-          slideIndex: slideIndexFromLegacyNumber(submitted.index),
+          slideIndex: submitted.slideIndex,
           sections: submitted.sections,
         });
         if (!result.success) {
@@ -224,9 +233,14 @@ export function ViewerPage({
       },
       (error) => alertError("Save error", error),
     );
+  };
 
-  const handlePlaySlide = () =>
-    operation.run(
+  const handlePlaySlide = () => {
+    if (activeSlideIndex === undefined) {
+      return;
+    }
+
+    return operation.run(
       "playSlide",
       `Playing slide ${activeSlideNumber}...`,
       async (command) => {
@@ -240,6 +254,7 @@ export function ViewerPage({
       },
       (error) => alertError("Play slide error", error),
     );
+  };
 
   const handleReloadAllSlides = async () => {
     // A declined reload must keep the open typing group as an undo step of its own.
@@ -267,7 +282,11 @@ export function ViewerPage({
 
   const handleReloadSlide = async () => {
     editor.finalizePendingTyping();
-    if (busy || !(await confirmDiscardChanges(activeSlideNumber))) {
+    if (
+      activeSlideIndex === undefined ||
+      busy ||
+      !(await confirmDiscardChanges(activeSlideIndex))
+    ) {
       return;
     }
 
@@ -339,7 +358,7 @@ export function ViewerPage({
         <Split.Pane initialWidth="10%">
           <SlideThumbnailList
             slides={slides}
-            activeSlideIndex={editor.activeSlidePosition}
+            activeSlideIndex={activeSlideIndex}
             onSelectSlide={editor.selectSlide}
           />
         </Split.Pane>
@@ -349,10 +368,12 @@ export function ViewerPage({
         <Split.Pane grow>
           <Split orientation="horizontal" h="100%">
             <Split.Pane initialHeight="30%">
-              <SlidePreviewPane
-                activeSlideSrc={editor.activeSlideSrc}
-                slideNumber={activeSlideNumber}
-              />
+              {activeSlideNumber !== undefined && (
+                <SlidePreviewPane
+                  activeSlideSrc={editor.activeSlideSrc}
+                  slideNumber={activeSlideNumber}
+                />
+              )}
             </Split.Pane>
 
             <Split.Resizer />
@@ -365,7 +386,11 @@ export function ViewerPage({
                     reloadSlide: () => void handleReloadSlide(),
                     saveSlide: () => void handleSaveSlide(),
                     playSlide: () => void handlePlaySlide(),
-                    removeAudio: () => void runRemoveAudio("removeAudio", [activeSlideIndex]),
+                    removeAudio: () => {
+                      if (activeSlideIndex !== undefined) {
+                        void runRemoveAudio("removeAudio", [activeSlideIndex]);
+                      }
+                    },
                   }}
                 />
 
@@ -378,18 +403,20 @@ export function ViewerPage({
                   onInsertWrappedTag={insertWrappedTag}
                 />
 
-                <NotesSectionList
-                  sections={editor.sections}
-                  mappings={mappings}
-                  slideIndex={activeSlideIndex}
-                  onFocusSection={editor.selectSection}
-                  onSpeakerChange={editor.setSectionSpeaker}
-                  onSectionTextChange={editor.setSectionText}
-                  onSectionPromptChange={editor.setSectionPrompt}
-                  onDeleteSection={editor.deleteSection}
-                  onAddSection={editor.addSection}
-                  textareas={textareas}
-                />
+                {activeSlideIndex !== undefined && (
+                  <NotesSectionList
+                    sections={editor.sections}
+                    mappings={mappings}
+                    slideIndex={activeSlideIndex}
+                    onFocusSection={editor.selectSection}
+                    onSpeakerChange={editor.setSectionSpeaker}
+                    onSectionTextChange={editor.setSectionText}
+                    onSectionPromptChange={editor.setSectionPrompt}
+                    onDeleteSection={editor.deleteSection}
+                    onAddSection={editor.addSection}
+                    textareas={textareas}
+                  />
+                )}
               </Stack>
             </Split.Pane>
           </Split>
