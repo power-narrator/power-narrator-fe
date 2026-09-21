@@ -1,3 +1,4 @@
+import { toSlideIndex } from "../../shared/slides/slideCoordinates.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -78,7 +79,7 @@ it("formats the submitted structured sections only as PowerPoint takes them", as
     filePath: presentationPath,
     slides: [
       {
-        slideIndex: 2,
+        slideIndex: toSlideIndex(1),
         // Section text holding a separator line, a prompt marker written with
         // the author's own spacing, and a second section prove the sections
         // cross unchanged: reparsing anywhere would split the first section and

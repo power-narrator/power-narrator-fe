@@ -9,7 +9,7 @@ import type {
   RemoveAudioRequest,
   SetGcpKeyResult,
   VideoPptResult,
-} from "./platform/types.js";
+} from "../shared/types/powerpoint.js";
 import type { StructuredSlideResult, StructuredSlidesResult } from "../shared/types/slides.js";
 import type { Voice } from "../shared/types/tts.js";
 import type {

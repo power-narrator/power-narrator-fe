@@ -4,9 +4,9 @@ import type {
   PlaySlideRequest,
   ReloadSlideRequest,
   RemoveAudioRequest,
-  SetGcpKeyResult as PlatformSetGcpKeyResult,
+  SetGcpKeyResult as PowerPointSetGcpKeyResult,
   VideoPptResult,
-} from "../../electron/platform/types";
+} from "../../shared/types/powerpoint.js";
 import type {
   StructuredSlide,
   StructuredSlideResult,
@@ -23,7 +23,7 @@ export type SlideElectronResult = StructuredSlideResult;
 
 export type VideoElectronResult = VideoPptResult;
 
-export type SetGcpKeyResult = PlatformSetGcpKeyResult;
+export type SetGcpKeyResult = PowerPointSetGcpKeyResult;
 
 export type GenerateVideoPayload = GenerateVideoRequest;
 

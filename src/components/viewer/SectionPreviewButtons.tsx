@@ -4,11 +4,12 @@ import type { NarrationSection } from "../../../shared/narration/NarrationSectio
 import { DEFAULT_SPEAKER_VALUE } from "../../../shared/narration/speaker";
 import { getSpeakerOptions } from "../../utils/viewer";
 import type { SpeakerMapping } from "../../../shared/types/tts";
+import type { SlideIndex } from "../../../shared/slides/slideCoordinates";
 import { useNarrationPreview } from "./useNarrationPreview";
 
 interface SectionPreviewButtonsProps {
   id: string;
-  slideIndex: number;
+  slideIndex: SlideIndex;
   sectionIndex: number;
   sections: readonly NarrationSection[];
   mappings: Record<string, SpeakerMapping>;

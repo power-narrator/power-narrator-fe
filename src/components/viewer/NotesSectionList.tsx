@@ -14,6 +14,7 @@ import type { SpeakerMapping } from "../../../shared/types/tts";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
 import { IconPlus } from "@tabler/icons-react";
 import { getEffectiveSpeaker } from "../../../shared/narration/NarrationSections";
+import { slideNumberOf, type SlideIndex } from "../../../shared/slides/slideCoordinates";
 import { DEFAULT_SPEAKER_VALUE, toSynthesisSpeaker } from "../../../shared/narration/speaker";
 import { SpeakerPrompt } from "../SpeakerPrompt";
 import type { EditorSection, SectionId } from "./SlideNoteEditor";
@@ -29,7 +30,7 @@ interface NotesSectionListProps {
   onDeleteSection: (id: SectionId) => void;
   onAddSection: () => void;
   textareas: SectionTextareas;
-  slideIndex: number;
+  slideIndex: SlideIndex;
 }
 
 interface SectionTextEditorProps {
@@ -69,6 +70,7 @@ export function NotesSectionList({
   slideIndex,
 }: NotesSectionListProps) {
   const speakerOptions = getSpeakerOptions(mappings);
+  const slideNumber = slideNumberOf(slideIndex);
 
   return (
     <Stack gap="xs" mih={0}>
@@ -76,7 +78,7 @@ export function NotesSectionList({
       <ScrollArea flex={1}>
         <Stack>
           {sections.map((section, index) => {
-            const sectionLabel = `slide ${slideIndex} section ${index + 1}`;
+            const sectionLabel = `slide ${slideNumber} section ${index + 1}`;
             const effectiveSpeaker = getEffectiveSpeaker(sections, index);
             const isInherited = section.speaker === "" || section.speaker === DEFAULT_SPEAKER_VALUE;
             const placeholder =
@@ -140,7 +142,7 @@ export function NotesSectionList({
                 />
                 <Divider />
                 <SectionTextEditor
-                  label={`Slide ${slideIndex} section ${index + 1} notes`}
+                  label={`Slide ${slideNumber} section ${index + 1} notes`}
                   value={section.text}
                   onChange={(value) => onSectionTextChange(section.id, value)}
                   onFocus={() => onFocusSection(section.id)}
