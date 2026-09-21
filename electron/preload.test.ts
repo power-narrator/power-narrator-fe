@@ -10,7 +10,17 @@ import type {
   PreviewNarrationRequest,
 } from "../shared/types/narration.js";
 import type { StructuredSlideResult, StructuredSlidesResult } from "../shared/types/slides.js";
-import { slideIndexFromLegacyNumber, toSlideNumber } from "../shared/slides/slideCoordinates.js";
+import type {
+  BasicPptResult,
+  PlaySlideRequest,
+  ReloadSlideRequest,
+  RemoveAudioRequest,
+} from "../shared/types/powerpoint.js";
+import {
+  slideIndexFromLegacyNumber,
+  toSlideIndex,
+  toSlideNumber,
+} from "../shared/slides/slideCoordinates.js";
 import {
   formatNarrationSections,
   parseNarrationSections,
@@ -21,10 +31,9 @@ type PrepareNarrationPreview = (
 ) => Promise<NarrationPreviewResult>;
 type ProgressListener = (event: unknown, progress: NarrationPreparationProgress) => void;
 type ConvertPptx = (filePath: string) => Promise<StructuredSlidesResult>;
-type ReloadSlide = (payload: {
-  filePath: string;
-  slideIndex: number;
-}) => Promise<StructuredSlideResult>;
+type ReloadSlide = (payload: ReloadSlideRequest) => Promise<StructuredSlideResult>;
+type PlaySlide = (payload: PlaySlideRequest) => Promise<BasicPptResult>;
+type RemoveAudio = (payload: RemoveAudioRequest) => Promise<BasicPptResult>;
 type SaveNarratedPresentation = (
   payload: NarratedPresentationSaveRequest,
   onProgress: (progress: NarrationPreparationProgress) => void,
@@ -36,6 +45,8 @@ const electron = vi.hoisted(() => {
       | {
           convertPptx: ConvertPptx;
           reloadSlide: ReloadSlide;
+          playSlide: PlaySlide;
+          removeAudio: RemoveAudio;
           saveNarratedPresentation: SaveNarratedPresentation;
           prepareNarrationPreview: PrepareNarrationPreview;
         }
@@ -96,7 +107,7 @@ it("stops delivering progress after a narrated presentation save settles", async
   const saving = electron.state.exposedApi!.saveNarratedPresentation(
     {
       filePath: "/slides/talk.pptx",
-      slides: [{ slideIndex: 1, sections: [{ speaker: "", text: "Narrate this" }] }],
+      slides: [{ slideIndex: toSlideIndex(0), sections: [{ speaker: "", text: "Narrate this" }] }],
     },
     (progress) => observedProgress.push(progress),
   );
@@ -124,7 +135,7 @@ it("carries structured slide-note sections across the preview channel", async ()
   });
 
   await electron.state.exposedApi!.prepareNarrationPreview({
-    slideIndex: 1,
+    slideIndex: toSlideIndex(0),
     sectionIndex: 1,
     sections: parseNarrationSections(notes, ["Narrator"]),
     text: "Second",
@@ -134,6 +145,7 @@ it("carries structured slide-note sections across the preview channel", async ()
   const [channel, payload] = electron.ipcRenderer.invoke.mock.lastCall!;
   expect(channel).toBe("prepare-narration-preview");
   const delivered = structuredClone(payload) as PreviewNarrationRequest;
+  expect(delivered.slideIndex).toBe(0);
   expect(delivered.sectionIndex).toBe(1);
   expect(formatNarrationSections(delivered.sections)).toBe(notes);
 });
@@ -146,7 +158,12 @@ it("carries structured slide-note sections across the narrated presentation save
   await electron.state.exposedApi!.saveNarratedPresentation(
     {
       filePath: "/slides/talk.pptx",
-      slides: [{ slideIndex: 1, sections: parseNarrationSections(notes, ["Narrator", "Guest"]) }],
+      slides: [
+        {
+          slideIndex: toSlideIndex(0),
+          sections: parseNarrationSections(notes, ["Narrator", "Guest"]),
+        },
+      ],
     },
     () => {},
   );
@@ -181,6 +198,50 @@ it("carries structured slides back across the load channel with their slide indi
   expect(formatNarrationSections(slide!.sections)).toBe(notes);
 });
 
+it.each([0, 6])(
+  "carries slide index %i across the reload and playback channels unchanged",
+  async (index) => {
+    loadPreload();
+    electron.ipcRenderer.invoke.mockResolvedValue({ success: true });
+
+    await electron.state.exposedApi!.reloadSlide({
+      filePath: "/slides/talk.pptx",
+      slideIndex: toSlideIndex(index),
+    });
+    const [reloadChannel, reloadRequest] = electron.ipcRenderer.invoke.mock.lastCall!;
+
+    await electron.state.exposedApi!.playSlide({
+      filePath: "/slides/talk.pptx",
+      slideIndex: toSlideIndex(index),
+    });
+    const [playChannel, playRequest] = electron.ipcRenderer.invoke.mock.lastCall!;
+
+    await electron.state.exposedApi!.removeAudio({
+      filePath: "/slides/talk.pptx",
+      slideIndices: [toSlideIndex(index)],
+    });
+    const [removeChannel, removeRequest] = electron.ipcRenderer.invoke.mock.lastCall!;
+
+    expect([reloadChannel, playChannel, removeChannel]).toEqual([
+      "reload-slide",
+      "play-slide",
+      "remove-audio",
+    ]);
+    expect(structuredClone(reloadRequest)).toEqual({
+      filePath: "/slides/talk.pptx",
+      slideIndex: index,
+    });
+    expect(structuredClone(playRequest)).toEqual({
+      filePath: "/slides/talk.pptx",
+      slideIndex: index,
+    });
+    expect(structuredClone(removeRequest)).toEqual({
+      filePath: "/slides/talk.pptx",
+      slideIndices: [index],
+    });
+  },
+);
+
 it("carries a reloaded structured slide back across the reload channel", async () => {
   loadPreload();
   const notes = "[ Narrator ]\nReplaced\n-----\nSecond\n";
@@ -197,9 +258,11 @@ it("carries a reloaded structured slide back across the reload channel", async (
 
   const result = await electron.state.exposedApi!.reloadSlide({
     filePath: "/slides/talk.pptx",
-    slideIndex: 2,
+    slideIndex: toSlideIndex(1),
   });
 
+  const [, request] = electron.ipcRenderer.invoke.mock.lastCall!;
+  expect(structuredClone(request)).toEqual({ filePath: "/slides/talk.pptx", slideIndex: 1 });
   const delivered = structuredClone(result);
   expect(delivered.success).toBe(true);
   const slide = delivered.success ? delivered.slide : undefined;

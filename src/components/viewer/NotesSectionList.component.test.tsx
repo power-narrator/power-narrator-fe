@@ -1,3 +1,4 @@
+import { toSlideIndex } from "../../../shared/slides/slideCoordinates";
 import { MantineProvider } from "@mantine/core";
 import { useState } from "react";
 import { expect, test, vi } from "vitest";
@@ -56,7 +57,7 @@ function SectionsHarness({
       {...handlers}
       sections={shown}
       mappings={mappings}
-      slideIndex={3}
+      slideIndex={toSlideIndex(2)}
       textareas={textareas}
       onDeleteSection={(id) => {
         handlers.onDeleteSection(id);

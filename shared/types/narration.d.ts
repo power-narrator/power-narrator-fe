@@ -1,4 +1,5 @@
 import type { NarrationSection } from "../narration/NarrationSections.js";
+import type { SlideIndex } from "../slides/slideCoordinates.js";
 
 export type PreviewSpeakerChoice =
   | { kind: "effective" }
@@ -8,7 +9,8 @@ export type PreviewSpeakerChoice =
 export interface PreviewNarrationRequest {
   /** The author's current slide-note sections, in the order narration positions follow. */
   sections: readonly NarrationSection[];
-  slideIndex: number;
+  slideIndex: SlideIndex;
+  /** Where the section sits within its slide, counted from zero. */
   sectionIndex: number;
   text: string;
   speakerChoice: PreviewSpeakerChoice;
@@ -20,7 +22,7 @@ export interface NarrationPreviewResult {
 }
 
 export interface NarratedSlideInput {
-  slideIndex: number;
+  slideIndex: SlideIndex;
   /** The author's structured sections, in the order narration positions follow. */
   sections: readonly NarrationSection[];
 }

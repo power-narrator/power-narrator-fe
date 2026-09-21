@@ -5,6 +5,10 @@ import type { ActionButtonState } from "../../types/viewer";
 import type { Slide, SlideElectronResult } from "../../types/electron";
 import { useSettings } from "../../context/useSettings";
 import { getSpeakerNames } from "../../../shared/narration/speaker";
+import {
+  slideIndexFromLegacyNumber,
+  type SlideIndex,
+} from "../../../shared/slides/slideCoordinates";
 import { getErrorMessage } from "../../utils/errors";
 import { NotesSectionList } from "./NotesSectionList";
 import { SlideActionsBar, type SlideActionBarKey } from "./SlideActionsBar";
@@ -64,6 +68,9 @@ export function ViewerPage({
   const busy = operation.busy;
   const slides = editor.slides;
   const activeSlideNumber = editor.activeSlideNumber;
+  // The editor still identifies its active slide by the 1-based number, so the
+  // address every PowerPoint operation takes is derived here at the boundary.
+  const activeSlideIndex = slideIndexFromLegacyNumber(activeSlideNumber);
 
   const headerActionStates: Record<ViewerHeaderActionKey, ActionButtonState> = {
     reloadAllSlides: operation.actionState("reloadAllSlides"),
@@ -129,7 +136,7 @@ export function ViewerPage({
       {
         filePath,
         slides: snapshot.slides.map((slide) => ({
-          slideIndex: slide.index,
+          slideIndex: slideIndexFromLegacyNumber(slide.index),
           sections: slide.sections,
         })),
       },
@@ -203,7 +210,7 @@ export function ViewerPage({
 
         const result = await electronAPI.saveNarratedSlide({
           filePath,
-          slideIndex: submitted.index,
+          slideIndex: slideIndexFromLegacyNumber(submitted.index),
           sections: submitted.sections,
         });
         if (!result.success) {
@@ -223,7 +230,7 @@ export function ViewerPage({
       "playSlide",
       `Playing slide ${activeSlideNumber}...`,
       async (command) => {
-        const result = await electronAPI.playSlide({ filePath, slideIndex: activeSlideNumber });
+        const result = await electronAPI.playSlide({ filePath, slideIndex: activeSlideIndex });
         if (!result.success) {
           alert(`Failed to play slide: ${result.message}`);
           command.clearStatus();
@@ -270,7 +277,7 @@ export function ViewerPage({
       async (command) => {
         const result: SlideElectronResult = await electronAPI.reloadSlide({
           filePath,
-          slideIndex: activeSlideNumber,
+          slideIndex: activeSlideIndex,
         });
         if (!result.success) {
           alert(`Sync slide error: ${result.message}`);
@@ -284,7 +291,7 @@ export function ViewerPage({
     );
   };
 
-  const runRemoveAudio = (owner: RemoveAudioKey, slideIndices: number[]) =>
+  const runRemoveAudio = (owner: RemoveAudioKey, slideIndices: SlideIndex[]) =>
     operation.run(
       owner,
       REMOVE_AUDIO_STATUS[owner],
@@ -322,7 +329,7 @@ export function ViewerPage({
           removeAllAudio: () =>
             void runRemoveAudio(
               "removeAllAudio",
-              slides.map((slide) => slide.index),
+              slides.map((slide) => slide.slideIndex),
             ),
           generateVideo: () => void handleGenerateVideo(),
         }}
@@ -358,7 +365,7 @@ export function ViewerPage({
                     reloadSlide: () => void handleReloadSlide(),
                     saveSlide: () => void handleSaveSlide(),
                     playSlide: () => void handlePlaySlide(),
-                    removeAudio: () => void runRemoveAudio("removeAudio", [activeSlideNumber]),
+                    removeAudio: () => void runRemoveAudio("removeAudio", [activeSlideIndex]),
                   }}
                 />
 
@@ -374,7 +381,7 @@ export function ViewerPage({
                 <NotesSectionList
                   sections={editor.sections}
                   mappings={mappings}
-                  slideIndex={activeSlideNumber}
+                  slideIndex={activeSlideIndex}
                   onFocusSection={editor.selectSection}
                   onSpeakerChange={editor.setSectionSpeaker}
                   onSectionTextChange={editor.setSectionText}

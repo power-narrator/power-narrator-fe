@@ -12,7 +12,14 @@ import {
   type SynthesisSpeaker,
 } from "../../shared/narration/speaker.js";
 import { toSpeakerPrompt } from "../../shared/narration/prompt.js";
-import { slideIndexFromLegacyNumber } from "../../shared/slides/slideCoordinates.js";
+import { slideNumberOf, type SlideIndex } from "../../shared/slides/slideCoordinates.js";
+
+/**
+ * How a failure names a narration position to the author: the slide by its
+ * 1-based number, the section by its 1-based position within that slide.
+ */
+const narrationPosition = (slideIndex: SlideIndex, sectionIndex: number): string =>
+  `slide ${slideNumberOf(slideIndex)}, section ${sectionIndex + 1}`;
 
 export interface SpeakerMappingSource {
   getSpeakerMappings(): Record<string, SpeakerMapping> | Promise<Record<string, SpeakerMapping>>;
@@ -24,7 +31,7 @@ export interface NarrationSynthesizer {
 }
 
 type PreparedNarrationSection = {
-  slideIndex: number;
+  slideIndex: SlideIndex;
   sectionIndex: number;
   synthesisSpeaker: SynthesisSpeaker;
   text: string;
@@ -47,7 +54,7 @@ export class NarrationPreparation {
     if (!text) {
       throw new NarrationPreparationError(
         "validation",
-        `Narration validation failed for slide ${request.slideIndex}, section ${request.sectionIndex + 1}: text is empty.`,
+        `Narration validation failed for ${narrationPosition(request.slideIndex, request.sectionIndex)}: text is empty.`,
       );
     }
 
@@ -98,7 +105,7 @@ export class NarrationPreparation {
     const synthesized = await this.synthesizeSections(prepared, onProgress);
 
     return synthesized.map(({ slideIndex, sectionIndex, speech }) => ({
-      slideIndex: slideIndexFromLegacyNumber(slideIndex),
+      slideIndex,
       sectionIndex,
       audioData: new Uint8Array(speech.audio),
     }));
@@ -106,7 +113,7 @@ export class NarrationPreparation {
 
   private planSection(
     mappings: Record<string, SpeakerMapping>,
-    slideIndex: number,
+    slideIndex: SlideIndex,
     sectionIndex: number,
     text: string,
     speaker: string,
@@ -146,7 +153,7 @@ export class NarrationPreparation {
           const message = error instanceof Error ? error.message : "Unknown synthesis error";
           throw new NarrationPreparationError(
             "synthesis",
-            `Narration synthesis failed for slide ${section.slideIndex}, section ${section.sectionIndex + 1}, speaker "${section.synthesisSpeaker.label}": ${message}.`,
+            `Narration synthesis failed for ${narrationPosition(section.slideIndex, section.sectionIndex)}, speaker "${section.synthesisSpeaker.label}": ${message}.`,
           );
         }
       }),
@@ -156,7 +163,7 @@ export class NarrationPreparation {
   private resolveVoice(
     mapping: SpeakerMapping | undefined,
     speaker: SynthesisSpeaker,
-    slideIndex: number,
+    slideIndex: SlideIndex,
     sectionIndex: number,
   ): Voice {
     const voice = mapping?.voice;
@@ -169,7 +176,7 @@ export class NarrationPreparation {
     if (validationProblem || !voice) {
       throw new NarrationPreparationError(
         "validation",
-        `Narration validation failed for slide ${slideIndex}, section ${sectionIndex + 1}, speaker "${speaker.label}": ${validationProblem}.`,
+        `Narration validation failed for ${narrationPosition(slideIndex, sectionIndex)}, speaker "${speaker.label}": ${validationProblem}.`,
       );
     }
 

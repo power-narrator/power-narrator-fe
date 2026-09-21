@@ -22,7 +22,7 @@ import type {
 import { registerNarrationIpc } from "./narration/registerNarrationIpc.js";
 import { withSlideSections, withSlidesSections } from "./narration/structuredSlideNotes.js";
 import { getSpeakerNames } from "../shared/narration/speaker.js";
-import { slideIndexFromLegacyNumber } from "../shared/slides/slideCoordinates.js";
+import { toSlideIndex } from "../shared/slides/slideCoordinates.js";
 import { UnsavedNarrationChanges } from "./windows/UnsavedNarrationChanges.js";
 import { createMainWindow } from "./windows/createMainWindow.js";
 import { installTestHarness } from "./testing/narrationTestHarness.js";
@@ -206,11 +206,9 @@ ipcMain.handle("convert-pptx", async (_, filePath: string) => {
 ipcMain.handle("remove-audio", async (_, { filePath, slideIndices }: RemoveAudioRequest) => {
   const absolutePath = path.resolve(filePath);
   if (!fs.existsSync(absolutePath)) return { success: false, message: "File not found" };
-  // These requests still carry legacy 1-based slide numbers; issue 15 migrates them.
-  return getActiveCoreProvider().removeAudio(
-    absolutePath,
-    slideIndices.map(slideIndexFromLegacyNumber),
-  );
+  // A slide index is branded only at compile time, so the addresses arriving
+  // over IPC are checked here, where they first enter the main process.
+  return getActiveCoreProvider().removeAudio(absolutePath, slideIndices.map(toSlideIndex));
 });
 
 ipcMain.handle("play-slide", async (_, { filePath, slideIndex }: PlaySlideRequest) => {
@@ -219,7 +217,7 @@ ipcMain.handle("play-slide", async (_, { filePath, slideIndex }: PlaySlideReques
   }
 
   const absolutePath = path.resolve(filePath);
-  return nativeProvider.playSlide(absolutePath, slideIndexFromLegacyNumber(slideIndex));
+  return nativeProvider.playSlide(absolutePath, toSlideIndex(slideIndex));
 });
 
 ipcMain.handle("reload-slide", async (_, { filePath, slideIndex }: ReloadSlideRequest) => {
@@ -230,11 +228,7 @@ ipcMain.handle("reload-slide", async (_, { filePath, slideIndex }: ReloadSlideRe
     return { success: false, message: "Conversion directory not found. Please sync all first." };
   }
   return withSlideSections(
-    await getActiveCoreProvider().reloadSlide(
-      absolutePath,
-      slideIndexFromLegacyNumber(slideIndex),
-      outputDir,
-    ),
+    await getActiveCoreProvider().reloadSlide(absolutePath, toSlideIndex(slideIndex), outputDir),
     getSpeakerNames(getSpeakerMappings()),
   );
 });

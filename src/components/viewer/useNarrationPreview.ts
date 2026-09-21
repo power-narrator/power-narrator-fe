@@ -14,6 +14,7 @@ import {
   type NarrationSection,
 } from "../../../shared/narration/NarrationSections";
 import { DEFAULT_SPEAKER_VALUE } from "../../../shared/narration/speaker";
+import type { SlideIndex } from "../../../shared/slides/slideCoordinates";
 import type { PreviewSpeakerChoice } from "../../../shared/types/narration";
 import { useAudio } from "../../context/useAudio";
 import { getErrorMessage } from "../../utils/errors";
@@ -83,7 +84,7 @@ function usePreviewRequestCoordinator() {
 
 interface NarrationPreviewOptions {
   id: string;
-  slideIndex: number;
+  slideIndex: SlideIndex;
   sectionIndex: number;
   sections: readonly NarrationSection[];
   onFocus: () => void;

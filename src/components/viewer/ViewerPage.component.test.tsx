@@ -316,7 +316,7 @@ test("plays the active slide", async () => {
   await screen.getByRole("button", { name: "Play", exact: true }).click();
 
   await vi.waitFor(() => expect(screen.getByText("Played").first()).toBeInTheDocument());
-  expect(playSlide).toHaveBeenCalledWith({ filePath: "presentation.pptx", slideIndex: 1 });
+  expect(playSlide).toHaveBeenCalledWith({ filePath: "presentation.pptx", slideIndex: 0 });
 });
 
 test("removes audio for the active slide", async () => {
@@ -331,7 +331,7 @@ test("removes audio for the active slide", async () => {
   await vi.waitFor(() => expect(screen.getByText("Removed!").first()).toBeInTheDocument());
   expect(removeAudio).toHaveBeenCalledWith({
     filePath: "presentation.pptx",
-    slideIndices: [1],
+    slideIndices: [0],
   });
 });
 
@@ -354,7 +354,7 @@ test("removes audio for every slide", async () => {
   await vi.waitFor(() =>
     expect(removeAudio).toHaveBeenCalledWith({
       filePath: "presentation.pptx",
-      slideIndices: [1, 2],
+      slideIndices: [0, 1],
     }),
   );
 });
@@ -480,4 +480,50 @@ test("shows a bracketed line as the section's speaker once a mapping names it", 
   await expect
     .element(screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }))
     .toHaveValue("Loaded narration");
+});
+
+test("addresses the selected slide by its own index, not its place in the list", async () => {
+  // A deck whose second entry is slide 3, so a slide's address cannot be
+  // mistaken for its position among the thumbnails.
+  const thirdSlide: Slide = {
+    ...loadedSlide,
+    slideIndex: slideIndexFromLegacyNumber(3),
+    index: toSlideNumber(3),
+    image: "slide-three.png",
+  };
+  const playSlide = vi.fn<typeof window.electronAPI.playSlide>(() =>
+    Promise.resolve({ success: true as const }),
+  );
+  const saveNarratedSlide = vi.fn<typeof window.electronAPI.saveNarratedSlide>(
+    (): Promise<NarratedSaveResult> => Promise.resolve({ success: true }),
+  );
+  const removeAudio = vi.fn<typeof window.electronAPI.removeAudio>(() =>
+    Promise.resolve({ success: true as const }),
+  );
+  installElectronApi({ playSlide, saveNarratedSlide, removeAudio });
+  const { screen } = await renderViewer(vi.fn<() => void>(), [loadedSlide, thirdSlide]);
+
+  await screen.getByRole("button", { name: "Slide 2" }).click();
+  await screen.getByRole("button", { name: "Play", exact: true }).click();
+
+  await vi.waitFor(() =>
+    expect(playSlide).toHaveBeenCalledWith({ filePath: "presentation.pptx", slideIndex: 2 }),
+  );
+
+  await screen.getByRole("button", { name: "Save Slide", exact: true }).click();
+
+  await vi.waitFor(() =>
+    expect(saveNarratedSlide).toHaveBeenCalledWith(
+      expect.objectContaining({ filePath: "presentation.pptx", slideIndex: 2 }),
+    ),
+  );
+
+  await screen.getByRole("button", { name: "Remove All Audio", exact: true }).click();
+
+  await vi.waitFor(() =>
+    expect(removeAudio).toHaveBeenCalledWith({
+      filePath: "presentation.pptx",
+      slideIndices: [0, 2],
+    }),
+  );
 });

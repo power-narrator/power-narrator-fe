@@ -1,3 +1,4 @@
+import { toSlideIndex } from "../../../shared/slides/slideCoordinates";
 import { MantineProvider } from "@mantine/core";
 import type { PropsWithChildren } from "react";
 import { afterEach, expect, test, vi, type MockInstance } from "vitest";
@@ -79,7 +80,7 @@ async function renderSpeakerChoicePreview({
     <PreviewProviders>
       <SectionPreviewButtons
         id={`1-${sectionIndex}`}
-        slideIndex={1}
+        slideIndex={toSlideIndex(0)}
         sectionIndex={sectionIndex}
         sections={sections}
         mappings={mappings}
@@ -114,7 +115,7 @@ async function renderConcurrentSectionPreviews() {
         <SectionPreviewButtons
           key={section.speaker}
           id={`1-${index}`}
-          slideIndex={1}
+          slideIndex={toSlideIndex(0)}
           sectionIndex={index}
           sections={concurrentSections}
           mappings={{ [section.speaker]: { voice: narratorVoice } }}
@@ -162,7 +163,7 @@ function renderLivePreview(previewRequests: PreviewNarrationRequest[]) {
         />
         <SectionPreviewButtons
           id="section-0"
-          slideIndex={1}
+          slideIndex={toSlideIndex(0)}
           sectionIndex={0}
           sections={[liveSection]}
           mappings={{ Narrator: { voice: narratorVoice } }}
@@ -300,7 +301,7 @@ test("stopping a pending preview suppresses its late audio result", async () => 
     <PreviewProviders>
       <SectionPreviewButtons
         id="1-0"
-        slideIndex={1}
+        slideIndex={toSlideIndex(0)}
         sectionIndex={0}
         sections={[{ speaker: "Narrator", text: "Delayed preview" }]}
         mappings={{ Narrator: { voice: narratorVoice } }}
@@ -374,7 +375,7 @@ test("creates MP3 playback for a narration preview", async () => {
     <PreviewProviders>
       <SectionPreviewButtons
         id="1-0"
-        slideIndex={1}
+        slideIndex={toSlideIndex(0)}
         sectionIndex={0}
         sections={[{ speaker: "Narrator", text: "Local narration" }]}
         mappings={{ Narrator: { voice: narratorVoice } }}

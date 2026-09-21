@@ -1,3 +1,4 @@
+import { toSlideIndex } from "../../shared/slides/slideCoordinates.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -76,7 +77,7 @@ describe("NarrationPreparation", () => {
       new TtsManager(new Map([["gcp", provider]]), cacheDirectory),
     );
     const request = {
-      slideIndex: 2,
+      slideIndex: toSlideIndex(1),
       sectionIndex: 0,
       sections: [{ speaker: "Narrator", text: "Hello" }],
       text: " Hello ",
@@ -107,13 +108,13 @@ describe("NarrationPreparation", () => {
 
     const batch = preparation.prepareBatch([
       {
-        slideIndex: 5,
+        slideIndex: toSlideIndex(4),
         sections: [
           { speaker: "Narrator", text: "Five first" },
           { speaker: "", text: "Five second" },
         ],
       },
-      { slideIndex: 1, sections: [{ speaker: "Narrator", text: "One first" }] },
+      { slideIndex: toSlideIndex(0), sections: [{ speaker: "Narrator", text: "One first" }] },
     ]);
     await vi.waitFor(() => expect(pending.size).toBe(3));
 
@@ -133,7 +134,7 @@ describe("NarrationPreparation", () => {
 
     await expect(
       preparation.preparePreview({
-        slideIndex: 2,
+        slideIndex: toSlideIndex(1),
         sectionIndex: 0,
         sections: [{ speaker: "Narrator", text: "Stored text" }],
         text: "  Live renderer text  \n",
@@ -148,7 +149,7 @@ describe("NarrationPreparation", () => {
     generateSpeech.mockRejectedValue(new Error("GCP TTS returned no audio content"));
 
     const preview = preparation.preparePreview({
-      slideIndex: 4,
+      slideIndex: toSlideIndex(3),
       sectionIndex: 1,
       sections: FIRST_SECOND,
       text: "Second",
@@ -174,7 +175,7 @@ describe("NarrationPreparation", () => {
 
     await expect(
       preparation.preparePreview({
-        slideIndex: 4,
+        slideIndex: toSlideIndex(3),
         sectionIndex: 1,
         sections: FIRST_SECOND,
         text: "Second",
@@ -191,7 +192,7 @@ describe("NarrationPreparation", () => {
     });
 
     await preparation.preparePreview({
-      slideIndex: 3,
+      slideIndex: toSlideIndex(2),
       sectionIndex: 1,
       sections: FIRST_SECOND,
       text: "Inherited",
@@ -208,7 +209,7 @@ describe("NarrationPreparation", () => {
     });
 
     await preparation.preparePreview({
-      slideIndex: 4,
+      slideIndex: toSlideIndex(3),
       sectionIndex: 0,
       sections: [{ speaker: "", text: "No speaker on this slide" }],
       text: "Defaulted",
@@ -224,7 +225,7 @@ describe("NarrationPreparation", () => {
       Guest: { voice: guestVoice },
     });
     const request = {
-      slideIndex: 1,
+      slideIndex: toSlideIndex(0),
       sectionIndex: 0,
       sections: [{ speaker: "Narrator", text: "Welcome" }],
       text: "Welcome",
@@ -244,7 +245,7 @@ describe("NarrationPreparation", () => {
     });
 
     await preparation.preparePreview({
-      slideIndex: 1,
+      slideIndex: toSlideIndex(0),
       sectionIndex: 0,
       sections: [{ speaker: "Narrator", text: "Welcome" }],
       text: "Welcome",
@@ -259,7 +260,7 @@ describe("NarrationPreparation", () => {
 
     await expect(
       preparation.preparePreview({
-        slideIndex: 4,
+        slideIndex: toSlideIndex(3),
         sectionIndex: 0,
         sections: [{ speaker: "Narrator", text: "Hello" }],
         text: "Hello",
@@ -286,7 +287,7 @@ describe("NarrationPreparation", () => {
 
     await expect(
       preparation.preparePreview({
-        slideIndex: 1,
+        slideIndex: toSlideIndex(0),
         sectionIndex: 0,
         sections: [{ speaker: "Narrator", text: "Stored" }],
         text: " \n\t ",
@@ -311,7 +312,7 @@ describe("NarrationPreparation prompts", () => {
       Narrator: { voice: promptableVoice, prompt: "conspiratorial, almost whispering" },
     });
 
-    await preparation.prepareBatch([{ slideIndex: 1, sections: FIRST_SECOND }]);
+    await preparation.prepareBatch([{ slideIndex: toSlideIndex(0), sections: FIRST_SECOND }]);
 
     expect(generateSpeech.mock.calls).toEqual([
       ["First", promptableVoice, "conspiratorial, almost whispering"],
@@ -327,7 +328,7 @@ describe("NarrationPreparation prompts", () => {
 
     await preparation.prepareBatch([
       {
-        slideIndex: 1,
+        slideIndex: toSlideIndex(0),
         sections: [
           { speaker: "Narrator", text: "First" },
           { speaker: "Guest", text: "Second" },
@@ -347,7 +348,7 @@ describe("NarrationPreparation prompts", () => {
     });
 
     await preparation.preparePreview({
-      slideIndex: 1,
+      slideIndex: toSlideIndex(0),
       sectionIndex: 0,
       sections: [{ speaker: "Narrator", text: "First" }],
       text: "First",
@@ -370,7 +371,7 @@ describe("NarrationPreparation inline prompts", () => {
 
     await preparation.prepareBatch([
       {
-        slideIndex: 1,
+        slideIndex: toSlideIndex(0),
         sections: [{ speaker: "Narrator", prompt: "almost whispering", text: "First" }],
       },
     ]);
@@ -384,7 +385,10 @@ describe("NarrationPreparation inline prompts", () => {
     });
 
     await preparation.prepareBatch([
-      { slideIndex: 1, sections: [{ speaker: "Narrator", prompt: "sigh first", text: "First" }] },
+      {
+        slideIndex: toSlideIndex(0),
+        sections: [{ speaker: "Narrator", prompt: "sigh first", text: "First" }],
+      },
     ]);
 
     expect(generateSpeech).toHaveBeenCalledWith("First", promptableVoice, "sigh first");
@@ -397,7 +401,7 @@ describe("NarrationPreparation inline prompts", () => {
 
     await preparation.prepareBatch([
       {
-        slideIndex: 1,
+        slideIndex: toSlideIndex(0),
         sections: [
           { speaker: "Narrator", prompt: "almost whispering", text: "First" },
           { speaker: "", text: "Second" },
@@ -417,7 +421,7 @@ describe("NarrationPreparation inline prompts", () => {
     });
 
     await preparation.preparePreview({
-      slideIndex: 1,
+      slideIndex: toSlideIndex(0),
       sectionIndex: 0,
       sections: [{ speaker: "Narrator", prompt: "almost whispering", text: "First" }],
       text: "First",
@@ -434,7 +438,7 @@ describe("NarrationPreparation inline prompts", () => {
 
     await preparation.prepareBatch([
       {
-        slideIndex: 1,
+        slideIndex: toSlideIndex(0),
         sections: [{ speaker: "Narrator", prompt: "almost whispering", text: "First" }],
       },
     ]);
@@ -447,7 +451,7 @@ describe("NarrationPreparation inline prompts", () => {
 
     await expect(
       preparation.preparePreview({
-        slideIndex: 2,
+        slideIndex: toSlideIndex(1),
         sectionIndex: 1,
         sections: [
           { speaker: "Narrator", text: "First" },
@@ -466,7 +470,7 @@ describe("NarrationPreparation inline prompts", () => {
     await expect(
       preparation.prepareBatch([
         {
-          slideIndex: 3,
+          slideIndex: toSlideIndex(2),
           sections: [
             { speaker: "Narrator", text: "First" },
             { speaker: "", text: "   " },

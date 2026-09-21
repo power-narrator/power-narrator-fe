@@ -7,6 +7,15 @@ export type {
   StructuredSlideResult,
   StructuredSlidesResult,
 } from "../../shared/types/slides.js";
+export type {
+  BasicPptResult,
+  GenerateVideoRequest,
+  PlaySlideRequest,
+  ReloadSlideRequest,
+  RemoveAudioRequest,
+  SetGcpKeyResult,
+  VideoPptResult,
+} from "../../shared/types/powerpoint.js";
 
 export interface SlideManifestEntry {
   slideIndex: SlideIndex;
@@ -38,15 +47,9 @@ export interface SlideAudioEntry {
   audioData: Uint8Array;
 }
 
-export type BasicPptResult = Result;
-
 export type SlidesPptResult = Result<{ slides: SlideWithSrc[] }>;
 
 export type SlidePptResult = Result<{ slide: SlideWithSrc }>;
-
-export type VideoPptResult = Result<{ outputPath: string }>;
-
-export type SetGcpKeyResult = Result<{ path: string }>;
 
 export type ExportSlideImagesResult = Result<{ images: SlideImageMap }>;
 
@@ -55,30 +58,6 @@ export type ReloadSlideImageResult = Result<{ image: string }>;
 export type ReadAllSlideNotesResult = Result<{ notes: SlideNotesMap }>;
 
 export type ReadSlideNotesResult = Result<{ notes: string }>;
-
-export interface GenerateVideoRequest {
-  filePath: string;
-  videoOutputPath: string;
-}
-
-/**
- * The renderer still addresses slides by their legacy 1-based number in these
- * IPC requests; the main process converts at the handler.
- */
-export interface PlaySlideRequest {
-  filePath: string;
-  slideIndex: number;
-}
-
-export interface ReloadSlideRequest {
-  filePath: string;
-  slideIndex: number;
-}
-
-export interface RemoveAudioRequest {
-  filePath: string;
-  slideIndices: number[];
-}
 
 export interface XmlSlideAudio {
   name: string;
