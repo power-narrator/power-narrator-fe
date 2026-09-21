@@ -26,17 +26,26 @@ export function toSlideNumber(oneBased: number): SlideNumber {
   return oneBased as SlideNumber;
 }
 
-export const slideNumberOf = (index: SlideIndex): SlideNumber => (index + 1) as SlideNumber;
+export const slideNumberOf = (slideIndex: SlideIndex): SlideNumber =>
+  (slideIndex + 1) as SlideNumber;
 
-export const slideIndexOf = (number: SlideNumber): SlideIndex => (number - 1) as SlideIndex;
+export const slideIndexOf = (slideNumber: SlideNumber): SlideIndex =>
+  (slideNumber - 1) as SlideIndex;
 
 /**
- * The compatibility seam for workflows still handing over the 1-based
- * representation as a plain number, which keeps such a value from being read
- * as a slide index on the way in.
+ * The entry point for a 1-based slide number arriving as a plain number from
+ * outside the application, which keeps such a value from being read as a slide
+ * index on the way in.
  */
-export const slideIndexFromLegacyNumber = (legacyOneBased: number): SlideIndex =>
-  slideIndexOf(toSlideNumber(legacyOneBased));
+export const slideIndexFromOneBased = (oneBased: number): SlideIndex =>
+  slideIndexOf(toSlideNumber(oneBased));
+
+/** The same entry point for a value whose shape the caller has not yet vetted. */
+export function trySlideIndexFromOneBased(oneBased: unknown): SlideIndex | undefined {
+  return typeof oneBased === "number" && Number.isInteger(oneBased) && oneBased >= 1
+    ? slideIndexFromOneBased(oneBased)
+    : undefined;
+}
 
 /** The index of the first slide in any presentation. */
 export const FIRST_SLIDE_INDEX = toSlideIndex(0);

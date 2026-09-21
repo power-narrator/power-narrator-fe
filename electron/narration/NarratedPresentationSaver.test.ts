@@ -31,7 +31,7 @@ const alternateNarratorVoice: Voice = {
 const temporaryDirectories: string[] = [];
 
 class FakePowerPointAdapter {
-  /** Keyed by the 0-based slide index the PowerPoint contract now carries. */
+  /** Keyed by the 0-based slide index the PowerPoint contract carries. */
   readonly committedNotes = new Map<number, string>();
   readonly insertedAudio = new Map<number, Map<number, Uint8Array>>();
   readonly removedAudio = new Set<number>();

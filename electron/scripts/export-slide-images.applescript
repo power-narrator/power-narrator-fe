@@ -3,18 +3,18 @@ use scripting additions
 on run argv
 	try
 		if (count of argv) < 2 then
-			error "Usage: export-slide-images.applescript <inputPath> <outputDir> [slideIndex]"
+			error "Usage: export-slide-images.applescript <inputPath> <outputDir> [slideNumber]"
 		end if
 
 		set inputPath to item 1 of argv
 		set outputDir to item 2 of argv
 		set slidesDir to outputDir & "/slides"
-		set targetSlideIndex to missing value
+		set targetSlideNumber to missing value
 		if (count of argv) > 2 then
-			set targetSlideIndex to my parseSlideIndex(item 3 of argv)
+			set targetSlideNumber to my parseSlideNumber(item 3 of argv)
 		end if
 
-		set shouldRebuildSlidesDir to (targetSlideIndex is missing value)
+		set shouldRebuildSlidesDir to (targetSlideNumber is missing value)
 		my prepareOutputDirectory(outputDir, slidesDir, shouldRebuildSlidesDir)
 		set exportToken to (do shell script "uuidgen")
 
@@ -23,15 +23,15 @@ on run argv
 			activate
 
 			set slideCount to count of slides of pres
-			if targetSlideIndex is not missing value then
-				if targetSlideIndex > slideCount then
-					error "Slide index " & targetSlideIndex & " is out of range. Presentation has " & slideCount & " slide(s)."
+			if targetSlideNumber is not missing value then
+				if targetSlideNumber > slideCount then
+					error "Slide number " & targetSlideNumber & " is out of range. Presentation has " & slideCount & " slide(s)."
 				end if
 
 				set slidesHFS to my toHfsDirectoryPath(slidesDir)
-				set imageRelPath to my exportSlideToPng(pres, targetSlideIndex, slidesDir, slidesHFS, exportToken)
+				set imageRelPath to my exportSlideToPng(pres, targetSlideNumber, slidesDir, slidesHFS, exportToken)
 				if imageRelPath is "" then
-					error "Could not export image for slide " & targetSlideIndex
+					error "Could not export image for slide " & targetSlideNumber
 				end if
 				return my jsonSuccess("image", imageRelPath)
 			end if
@@ -52,19 +52,19 @@ on run argv
 	end try
 end run
 
-on parseSlideIndex(slideIndexText)
+on parseSlideNumber(slideNumberText)
 	try
-		set slideIndex to slideIndexText as integer
+		set slideNumber to slideNumberText as integer
 	on error
-		error "Slide index must be a 1-based integer."
+		error "Slide number must be a 1-based integer."
 	end try
 
-	if slideIndex < 1 then
-		error "Slide index must be a 1-based integer."
+	if slideNumber < 1 then
+		error "Slide number must be a 1-based integer."
 	end if
 
-	return slideIndex
-end parseSlideIndex
+	return slideNumber
+end parseSlideNumber
 
 on locateOrOpenPresentation(inputPath)
 	tell application "Microsoft PowerPoint"
@@ -111,14 +111,14 @@ on toHfsDirectoryPath(slidesDir)
 	return slidesHFS
 end toHfsDirectoryPath
 
-on exportSlideToPng(pres, slideIndex, slidesDir, slidesHFS, exportToken)
-	set slideName to "Slide_" & slideIndex & "_" & exportToken & ".png"
+on exportSlideToPng(pres, slideNumber, slidesDir, slidesHFS, exportToken)
+	set slideName to "Slide_" & slideNumber & "_" & exportToken & ".png"
 	set slidePathPosix to slidesDir & "/" & slideName
 	set slidePathHFS to slidesHFS & slideName as text
 
 	try
 		tell application "Microsoft PowerPoint"
-			tell slide slideIndex of pres
+			tell slide slideNumber of pres
 				save in slidePathHFS as save as PNG
 			end tell
 		end tell
@@ -126,7 +126,7 @@ on exportSlideToPng(pres, slideIndex, slidesDir, slidesHFS, exportToken)
 
 	if not my fileExists(slidePathPosix) then
 		try
-			my exportSlideWithClipboard(pres, slideIndex, slidePathPosix)
+			my exportSlideWithClipboard(pres, slideNumber, slidePathPosix)
 		end try
 	end if
 
@@ -137,11 +137,11 @@ on exportSlideToPng(pres, slideIndex, slidesDir, slidesHFS, exportToken)
 	return ""
 end exportSlideToPng
 
-on exportSlideWithClipboard(pres, slideIndex, slidePathPosix)
+on exportSlideWithClipboard(pres, slideNumber, slidePathPosix)
 	set fRef to missing value
 	try
 		tell application "Microsoft PowerPoint"
-			tell slide slideIndex of pres
+			tell slide slideNumber of pres
 				copy object
 			end tell
 		end tell
@@ -183,7 +183,7 @@ on writeImageManifest(outputDir, imageData)
 	set perlScript to "use JSON::PP; use strict; use warnings; " & ¬
 		"open(my $fh, '<:encoding(UTF-8)', $ARGV[0]) or die $!; " & ¬
 		"my @slides; " & ¬
-		"while(<$fh>) { chomp; next unless /\\|\\|\\|/; my ($idx, $img) = split(/\\|\\|\\|/, $_, 2); next unless defined $idx && $idx =~ /^\\d+$/; $img = '' unless defined $img; push @slides, { index => $idx + 0, image => $img }; } " & ¬
+		"while(<$fh>) { chomp; next unless /\\|\\|\\|/; my ($slideNum, $img) = split(/\\|\\|\\|/, $_, 2); next unless defined $slideNum && $slideNum =~ /^\\d+$/; $img = '' unless defined $img; push @slides, { slideNumber => $slideNum + 0, image => $img }; } " & ¬
 		"close($fh); " & ¬
 		"open(my $out, '>:encoding(UTF-8)', $ARGV[1]) or die $!; " & ¬
 		"print $out encode_json(\\@slides); " & ¬

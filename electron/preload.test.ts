@@ -16,11 +16,7 @@ import type {
   ReloadSlideRequest,
   RemoveAudioRequest,
 } from "../shared/types/powerpoint.js";
-import {
-  slideIndexFromLegacyNumber,
-  toSlideIndex,
-  toSlideNumber,
-} from "../shared/slides/slideCoordinates.js";
+import { slideIndexFromOneBased, toSlideIndex } from "../shared/slides/slideCoordinates.js";
 import {
   formatNarrationSections,
   parseNarrationSections,
@@ -180,8 +176,7 @@ it("carries structured slides back across the load channel with their slide indi
     success: true,
     slides: [
       {
-        slideIndex: slideIndexFromLegacyNumber(4),
-        index: toSlideNumber(4),
+        slideIndex: slideIndexFromOneBased(4),
         image: "slide-4.png",
         src: "app://slide-4.png",
         sections: parseNarrationSections(notes, ["Narrator"]),
@@ -200,25 +195,25 @@ it("carries structured slides back across the load channel with their slide indi
 
 it.each([0, 6])(
   "carries slide index %i across the reload and playback channels unchanged",
-  async (index) => {
+  async (zeroBased) => {
     loadPreload();
     electron.ipcRenderer.invoke.mockResolvedValue({ success: true });
 
     await electron.state.exposedApi!.reloadSlide({
       filePath: "/slides/talk.pptx",
-      slideIndex: toSlideIndex(index),
+      slideIndex: toSlideIndex(zeroBased),
     });
     const [reloadChannel, reloadRequest] = electron.ipcRenderer.invoke.mock.lastCall!;
 
     await electron.state.exposedApi!.playSlide({
       filePath: "/slides/talk.pptx",
-      slideIndex: toSlideIndex(index),
+      slideIndex: toSlideIndex(zeroBased),
     });
     const [playChannel, playRequest] = electron.ipcRenderer.invoke.mock.lastCall!;
 
     await electron.state.exposedApi!.removeAudio({
       filePath: "/slides/talk.pptx",
-      slideIndices: [toSlideIndex(index)],
+      slideIndices: [toSlideIndex(zeroBased)],
     });
     const [removeChannel, removeRequest] = electron.ipcRenderer.invoke.mock.lastCall!;
 
@@ -229,15 +224,15 @@ it.each([0, 6])(
     ]);
     expect(structuredClone(reloadRequest)).toEqual({
       filePath: "/slides/talk.pptx",
-      slideIndex: index,
+      slideIndex: zeroBased,
     });
     expect(structuredClone(playRequest)).toEqual({
       filePath: "/slides/talk.pptx",
-      slideIndex: index,
+      slideIndex: zeroBased,
     });
     expect(structuredClone(removeRequest)).toEqual({
       filePath: "/slides/talk.pptx",
-      slideIndices: [index],
+      slideIndices: [zeroBased],
     });
   },
 );
@@ -248,8 +243,7 @@ it("carries a reloaded structured slide back across the reload channel", async (
   electron.ipcRenderer.invoke.mockResolvedValue({
     success: true,
     slide: {
-      slideIndex: slideIndexFromLegacyNumber(2),
-      index: toSlideNumber(2),
+      slideIndex: slideIndexFromOneBased(2),
       image: "slide-2.png",
       src: "app://slide-2.png",
       sections: parseNarrationSections(notes, ["Narrator"]),

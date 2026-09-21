@@ -13,7 +13,6 @@ const at = (zeroBased: number): SlideIndex => toSlideIndex(zeroBased);
 
 const thumbnail = (slideIndex: SlideIndex): Slide => ({
   slideIndex,
-  index: slideNumberOf(slideIndex),
   image: `${slideNumberOf(slideIndex)}.png`,
   src: `${slideNumberOf(slideIndex)}.png`,
   sections: [],

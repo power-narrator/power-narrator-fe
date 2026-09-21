@@ -111,12 +111,12 @@ async function renderConcurrentSectionPreviews() {
   const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
   const screen = await render(
     <PreviewProviders>
-      {concurrentSections.map((section, index) => (
+      {concurrentSections.map((section, sectionIndex) => (
         <SectionPreviewButtons
           key={section.speaker}
-          id={`1-${index}`}
+          id={`1-${sectionIndex}`}
           slideIndex={toSlideIndex(0)}
-          sectionIndex={index}
+          sectionIndex={sectionIndex}
           sections={concurrentSections}
           mappings={{ [section.speaker]: { voice: narratorVoice } }}
           onFocus={() => {}}
