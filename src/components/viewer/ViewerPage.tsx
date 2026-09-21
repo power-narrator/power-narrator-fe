@@ -81,7 +81,7 @@ export function ViewerPage({
   // is unavailable rather than addressing whichever slide was loaded last.
   const slideActionState = (key: SlideActionBarKey): ActionButtonState => {
     const state = operation.actionState(key);
-    return activeSlideIndex === undefined ? { ...state, busy: true } : state;
+    return activeSlideIndex === undefined ? { ...state, unavailable: true } : state;
   };
 
   const slideActionStates: Record<SlideActionBarKey, ActionButtonState> = {

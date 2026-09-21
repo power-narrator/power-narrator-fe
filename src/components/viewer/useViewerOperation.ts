@@ -95,7 +95,7 @@ export function useViewerOperation() {
   const actionState = useCallback(
     (owner: ViewerOperationKind): ActionButtonState => ({
       loading: state.running && state.owner === owner,
-      busy: state.running && state.owner !== owner,
+      unavailable: state.running && state.owner !== owner,
       status: state.owner === owner ? state.status : "",
     }),
     [state],

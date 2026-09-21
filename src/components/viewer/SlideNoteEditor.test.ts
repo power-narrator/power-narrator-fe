@@ -121,6 +121,16 @@ describe("navigating slides", () => {
     expect(editor.selectSlide(at(7)).activeSlideIndex).toBe(at(0));
   });
 
+  it("leaves an open typing group open when the chosen slide is not held", () => {
+    const opened = openedEditor();
+    const editor = opened.setSectionText(opened.sections[0]!.id, "Typed");
+
+    const unchanged = editor.selectSlide(at(7));
+
+    expect(unchanged).toBe(editor);
+    expect(sectionTexts(unchanged.undo())).toEqual(["First narration", "Second section"]);
+  });
+
   it("selects a slide by its own index, not its place among the slides held", () => {
     const editor = SlideNoteEditor.open(
       [slide(at(0), "First narration"), slide(at(4), "Fifth narration")],
@@ -708,6 +718,40 @@ describe("reloading the presentation", () => {
 
     expect(reloaded.activeSlideIndex).toBe(at(1));
     expect(sectionTexts(reloaded)).toEqual(["Still here"]);
+  });
+
+  it("falls back to the nearest preceding slide across a gap in the indices", () => {
+    const editor = SlideNoteEditor.open(
+      [slide(at(0), "First"), slide(at(4), "Fifth")],
+      speakers,
+    ).selectSlide(at(4));
+
+    const reloaded = editor.reloadPresentation([slide(at(1), "Second"), slide(at(9), "Tenth")]);
+
+    expect(reloaded.activeSlideIndex).toBe(at(1));
+    expect(sectionTexts(reloaded)).toEqual(["Second"]);
+  });
+
+  it("falls back to the first slide when every slide follows the active one", () => {
+    const editor = SlideNoteEditor.open([slide(at(0), "First")], speakers);
+
+    const reloaded = editor.reloadPresentation([slide(at(3), "Fourth"), slide(at(9), "Tenth")]);
+
+    expect(reloaded.activeSlideIndex).toBe(at(3));
+    expect(sectionTexts(reloaded)).toEqual(["Fourth"]);
+  });
+
+  it("reloads one slide of a gapped deck without disturbing the others", () => {
+    const editor = SlideNoteEditor.open(
+      [slide(at(0), "First"), slide(at(4), "Fifth")],
+      speakers,
+    ).selectSlide(at(4));
+
+    const reloaded = editor.reloadSlide(slide(at(4), "Reloaded fifth"));
+
+    expect(reloaded.activeSlideIndex).toBe(at(4));
+    expect(sectionTexts(reloaded)).toEqual(["Reloaded fifth"]);
+    expect(sectionTexts(reloaded.selectSlide(at(0)))).toEqual(["First"]);
   });
 
   it("selects the nearest valid slide when the reload removed the active one", () => {

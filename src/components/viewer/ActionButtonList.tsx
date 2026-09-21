@@ -37,7 +37,7 @@ export function ActionButtonList<TKey extends string>({
             leftSection={item.icon}
             onClick={handlers[item.key]}
             loading={actionState.loading}
-            disabled={actionState.busy}
+            disabled={actionState.unavailable}
           >
             {actionState.status || item.label}
           </Button>
