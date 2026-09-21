@@ -163,9 +163,9 @@ export const parseNarrationSections = (
 
 export const getEffectiveSpeaker = (
   sections: readonly Pick<NarrationSection, "speaker">[],
-  index: number,
+  sectionIndex: number,
 ): string => {
-  for (let candidateIndex = index; candidateIndex >= 0; candidateIndex -= 1) {
+  for (let candidateIndex = sectionIndex; candidateIndex >= 0; candidateIndex -= 1) {
     const speaker = sections[candidateIndex]?.speaker;
     if (speaker) {
       return speaker;
@@ -184,8 +184,9 @@ function withMarkerSpacing(prefix: string, prompt: string) {
 }
 
 export const formatNarrationSections = (sections: readonly NarrationSection[]): string =>
-  sections.reduce((notes, section, index) => {
-    const separator = index > 0 ? section.format?.separatorBefore || DEFAULT_SECTION_SEPARATOR : "";
+  sections.reduce((notes, section, sectionIndex) => {
+    const separator =
+      sectionIndex > 0 ? section.format?.separatorBefore || DEFAULT_SECTION_SEPARATOR : "";
     const tags: string[] = [];
 
     if (section.speaker) {

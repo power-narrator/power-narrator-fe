@@ -5,7 +5,8 @@ import { spawn } from "node:child_process";
 import type { NativePlatformProvider, PptProvider } from "./PptProvider.js";
 import {
   FIRST_SLIDE_INDEX,
-  slideIndexFromLegacyNumber,
+  slideIndexFromOneBased,
+  trySlideIndexFromOneBased,
   slideNumberOf,
   type SlideIndex,
 } from "../../shared/slides/slideCoordinates.js";
@@ -72,14 +73,15 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
   /** The manifest addresses slides by the 1-based number PowerPoint exports. */
   private readImageManifest(manifestPath: string): SlideImageMap {
     const slides = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Array<{
-      index?: unknown;
+      slideNumber?: unknown;
       image?: string;
     }>;
     const images = new Map<SlideIndex, { image: string }>();
 
-    for (const { index, image } of slides) {
-      if (typeof index === "number" && Number.isInteger(index) && index >= 1) {
-        images.set(slideIndexFromLegacyNumber(index), { image: image || "" });
+    for (const { slideNumber, image } of slides) {
+      const slideIndex = trySlideIndexFromOneBased(slideNumber);
+      if (slideIndex !== undefined) {
+        images.set(slideIndex, { image: image || "" });
       }
     }
 
@@ -102,7 +104,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
 
       if (line === "###SLIDE_END###") {
         if (currentSlideNumber !== null && Number.isInteger(currentSlideNumber)) {
-          notes.set(slideIndexFromLegacyNumber(currentSlideNumber), currentLines.join("\n"));
+          notes.set(slideIndexFromOneBased(currentSlideNumber), currentLines.join("\n"));
         }
         currentSlideNumber = null;
         currentLines = [];
@@ -233,7 +235,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
         childClose.on("close", () => {
           const trimmed = out.trim();
           const slideNumber = trimmed === "" ? Number.NaN : Math.trunc(Number(trimmed));
-          resolve(slideNumber >= 1 ? slideIndexFromLegacyNumber(slideNumber) : FIRST_SLIDE_INDEX);
+          resolve(trySlideIndexFromOneBased(slideNumber) ?? FIRST_SLIDE_INDEX);
         });
       });
     } catch (e) {

@@ -43,7 +43,10 @@ vi.mock("electron", () => ({
 type RunAppleScriptJson = (
   scriptName: string,
   args: string[],
-) => Promise<{ success: true; data: { image: string } } | { success: false; message: string }>;
+) => Promise<
+  | { success: true; data: { image: string } | { manifestPath: string } }
+  | { success: false; message: string }
+>;
 
 let tempDir: string | undefined;
 
@@ -188,6 +191,39 @@ describe("MacPptProvider presentation lifecycle", () => {
     await new MacPptProvider().reopenPresentation("/presentations/deck.pptx", toSlideIndex(4));
 
     expect(spawnCalls.at(-1)?.args.slice(-2)).toEqual(["/presentations/deck.pptx", "5"]);
+  });
+});
+
+describe("MacPptProvider.exportSlideImages", () => {
+  it("reads the manifest's 1-based slide numbers as slide indices", async () => {
+    if (!tempDir) {
+      throw new Error("Expected a temporary test directory");
+    }
+
+    const provider = new MacPptProvider();
+    const manifestPath = path.join(tempDir, "images.json");
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify([
+        { slideNumber: 1, image: "slides/Slide_1_uuid.png" },
+        { slideNumber: 4, image: "slides/Slide_4_uuid.png" },
+      ]),
+    );
+    vi.spyOn(
+      provider as unknown as { runAppleScriptJson: RunAppleScriptJson },
+      "runAppleScriptJson",
+    ).mockResolvedValue({ success: true, data: { manifestPath } });
+
+    const result = await provider.exportSlideImages("/presentations/deck.pptx", "/tmp/deck");
+
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      throw new Error(result.message);
+    }
+    expect([...result.images]).toEqual([
+      [0, { image: "slides/Slide_1_uuid.png" }],
+      [3, { image: "slides/Slide_4_uuid.png" }],
+    ]);
   });
 });
 

@@ -7,11 +7,7 @@ import {
 } from "../../../shared/narration/NarrationSections";
 import type { NarratedSaveResult } from "../../../shared/types/narration";
 import { AudioProvider } from "../../context/AudioContext";
-import {
-  slideNumberOf,
-  toSlideIndex,
-  type SlideIndex,
-} from "../../../shared/slides/slideCoordinates";
+import { toSlideIndex, type SlideIndex } from "../../../shared/slides/slideCoordinates";
 import type { Slide } from "../../types/electron";
 import { SettingsProvider } from "../../context/SettingsContext";
 import { ViewerPage } from "./ViewerPage";
@@ -23,7 +19,6 @@ const at = (zeroBased: number): SlideIndex => toSlideIndex(zeroBased);
 function loadedWith(notes: string, knownSpeakers: readonly string[] = []): Slide {
   return {
     slideIndex: at(0),
-    index: slideNumberOf(at(0)),
     image: "slide-one.png",
     src: "slide-one",
     sections: parseNarrationSections(notes, knownSpeakers),
@@ -175,7 +170,6 @@ test("shows the sections of the slide whose thumbnail is chosen", async () => {
   const secondSlide: Slide = {
     ...loadedWith("Second slide narration"),
     slideIndex: at(1),
-    index: slideNumberOf(at(1)),
     image: "slide-two.png",
   };
   const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
@@ -366,7 +360,6 @@ test("removes audio for every slide", async () => {
   const secondSlide: Slide = {
     ...loadedSlide,
     slideIndex: at(1),
-    index: slideNumberOf(at(1)),
     image: "slide-two.png",
   };
   const { screen } = await renderViewer(vi.fn<() => void>(), [loadedSlide, secondSlide]);
@@ -511,7 +504,6 @@ test("addresses the selected slide by its own index, not its place in the list",
   const thirdSlide: Slide = {
     ...loadedSlide,
     slideIndex: at(2),
-    index: slideNumberOf(at(2)),
     image: "slide-three.png",
   };
   const playSlide = vi.fn<typeof window.electronAPI.playSlide>(() =>
