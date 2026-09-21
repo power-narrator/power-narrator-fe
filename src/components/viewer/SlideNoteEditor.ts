@@ -284,7 +284,6 @@ export class SlideNoteEditor {
     return this.#summaries;
   }
 
-  /** Which slide is being edited; nothing at all when the presentation has no slides. */
   get activeSlideIndex(): SlideIndex | undefined {
     return this.#state.activeSlideIndex;
   }
@@ -303,8 +302,8 @@ export class SlideNoteEditor {
       : this.#state.slides.find((slide) => slide.slideIndex === slideIndex);
   }
 
-  /** Where a slide sits in the held list, which is not how any caller names it. */
-  #positionOfSlide(slideIndex: SlideIndex | undefined): number {
+  /** Where a slide sits in the list held, which is no part of how it is addressed. */
+  #listOffsetOf(slideIndex: SlideIndex | undefined): number {
     return this.#state.slides.findIndex((slide) => slide.slideIndex === slideIndex);
   }
 
@@ -349,14 +348,18 @@ export class SlideNoteEditor {
     );
   }
 
-  /** Selecting a slide the presentation does not hold leaves the author where they are. */
+  /**
+   * Selecting a slide the presentation does not hold changes nothing at all,
+   * down to leaving an open typing group open.
+   */
   selectSlide(slideIndex: SlideIndex): SlideNoteEditor {
+    if (!this.#slideAt(slideIndex)) {
+      return this;
+    }
+
     const editor = this.finalizePendingTyping();
     const state = editor.#state;
-    const slide = editor.#slideAt(slideIndex);
-    if (!slide) {
-      return editor;
-    }
+    const slide = editor.#slideAt(slideIndex)!;
 
     const activeSectionId = slide.sections[0]?.id;
     if (slideIndex === state.activeSlideIndex) {
@@ -420,23 +423,23 @@ export class SlideNoteEditor {
     return next === finalized ? this : next.#checkpoint(finalized.#state.activeSectionId);
   }
 
-  #slidePositionOf(id: SectionId): number {
+  #listOffsetOfSection(id: SectionId): number {
     return this.#state.slides.findIndex((slide) =>
       slide.sections.some((section) => section.id === id),
     );
   }
 
   #withSlideSections(
-    slidePosition: number,
+    listOffset: number,
     change: (sections: readonly EditorSection[]) => EditorSection[],
   ): SlideNoteEditor {
-    const slide = this.#state.slides[slidePosition];
+    const slide = this.#state.slides[listOffset];
     if (!slide) {
       return this;
     }
 
     const slides = [...this.#state.slides];
-    slides[slidePosition] = { ...slide, sections: change(slide.sections) };
+    slides[listOffset] = { ...slide, sections: change(slide.sections) };
     return this.#with({ slides });
   }
 
@@ -447,7 +450,7 @@ export class SlideNoteEditor {
    */
   #editSection(id: SectionId, change: (section: EditorSection) => EditorSection): SlideNoteEditor {
     let changed = false;
-    const edited = this.#withSlideSections(this.#slidePositionOf(id), (sections) =>
+    const edited = this.#withSlideSections(this.#listOffsetOfSection(id), (sections) =>
       sections.map((section) => {
         if (section.id !== id) {
           return section;
@@ -494,10 +497,10 @@ export class SlideNoteEditor {
     }
 
     const added: EditorSection = { id: sectionId(mintedSectionCount), speaker: "", text: "" };
-    const appended = this.#withSlideSections(
-      this.#positionOfSlide(activeSlideIndex),
-      (sections) => [...sections, added],
-    );
+    const appended = this.#withSlideSections(this.#listOffsetOf(activeSlideIndex), (sections) => [
+      ...sections,
+      added,
+    ]);
 
     return appended.#with({
       activeSectionId: added.id,
@@ -511,7 +514,7 @@ export class SlideNoteEditor {
 
   #removeSection(id: SectionId): SlideNoteEditor {
     let nearest: EditorSection | undefined;
-    const removed = this.#withSlideSections(this.#slidePositionOf(id), (sections) => {
+    const removed = this.#withSlideSections(this.#listOffsetOfSection(id), (sections) => {
       const position = sections.findIndex((section) => section.id === id);
       const remaining = sections.filter((section) => section.id !== id);
       nearest = remaining[position] ?? remaining.at(-1);
@@ -578,8 +581,8 @@ export class SlideNoteEditor {
 
   /** Replaces one slide, leaving every other slide's content, dirty state, and history alone. */
   reloadSlide(reloaded: Slide): SlideNoteEditor {
-    const position = this.#positionOfSlide(reloaded.slideIndex);
-    if (position === -1) {
+    const listOffset = this.#listOffsetOf(reloaded.slideIndex);
+    if (listOffset === -1) {
       return this;
     }
 
@@ -588,7 +591,7 @@ export class SlideNoteEditor {
     let mintedSectionCount = state.mintedSectionCount;
     const replacement = toEditorSlide(reloaded, () => sectionId(mintedSectionCount++));
     const substitute = (slides: readonly EditorSlide[]): readonly EditorSlide[] =>
-      slides.map((slide, at) => (at === position ? replacement : slide));
+      slides.map((slide, offset) => (offset === listOffset ? replacement : slide));
     const savedBaselines = new Map(state.savedBaselines);
     savedBaselines.set(replacement.slideIndex, baselineOfSlide(replacement, nextBaselineEvent()));
 
