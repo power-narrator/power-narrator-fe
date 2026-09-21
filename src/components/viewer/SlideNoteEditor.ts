@@ -34,9 +34,18 @@ export interface SsmlResult {
   selection: SelectionIntent | undefined;
 }
 
+/**
+ * A section no holder can change: the content a save submitted, and the saved
+ * baselines completion reconciles it against, are read long after they were
+ * taken, by callers that must not be able to rewrite them.
+ */
+export type ImmutableSection = Readonly<Omit<NarrationSection, "format">> & {
+  readonly format?: Readonly<NonNullable<NarrationSection["format"]>>;
+};
+
 export interface SnapshotSlide {
-  index: number;
-  sections: readonly NarrationSection[];
+  readonly index: number;
+  readonly sections: readonly ImmutableSection[];
 }
 
 export interface SaveSubmission {
@@ -44,7 +53,7 @@ export interface SaveSubmission {
   snapshot: SaveSnapshot;
 }
 
-type SavedSections = ReadonlyMap<number, readonly NarrationSection[]>;
+type SavedSections = ReadonlyMap<number, readonly ImmutableSection[]>;
 
 /** Exactly the structured content one persistence operation submitted. */
 export class SaveSnapshot {
@@ -110,10 +119,22 @@ const sameSection = (edited: NarrationSection, saved: NarrationSection) =>
 
 const sectionId = (number: number): SectionId => `section-${number}`;
 
-const withoutIdentity = ({ id: _id, ...section }: EditorSection): NarrationSection => section;
+function frozen(section: NarrationSection): ImmutableSection {
+  Object.freeze(section.format);
+  return Object.freeze(section);
+}
+
+const withoutIdentity = ({ id: _id, ...section }: EditorSection): ImmutableSection =>
+  frozen(section);
+
+/** Frozen because a baseline is evidence: what it recorded cannot be rewritten later. */
+const baselineSections = (sections: readonly NarrationSection[]): readonly ImmutableSection[] =>
+  Object.freeze(sections.map(frozen));
 
 const baselineOf = (slides: readonly EditorSlide[]): SavedSections =>
-  new Map(slides.map((slide) => [slide.index, slide.sections.map(withoutIdentity)]));
+  new Map(
+    slides.map((slide) => [slide.index, baselineSections(slide.sections.map(withoutIdentity))]),
+  );
 
 const clampSlidePosition = (slides: readonly EditorSlide[], position: number): number =>
   Math.min(Math.max(position, 0), Math.max(slides.length - 1, 0));
@@ -155,9 +176,7 @@ function freeze(slides: readonly EditorSlide[]): readonly EditorSlide[] {
 function toSnapshotSlide(slide: EditorSlide): SnapshotSlide {
   return Object.freeze({
     index: slide.index,
-    sections: Object.freeze(
-      slide.sections.map((section) => Object.freeze(withoutIdentity(section))),
-    ),
+    sections: Object.freeze(slide.sections.map(withoutIdentity)),
   });
 }
 
@@ -507,7 +526,10 @@ export class SlideNoteEditor {
     const substitute = (slides: readonly EditorSlide[]): readonly EditorSlide[] =>
       slides.map((slide, at) => (at === position ? replacement : slide));
     const savedSections = new Map(state.savedSections);
-    savedSections.set(replacement.index, replacement.sections.map(withoutIdentity));
+    savedSections.set(
+      replacement.index,
+      baselineSections(replacement.sections.map(withoutIdentity)),
+    );
 
     return editor.#with({
       slides: substitute(state.slides),
@@ -607,7 +629,10 @@ export class SlideNoteEditor {
       slides,
       speakerNames,
       savedSections: new Map(
-        [...state.savedSections].map(([index, saved]) => [index, saved.flatMap(reread)]),
+        [...state.savedSections].map(([index, saved]) => [
+          index,
+          baselineSections(saved.flatMap(reread)),
+        ]),
       ),
       history: state.history.map((snapshot) => ({
         ...snapshot,

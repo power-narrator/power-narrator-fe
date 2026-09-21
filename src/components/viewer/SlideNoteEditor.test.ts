@@ -815,7 +815,55 @@ describe("saving", () => {
     expect(() => {
       (snapshot.slides[0]!.sections as NarrationSection[])[0]!.text = "Tampered";
     }).toThrow(TypeError);
+    expect(() => {
+      (snapshot.slides[0] as SnapshotSlide & { index: number }).index = 9;
+    }).toThrow(TypeError);
     expect(() => (snapshot.slides as SnapshotSlide[]).pop()).toThrow(TypeError);
+  });
+
+  it("refuses to have submitted formatting metadata altered", () => {
+    const editor = openedEditor();
+    const { snapshot } = editor.setSectionSpeaker(editor.sections[0]!.id, "Alice").beginSave();
+    const submitted = snapshot.slides[0]!.sections[0]!;
+
+    expect(() => {
+      (submitted.format as NonNullable<NarrationSection["format"]>).speakerPrefix = "<";
+    }).toThrow(TypeError);
+  });
+
+  it("reconciles against the submitted content even when a caller tries to rewrite it", () => {
+    const editor = openedEditor();
+    const edited = editor.setSectionText(editor.sections[0]!.id, "Submitted");
+    const { editor: submitted, snapshot } = edited.beginSave();
+
+    try {
+      (snapshot.slides[0]!.sections as NarrationSection[])[0]!.text = "Tampered";
+    } catch {
+      // A frozen snapshot rejects the write; what matters is what is committed.
+    }
+
+    expect(submitted.saveSucceeded(snapshot).isSlideDirty(1)).toBe(false);
+    expect(sectionTexts(submitted.saveSucceeded(snapshot))).toEqual([
+      "Submitted",
+      "Second section",
+    ]);
+  });
+
+  it("keeps the newer baseline when an older overlapping save completes last", () => {
+    const editor = openedEditor();
+    const sectionId = editor.sections[0]!.id;
+    const older = editor.setSectionText(sectionId, "Older").beginSave();
+    const newer = older.editor.setSectionText(sectionId, "Newer").beginSave();
+
+    const settled = newer.editor.saveSucceeded(newer.snapshot).saveSucceeded(older.snapshot);
+
+    expect(settled.isSlideDirty(1)).toBe(false);
+    expect(sectionTexts(settled)).toEqual(["Newer", "Second section"]);
+    expect(sectionTexts(settled.setSectionText(sectionId, "Older"))).toEqual([
+      "Older",
+      "Second section",
+    ]);
+    expect(settled.setSectionText(sectionId, "Older").isSlideDirty(1)).toBe(true);
   });
 
   it("leaves the live editor free to keep changing while the operation runs", () => {
