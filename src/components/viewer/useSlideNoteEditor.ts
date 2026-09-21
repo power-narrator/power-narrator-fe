@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { SlideIndex } from "../../../shared/slides/slideCoordinates";
 import type { Slide } from "../../types/electron";
 import {
   SlideNoteEditor,
@@ -55,10 +56,9 @@ export function useSlideNoteEditor(
 
   return {
     slides: editor.slides,
-    activeSlidePosition: editor.activeSlidePosition,
+    /** The address persistence and playback take; absent while no slide is loaded. */
+    activeSlideIndex: editor.activeSlideIndex,
     activeSlideSrc: editor.activeSlide?.src ?? "",
-    /** The active slide's PowerPoint number, which persistence and playback address it by. */
-    activeSlideNumber: editor.activeSlide?.index ?? editor.activeSlidePosition + 1,
     sections: editor.sections,
     activeSectionId: editor.activeSectionId,
     canUndo: editor.canUndo,
@@ -68,12 +68,12 @@ export function useSlideNoteEditor(
 
     // Read from the last command's editor, not the render's, so a caller that
     // finalizes pending typing before asking is answered about what it just left.
-    wouldDiscard: (slideNumber?: number) =>
-      slideNumber === undefined
+    wouldDiscard: (slideIndex?: SlideIndex) =>
+      slideIndex === undefined
         ? latest.current.hasUnsavedChanges
-        : latest.current.isSlideDirty(slideNumber),
+        : latest.current.isSlideDirty(slideIndex),
 
-    selectSlide: (position: number) => command((current) => current.selectSlide(position)),
+    selectSlide: (slideIndex: SlideIndex) => command((current) => current.selectSlide(slideIndex)),
     selectSection: (id: SectionId) => command((current) => current.selectSection(id)),
     setSectionText: (id: SectionId, text: string) =>
       command((current) => current.setSectionText(id, text)),
@@ -97,8 +97,8 @@ export function useSlideNoteEditor(
     /** For the actions the editor does not own: opening settings, and reload confirmation. */
     finalizePendingTyping: () => command((current) => current.finalizePendingTyping()),
 
-    submitSave: (slideNumbers?: readonly number[]): SaveSnapshot => {
-      const submission = latest.current.beginSave(slideNumbers);
+    submitSave: (slideIndices?: readonly SlideIndex[]): SaveSnapshot => {
+      const submission = latest.current.beginSave(slideIndices);
       command(() => submission.editor);
       return submission.snapshot;
     },

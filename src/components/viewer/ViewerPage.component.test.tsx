@@ -7,17 +7,23 @@ import {
 } from "../../../shared/narration/NarrationSections";
 import type { NarratedSaveResult } from "../../../shared/types/narration";
 import { AudioProvider } from "../../context/AudioContext";
-import { slideIndexFromLegacyNumber, toSlideNumber } from "../../../shared/slides/slideCoordinates";
+import {
+  slideNumberOf,
+  toSlideIndex,
+  type SlideIndex,
+} from "../../../shared/slides/slideCoordinates";
 import type { Slide } from "../../types/electron";
 import { SettingsProvider } from "../../context/SettingsContext";
 import { ViewerPage } from "./ViewerPage";
 import { NarrationPreviewProvider } from "./useNarrationPreview";
 
+const at = (zeroBased: number): SlideIndex => toSlideIndex(zeroBased);
+
 /** Slides reach the viewer parsed, as the PowerPoint load seam parses them. */
 function loadedWith(notes: string, knownSpeakers: readonly string[] = []): Slide {
   return {
-    slideIndex: slideIndexFromLegacyNumber(1),
-    index: toSlideNumber(1),
+    slideIndex: at(0),
+    index: slideNumberOf(at(0)),
     image: "slide-one.png",
     src: "slide-one",
     sections: parseNarrationSections(notes, knownSpeakers),
@@ -148,12 +154,28 @@ test("wraps the selected narration in SSML and restores focus and selection", as
   expect([textarea.selectionStart, textarea.selectionEnd]).toEqual([3, 9]);
 });
 
+test("offers no slide actions when the presentation holds no slides", async () => {
+  installElectronApi();
+  const { screen } = await renderViewer(vi.fn<() => void>(), []);
+
+  await expect.element(screen.getByRole("button", { name: "Play", exact: true })).toBeDisabled();
+  await expect
+    .element(screen.getByRole("button", { name: "Save Slide", exact: true }))
+    .toBeDisabled();
+  await expect
+    .element(screen.getByRole("button", { name: "Reload Slide", exact: true }))
+    .toBeDisabled();
+  await expect
+    .element(screen.getByRole("button", { name: "Remove Audio", exact: true }))
+    .toBeDisabled();
+});
+
 test("shows the sections of the slide whose thumbnail is chosen", async () => {
   installElectronApi();
   const secondSlide: Slide = {
     ...loadedWith("Second slide narration"),
-    slideIndex: slideIndexFromLegacyNumber(2),
-    index: toSlideNumber(2),
+    slideIndex: at(1),
+    index: slideNumberOf(at(1)),
     image: "slide-two.png",
   };
   const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
@@ -343,8 +365,8 @@ test("removes audio for every slide", async () => {
   vi.spyOn(window, "alert").mockImplementation(() => {});
   const secondSlide: Slide = {
     ...loadedSlide,
-    slideIndex: slideIndexFromLegacyNumber(2),
-    index: toSlideNumber(2),
+    slideIndex: at(1),
+    index: slideNumberOf(at(1)),
     image: "slide-two.png",
   };
   const { screen } = await renderViewer(vi.fn<() => void>(), [loadedSlide, secondSlide]);
@@ -484,11 +506,12 @@ test("shows a bracketed line as the section's speaker once a mapping names it", 
 
 test("addresses the selected slide by its own index, not its place in the list", async () => {
   // A deck whose second entry is slide 3, so a slide's address cannot be
-  // mistaken for its position among the thumbnails.
+  // mistaken for its position among the thumbnails, and it is named by that
+  // address rather than by where it sits.
   const thirdSlide: Slide = {
     ...loadedSlide,
-    slideIndex: slideIndexFromLegacyNumber(3),
-    index: toSlideNumber(3),
+    slideIndex: at(2),
+    index: slideNumberOf(at(2)),
     image: "slide-three.png",
   };
   const playSlide = vi.fn<typeof window.electronAPI.playSlide>(() =>
@@ -503,7 +526,10 @@ test("addresses the selected slide by its own index, not its place in the list",
   installElectronApi({ playSlide, saveNarratedSlide, removeAudio });
   const { screen } = await renderViewer(vi.fn<() => void>(), [loadedSlide, thirdSlide]);
 
-  await screen.getByRole("button", { name: "Slide 2" }).click();
+  await screen.getByRole("button", { name: "Slide 3" }).click();
+  await expect
+    .element(screen.getByRole("textbox", { name: "Slide 3 section 1 notes" }))
+    .toBeInTheDocument();
   await screen.getByRole("button", { name: "Play", exact: true }).click();
 
   await vi.waitFor(() =>

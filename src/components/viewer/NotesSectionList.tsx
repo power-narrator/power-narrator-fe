@@ -77,9 +77,10 @@ export function NotesSectionList({
       <Text size="sm">Presenter Notes</Text>
       <ScrollArea flex={1}>
         <Stack>
-          {sections.map((section, index) => {
-            const sectionLabel = `slide ${slideNumber} section ${index + 1}`;
-            const effectiveSpeaker = getEffectiveSpeaker(sections, index);
+          {sections.map((section, sectionIndex) => {
+            const sectionNumber = sectionIndex + 1;
+            const sectionLabel = `slide ${slideNumber} section ${sectionNumber}`;
+            const effectiveSpeaker = getEffectiveSpeaker(sections, sectionIndex);
             const isInherited = section.speaker === "" || section.speaker === DEFAULT_SPEAKER_VALUE;
             const placeholder =
               isInherited && effectiveSpeaker !== DEFAULT_SPEAKER_VALUE
@@ -134,7 +135,7 @@ export function NotesSectionList({
                 <SectionPreviewButtons
                   id={section.id}
                   slideIndex={slideIndex}
-                  sectionIndex={index}
+                  sectionIndex={sectionIndex}
                   sections={sections}
                   mappings={mappings}
                   onFocus={() => onFocusSection(section.id)}
@@ -142,7 +143,7 @@ export function NotesSectionList({
                 />
                 <Divider />
                 <SectionTextEditor
-                  label={`Slide ${slideNumber} section ${index + 1} notes`}
+                  label={`Slide ${slideNumber} section ${sectionNumber} notes`}
                   value={section.text}
                   onChange={(value) => onSectionTextChange(section.id, value)}
                   onFocus={() => onFocusSection(section.id)}
