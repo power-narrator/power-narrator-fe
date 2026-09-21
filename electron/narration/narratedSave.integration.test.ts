@@ -104,13 +104,13 @@ it("formats the submitted structured sections only as PowerPoint takes them", as
   ]);
   expect(powerpoint.saveNotes).toHaveBeenCalledWith(presentationPath, [
     {
-      index: 2,
+      slideIndex: 1,
       notes: "  [ Narrator ]  \n[p: wearily]\nFirst\n---\nstill the first section\n-----\nSecond",
     },
   ]);
   expect(powerpoint.insertAudio).toHaveBeenCalledWith(presentationPath, [
-    { index: 2, sectionIndex: 0, audioData: new Uint8Array([1, 2, 3]) },
-    { index: 2, sectionIndex: 1, audioData: new Uint8Array([1, 2, 3]) },
+    { slideIndex: 1, sectionIndex: 0, audioData: new Uint8Array([1, 2, 3]) },
+    { slideIndex: 1, sectionIndex: 1, audioData: new Uint8Array([1, 2, 3]) },
   ]);
   expect(powerpoint.saveNotes.mock.invocationCallOrder[0]).toBeLessThan(
     powerpoint.insertAudio.mock.invocationCallOrder[0]!,

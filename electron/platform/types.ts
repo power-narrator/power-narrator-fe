@@ -1,3 +1,4 @@
+import type { SlideIndex } from "../../shared/slides/slideCoordinates.js";
 import type { ErrorResult, Result, SuccessResult } from "../../shared/types/result.js";
 
 export type { ErrorResult, Result, SuccessResult };
@@ -8,13 +9,13 @@ export type {
 } from "../../shared/types/slides.js";
 
 export interface SlideManifestEntry {
-  index: number;
+  slideIndex: SlideIndex;
   image: string;
   notes: string;
 }
 
 export interface SlideNotesEntry {
-  index: number;
+  slideIndex: SlideIndex;
   notes: string;
 }
 
@@ -22,10 +23,17 @@ export interface SlideWithSrc extends SlideManifestEntry {
   src: string;
 }
 
-export type SlideImageMap = Record<number, { image: string }>;
-export type SlideNotesMap = Record<number, string>;
+/**
+ * Slide images keyed by presentation-wide slide index, so a partial or
+ * reordered export still says which slide each image belongs to.
+ */
+export type SlideImageMap = ReadonlyMap<SlideIndex, { image: string }>;
+
+/** Slide notes keyed by presentation-wide slide index, for the same reason. */
+export type SlideNotesMap = ReadonlyMap<SlideIndex, string>;
+
 export interface SlideAudioEntry {
-  index: number;
+  slideIndex: SlideIndex;
   sectionIndex: number;
   audioData: Uint8Array;
 }
@@ -53,6 +61,10 @@ export interface GenerateVideoRequest {
   videoOutputPath: string;
 }
 
+/**
+ * The renderer still addresses slides by their legacy 1-based number in these
+ * IPC requests; the main process converts at the handler.
+ */
 export interface PlaySlideRequest {
   filePath: string;
   slideIndex: number;

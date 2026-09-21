@@ -3,6 +3,12 @@ import path from "node:path";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import type { NativePlatformProvider, PptProvider } from "./PptProvider.js";
+import {
+  FIRST_SLIDE_INDEX,
+  slideNumberOf,
+  toSlideIndex,
+  type SlideIndex,
+} from "../../shared/slides/slideCoordinates.js";
 import { getErrorMessage } from "./errors.js";
 import {
   buildSlidesWithPaths,
@@ -60,14 +66,15 @@ export class XmlPptProvider implements PptProvider {
     return { success: true, slideData: firstResult.result as XmlSlideData[] };
   }
 
+  /** The CLI's `slide_index` argument is already 0-based, so indices pass straight through. */
   private buildDeleteAudioOpsForSlides(
     slideData: XmlSlideData[],
-    targetSlideIndexes: number[],
+    targetSlideIndices: Iterable<SlideIndex>,
   ): XmlCliOperation[] {
     const deleteOps: XmlCliOperation[] = [];
 
-    for (const targetIndex of targetSlideIndexes) {
-      const slide = slideData[targetIndex];
+    for (const slideIndex of targetSlideIndices) {
+      const slide = slideData[slideIndex];
       if (!slide) continue;
 
       const slideAudio = slide.audio || [];
@@ -76,7 +83,7 @@ export class XmlPptProvider implements PptProvider {
         .forEach((audio) => {
           deleteOps.push({
             op: "delete_audio_for_slide",
-            args: { slide_index: targetIndex, name: audio.name },
+            args: { slide_index: slideIndex, name: audio.name },
           });
         });
     }
@@ -109,7 +116,7 @@ export class XmlPptProvider implements PptProvider {
     const payload = { input: inputPath, output: outputPath, ops };
     fs.writeFileSync(reqPath, JSON.stringify(payload, null, 2), "utf8");
 
-    let currentSlideIndex = 1;
+    let currentSlideIndex = FIRST_SLIDE_INDEX;
     if (!options.skipClose && this.nativeProvider) {
       currentSlideIndex = await this.nativeProvider.closePresentation(inputPath);
     }
@@ -198,14 +205,14 @@ export class XmlPptProvider implements PptProvider {
     const sessionDir = path.join(tempDir, `ppt_audio_${Date.now()}`);
     fs.mkdirSync(sessionDir, { recursive: true });
 
-    let slideIndexBefore = 1;
+    let slideIndexBefore = FIRST_SLIDE_INDEX;
     if (this.nativeProvider) {
       slideIndexBefore = await this.nativeProvider.closePresentation(filePath);
     }
 
     try {
-      const slidesToClear = new Set<number>();
-      for (const slide of slidesAudio) slidesToClear.add(slide.index);
+      const slidesToClear = new Set<SlideIndex>();
+      for (const slide of slidesAudio) slidesToClear.add(slide.slideIndex);
 
       const queryResult = await this.querySlides(filePath, {
         skipClose: true,
@@ -220,21 +227,18 @@ export class XmlPptProvider implements PptProvider {
         return { success: false, message: "Could not find slide data" };
       }
 
-      const ops: XmlCliOperation[] = this.buildDeleteAudioOpsForSlides(
-        slideData,
-        Array.from(slidesToClear, (slideIndex) => slideIndex - 1),
-      );
+      const ops: XmlCliOperation[] = this.buildDeleteAudioOpsForSlides(slideData, slidesToClear);
 
-      const slideAudioEntriesBySlide = new Map<number, SlideAudioEntry[]>();
+      const slideAudioEntriesBySlide = new Map<SlideIndex, SlideAudioEntry[]>();
       for (const slide of slidesAudio) {
-        const slideEntries = slideAudioEntriesBySlide.get(slide.index) ?? [];
+        const slideEntries = slideAudioEntriesBySlide.get(slide.slideIndex) ?? [];
         slideEntries.push(slide);
-        slideAudioEntriesBySlide.set(slide.index, slideEntries);
+        slideAudioEntriesBySlide.set(slide.slideIndex, slideEntries);
       }
 
       for (const slide of slidesAudio) {
         const buffer = Buffer.from(slide.audioData);
-        const slideDir = path.join(sessionDir, `slide_${slide.index}`);
+        const slideDir = path.join(sessionDir, `slide_${slide.slideIndex}`);
         fs.mkdirSync(slideDir, { recursive: true });
         const audioFileName = buildPptAudioFileName(slide.sectionIndex);
         const audioFilePath = path.join(slideDir, audioFileName);
@@ -249,7 +253,7 @@ export class XmlPptProvider implements PptProvider {
 
           ops.push({
             op: "save_audio_for_slide",
-            args: { slide_index: slideIndex - 1, mp3_path: audioFilePath },
+            args: { slide_index: slideIndex, mp3_path: audioFilePath },
           });
         }
       }
@@ -270,11 +274,11 @@ export class XmlPptProvider implements PptProvider {
    * Removes audio from the specified PowerPoint slides.
    *
    * @param filePath - Path to the .pptx file.
-   * @param slideIndices - The 1-based indices of the slides to update.
+   * @param slideIndices - The slides to update.
    * @returns A promise resolving to the result of the removal operation.
    */
-  async removeAudio(filePath: string, slideIndices: number[]): Promise<BasicPptResult> {
-    let slideIndexBefore = 1;
+  async removeAudio(filePath: string, slideIndices: SlideIndex[]): Promise<BasicPptResult> {
+    let slideIndexBefore = FIRST_SLIDE_INDEX;
     if (this.nativeProvider) {
       slideIndexBefore = await this.nativeProvider.closePresentation(filePath);
     }
@@ -289,16 +293,15 @@ export class XmlPptProvider implements PptProvider {
         return queryResult;
       }
 
-      const targetIndices = slideIndices.map((slideIndex) => slideIndex - 1);
-      const invalidIndex = targetIndices.find((targetIndex) => !queryResult.slideData[targetIndex]);
-      if (invalidIndex !== undefined) {
+      const missingIndex = slideIndices.find((slideIndex) => !queryResult.slideData[slideIndex]);
+      if (missingIndex !== undefined) {
         return {
           success: false,
-          message: "Could not find slide data for index " + (invalidIndex + 1),
+          message: "Could not find slide data for slide " + slideNumberOf(missingIndex),
         };
       }
 
-      const deleteOps = this.buildDeleteAudioOpsForSlides(queryResult.slideData, targetIndices);
+      const deleteOps = this.buildDeleteAudioOpsForSlides(queryResult.slideData, slideIndices);
       if (deleteOps.length === 0) {
         return { success: true };
       }
@@ -320,23 +323,31 @@ export class XmlPptProvider implements PptProvider {
       return queryResult;
     }
 
+    // `get_slides` answers with the whole deck in presentation order, so a
+    // slide's position in that answer is its presentation-wide slide index.
     return {
       success: true,
-      notes: Object.fromEntries(
-        queryResult.slideData.map((slide, index) => [index + 1, normalizeNotes(slide.notes || "")]),
+      notes: new Map(
+        queryResult.slideData.map((slide, position) => [
+          toSlideIndex(position),
+          normalizeNotes(slide.notes || ""),
+        ]),
       ),
     };
   }
 
-  async readSlideNotes(filePath: string, slideIndex: number): Promise<ReadSlideNotesResult> {
+  async readSlideNotes(filePath: string, slideIndex: SlideIndex): Promise<ReadSlideNotesResult> {
     const queryResult = await this.querySlides(filePath);
     if (!queryResult.success) {
       return queryResult;
     }
 
-    const slide = queryResult.slideData[slideIndex - 1];
+    const slide = queryResult.slideData[slideIndex];
     if (!slide) {
-      return { success: false, message: `Could not find slide data for index ${slideIndex}` };
+      return {
+        success: false,
+        message: `Could not find slide data for slide ${slideNumberOf(slideIndex)}`,
+      };
     }
 
     return { success: true, notes: normalizeNotes(slide.notes || "") };
@@ -350,12 +361,10 @@ export class XmlPptProvider implements PptProvider {
    * @returns A promise resolving to the result of the save operation.
    */
   async saveNotes(filePath: string, slides: SlideNotesEntry[]): Promise<BasicPptResult> {
-    const ops = slides.map(
-      (s): XmlCliOperation => ({
-        op: "set_slide_notes",
-        args: { slide_index: s.index - 1, notes: normalizeNotes(s.notes || "") },
-      }),
-    );
+    const ops = slides.map((s): XmlCliOperation => ({
+      op: "set_slide_notes",
+      args: { slide_index: s.slideIndex, notes: normalizeNotes(s.notes || "") },
+    }));
 
     if (ops.length === 0) return { success: true };
 
@@ -384,15 +393,16 @@ export class XmlPptProvider implements PptProvider {
       return queryResult;
     }
 
-    if (!imageResult.images || !queryResult.slideData) {
-      return { success: false, message: "Image export or slide query returned no data" };
-    }
+    // As in `readAllSlideNotes`, the whole deck comes back in order.
+    const slides = queryResult.slideData.map((slide, position) => {
+      const slideIndex = toSlideIndex(position);
 
-    const slides = queryResult.slideData.map((slide, index) => ({
-      index: index + 1,
-      image: imageResult.images[index + 1]?.image || "",
-      notes: slide?.notes || "",
-    }));
+      return {
+        slideIndex,
+        image: imageResult.images.get(slideIndex)?.image || "",
+        notes: slide?.notes || "",
+      };
+    });
 
     return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
   }
@@ -402,12 +412,12 @@ export class XmlPptProvider implements PptProvider {
    * Delegated to the base provider.
    *
    * @param filePath - Path to the .pptx file.
-   * @param slideIndex - The 1-based index of the slide to reload.
+   * @param slideIndex - The slide to reload.
    * @param outputDir - Directory for temporary output files.
    */
   async reloadSlide(
     filePath: string,
-    slideIndex: number,
+    slideIndex: SlideIndex,
     outputDir: string,
   ): Promise<SlidePptResult> {
     if (!this.nativeProvider) {
@@ -425,9 +435,12 @@ export class XmlPptProvider implements PptProvider {
         return queryResult;
       }
 
-      const slide = queryResult.slideData?.[slideIndex - 1];
+      const slide = queryResult.slideData?.[slideIndex];
       if (!slide) {
-        return { success: false, message: `Could not find slide data for index ${slideIndex - 1}` };
+        return {
+          success: false,
+          message: `Could not find slide data for slide ${slideNumberOf(slideIndex)}`,
+        };
       }
 
       return { success: true, notes: slide.notes || "" };

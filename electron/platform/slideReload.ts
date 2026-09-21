@@ -1,5 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
+import {
+  slideNumberOf,
+  type SlideIndex,
+  type SlideNumber,
+} from "../../shared/slides/slideCoordinates.js";
 import { getErrorMessage } from "./errors.js";
 import { buildSlidesWithPaths } from "./helpers.js";
 import type { ReadSlideNotesResult, SlidePptResult } from "./types.js";
@@ -31,22 +36,29 @@ function removeSlideImage(imagePath: string): void {
   }
 }
 
-function matchesSlideImageIndex(imagePath: string, slideIndex: number): boolean {
+/** Exported images are named by the 1-based slide number PowerPoint uses. */
+const slideImagePrefix = (slideNumber: SlideNumber): string => `Slide_${slideNumber}_`;
+
+function matchesSlideImage(imagePath: string, slideNumber: SlideNumber): boolean {
   const imageName = path.basename(imagePath);
-  return imageName.startsWith(`Slide_${slideIndex}_`) && imageName.endsWith(".png");
+  return imageName.startsWith(slideImagePrefix(slideNumber)) && imageName.endsWith(".png");
 }
 
-function discardSlideImage(outputDir: string, slideIndex: number, image: string): void {
+function discardSlideImage(outputDir: string, slideNumber: SlideNumber, image: string): void {
   const imagePath = resolveSlideImagePath(outputDir, image);
 
-  if (imagePath && matchesSlideImageIndex(imagePath, slideIndex)) {
+  if (imagePath && matchesSlideImage(imagePath, slideNumber)) {
     removeSlideImage(imagePath);
   }
 }
 
-function isSlideImageAvailable(outputDir: string, slideIndex: number, image: string): boolean {
+function isSlideImageAvailable(
+  outputDir: string,
+  slideNumber: SlideNumber,
+  image: string,
+): boolean {
   const imagePath = resolveSlideImagePath(outputDir, image);
-  if (!imagePath || !matchesSlideImageIndex(imagePath, slideIndex)) {
+  if (!imagePath || !matchesSlideImage(imagePath, slideNumber)) {
     return false;
   }
 
@@ -57,15 +69,19 @@ function isSlideImageAvailable(outputDir: string, slideIndex: number, image: str
   }
 }
 
-function pruneSlideImageVersions(outputDir: string, slideIndex: number, keepImage: string): void {
+function pruneSlideImageVersions(
+  outputDir: string,
+  slideNumber: SlideNumber,
+  keepImage: string,
+): void {
   const slidesDir = path.resolve(outputDir, "slides");
   const keepImagePath = resolveSlideImagePath(outputDir, keepImage);
-  if (!keepImagePath || !isSlideImageAvailable(outputDir, slideIndex, keepImage)) {
+  if (!keepImagePath || !isSlideImageAvailable(outputDir, slideNumber, keepImage)) {
     return;
   }
 
   try {
-    const slidePrefix = `Slide_${slideIndex}_`;
+    const slidePrefix = slideImagePrefix(slideNumber);
 
     for (const entry of fs.readdirSync(slidesDir, { withFileTypes: true })) {
       if (!entry.isFile() || !entry.name.startsWith(slidePrefix) || !entry.name.endsWith(".png")) {
@@ -79,20 +95,21 @@ function pruneSlideImageVersions(outputDir: string, slideIndex: number, keepImag
       }
     }
   } catch (error) {
-    console.error(`Failed to prune slide ${slideIndex} images:`, error);
+    console.error(`Failed to prune slide ${slideNumber} images:`, error);
   }
 }
 
 export async function completeSlideReload(
   outputDir: string,
-  slideIndex: number,
+  slideIndex: SlideIndex,
   stagedImage: string,
   loadNotes: LoadSlideNotes,
 ): Promise<SlidePptResult> {
+  const slideNumber = slideNumberOf(slideIndex);
   let committed = false;
 
   try {
-    if (!isSlideImageAvailable(outputDir, slideIndex, stagedImage)) {
+    if (!isSlideImageAvailable(outputDir, slideNumber, stagedImage)) {
       return { success: false, message: "The exported slide image is not available." };
     }
 
@@ -105,7 +122,7 @@ export async function completeSlideReload(
     }
 
     const [slide] = buildSlidesWithPaths(
-      [{ index: slideIndex, image: stagedImage, notes: notesResult.notes }],
+      [{ slideIndex, image: stagedImage, notes: notesResult.notes }],
       outputDir,
     );
 
@@ -113,7 +130,7 @@ export async function completeSlideReload(
       return { success: false, message: "Could not build the reloaded slide." };
     }
 
-    pruneSlideImageVersions(outputDir, slideIndex, stagedImage);
+    pruneSlideImageVersions(outputDir, slideNumber, stagedImage);
     committed = true;
     return { success: true, slide };
   } catch (error: unknown) {
@@ -121,7 +138,7 @@ export async function completeSlideReload(
     return { success: false, message: getErrorMessage(error) };
   } finally {
     if (!committed) {
-      discardSlideImage(outputDir, slideIndex, stagedImage);
+      discardSlideImage(outputDir, slideNumber, stagedImage);
     }
   }
 }
