@@ -59,9 +59,13 @@ The speaker prompt configured on a speaker mapping, applied to every section tha
 The speaker prompt written into a single slide-note section, applied only to that section and never inherited by later sections. It is appended to the preset prompt rather than replacing it.
 _Avoid_: Section prompt, override prompt
 
+**Slide index**:
+The 0-based ordinal identifying a slide within its presentation for internal addressing. It remains the presentation-wide ordinal when slides appear in a subset or a different order; it is not their incidental position in that collection.
+_Avoid_: Slide position, slide id, 0-based slide number
+
 **Slide number**:
-The 1-based ordinal identifying a slide within its presentation, and the only way persistence, playback, and audio insertion address one. A slide's place in a loaded array is a separate thing: 0-based, called an index, and never sent across the PowerPoint seam.
-_Avoid_: Slide index, slide position, slide id
+The 1-based ordinal by which an author recognizes a slide, derived by adding one to its slide index. It is a human-facing label rather than a separate slide identity or internal address.
+_Avoid_: 1-based slide index, slide position, slide id
 
 **Section identity**:
 The token the editor mints for each slide-note section so that per-section view state and selection follow their own section through insertions and deletions above it. It lives only for one renderer editing session — never written into PowerPoint, minted afresh on reload — and does not determine narration audio position, which still derives from current section order.

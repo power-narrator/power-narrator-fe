@@ -1,0 +1,3 @@
+# Slides are addressed by slide index
+
+Internal workflows address a slide by its slide index: the presentation-wide, 0-based ordinal that stays meaningful when slides reach a caller as a subset or in a different order. The 1-based slide number is derived from it, and only where something outside the application requires it — author-facing labels, and the native PowerPoint adapters whose automation counts slides from one. Because both are plain integers and differ by one, the two are distinct branded types with explicit conversions at `shared/slides/slideCoordinates.ts`, so no object or parameter can be read as either. Workflows still carrying the legacy 1-based value as an unbranded number convert through that same seam until they migrate.

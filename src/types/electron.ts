@@ -4,12 +4,14 @@ import type {
   PlaySlideRequest,
   ReloadSlideRequest,
   RemoveAudioRequest,
-  StructuredSlide,
-  StructuredSlideResult,
-  StructuredSlidesResult,
   SetGcpKeyResult as PlatformSetGcpKeyResult,
   VideoPptResult,
 } from "../../electron/platform/types";
+import type {
+  StructuredSlide,
+  StructuredSlideResult,
+  StructuredSlidesResult,
+} from "../../shared/types/slides.js";
 
 export type Slide = StructuredSlide;
 

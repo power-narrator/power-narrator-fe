@@ -4,6 +4,7 @@ import {
   parseNarrationSections,
   type NarrationSection,
 } from "../../../shared/narration/NarrationSections";
+import { slideIndexFromLegacyNumber } from "../../../shared/slides/slideCoordinates";
 import type { Slide } from "../../types/electron";
 import { SlideNoteEditor, type EditorSection, type SnapshotSlide } from "./SlideNoteEditor";
 
@@ -12,6 +13,7 @@ const speakers = ["Alice", "Bob"];
 /** Slides reach the editor already parsed, as the PowerPoint load seam parses them. */
 function slide(index: number, notes: string, knownSpeakers: readonly string[] = speakers): Slide {
   return {
+    slideIndex: slideIndexFromLegacyNumber(index),
     index,
     image: `slide-${index}.png`,
     src: `slide-${index}`,
@@ -44,6 +46,7 @@ describe("opening an editing session", () => {
     const editor = SlideNoteEditor.open(
       [
         {
+          slideIndex: slideIndexFromLegacyNumber(1),
           index: 1,
           image: "slide-1.png",
           src: "slide-1",

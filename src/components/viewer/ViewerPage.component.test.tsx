@@ -7,6 +7,7 @@ import {
 } from "../../../shared/narration/NarrationSections";
 import type { NarratedSaveResult } from "../../../shared/types/narration";
 import { AudioProvider } from "../../context/AudioContext";
+import { slideIndexFromLegacyNumber } from "../../../shared/slides/slideCoordinates";
 import type { Slide } from "../../types/electron";
 import { SettingsProvider } from "../../context/SettingsContext";
 import { ViewerPage } from "./ViewerPage";
@@ -15,6 +16,7 @@ import { NarrationPreviewProvider } from "./useNarrationPreview";
 /** Slides reach the viewer parsed, as the PowerPoint load seam parses them. */
 function loadedWith(notes: string, knownSpeakers: readonly string[] = []): Slide {
   return {
+    slideIndex: slideIndexFromLegacyNumber(1),
     index: 1,
     image: "slide-one.png",
     src: "slide-one",
