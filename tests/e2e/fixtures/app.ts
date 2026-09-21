@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseNarrationSections } from "../../../shared/narration/NarrationSections.js";
+import { slideIndexFromLegacyNumber } from "../../../shared/slides/slideCoordinates.js";
 import type { SlideWithSrc as Slide, StructuredSlide } from "../../../electron/platform/types.js";
 import type { SpeakerMapping, Voice } from "../../../shared/types/tts.js";
 
@@ -61,6 +62,7 @@ export const DETERMINISTIC_MP3_BYTES = [
 /** What the PowerPoint load seam hands the renderer, in place of raw note text. */
 const MOCK_STRUCTURED_SLIDES: StructuredSlide[] = MOCK_SLIDES.map(({ notes, ...slide }) => ({
   ...slide,
+  slideIndex: slideIndexFromLegacyNumber(slide.index),
   sections: parseNarrationSections(notes, Object.keys(MOCK_MAPPINGS)),
 }));
 

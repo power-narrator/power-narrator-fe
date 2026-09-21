@@ -1,4 +1,11 @@
-import type { NarrationSection } from "../../shared/narration/NarrationSections.js";
+import type { ErrorResult, Result, SuccessResult } from "../../shared/types/result.js";
+
+export type { ErrorResult, Result, SuccessResult };
+export type {
+  StructuredSlide,
+  StructuredSlideResult,
+  StructuredSlidesResult,
+} from "../../shared/types/slides.js";
 
 export interface SlideManifestEntry {
   index: number;
@@ -15,14 +22,6 @@ export interface SlideWithSrc extends SlideManifestEntry {
   src: string;
 }
 
-/**
- * A slide as the application works with it: its notes already parsed, so raw
- * note syntax stops at the PowerPoint seam.
- */
-export interface StructuredSlide extends Omit<SlideWithSrc, "notes"> {
-  sections: NarrationSection[];
-}
-
 export type SlideImageMap = Record<number, { image: string }>;
 export type SlideNotesMap = Record<number, string>;
 export interface SlideAudioEntry {
@@ -31,26 +30,11 @@ export interface SlideAudioEntry {
   audioData: Uint8Array;
 }
 
-export type ErrorResult = {
-  success: false;
-  message: string;
-};
-
-export type SuccessResult<T extends object = object> = {
-  success: true;
-} & T;
-
-export type Result<T extends object = object> = SuccessResult<T> | ErrorResult;
-
 export type BasicPptResult = Result;
 
 export type SlidesPptResult = Result<{ slides: SlideWithSrc[] }>;
 
 export type SlidePptResult = Result<{ slide: SlideWithSrc }>;
-
-export type StructuredSlidesResult = Result<{ slides: StructuredSlide[] }>;
-
-export type StructuredSlideResult = Result<{ slide: StructuredSlide }>;
 
 export type VideoPptResult = Result<{ outputPath: string }>;
 

@@ -9,6 +9,8 @@ import type {
   NarrationPreviewResult,
   PreviewNarrationRequest,
 } from "../shared/types/narration.js";
+import type { StructuredSlidesResult } from "../shared/types/slides.js";
+import { slideIndexFromLegacyNumber } from "../shared/slides/slideCoordinates.js";
 import {
   formatNarrationSections,
   parseNarrationSections,
@@ -18,6 +20,7 @@ type PrepareNarrationPreview = (
   payload: PreviewNarrationRequest,
 ) => Promise<NarrationPreviewResult>;
 type ProgressListener = (event: unknown, progress: NarrationPreparationProgress) => void;
+type ConvertPptx = (filePath: string) => Promise<StructuredSlidesResult>;
 type SaveNarratedPresentation = (
   payload: NarratedPresentationSaveRequest,
   onProgress: (progress: NarrationPreparationProgress) => void,
@@ -27,6 +30,7 @@ const electron = vi.hoisted(() => {
   const state = {
     exposedApi: undefined as
       | {
+          convertPptx: ConvertPptx;
           saveNarratedPresentation: SaveNarratedPresentation;
           prepareNarrationPreview: PrepareNarrationPreview;
         }
@@ -145,4 +149,29 @@ it("carries structured slide-note sections across the narrated presentation save
   const [, payload] = electron.ipcRenderer.invoke.mock.lastCall!;
   const delivered = structuredClone(payload) as NarratedPresentationSaveRequest;
   expect(formatNarrationSections(delivered.slides[0]!.sections)).toBe(notes);
+});
+
+it("carries structured slides back across the load channel with their slide indices intact", async () => {
+  loadPreload();
+  const notes = "  [ Narrator ]  \n[p: almost whispering]\nFirst\n\n-----\nSecond\n";
+  electron.ipcRenderer.invoke.mockResolvedValue({
+    success: true,
+    slides: [
+      {
+        slideIndex: slideIndexFromLegacyNumber(4),
+        index: 4,
+        image: "slide-4.png",
+        src: "app://slide-4.png",
+        sections: parseNarrationSections(notes, ["Narrator"]),
+      },
+    ],
+  } satisfies StructuredSlidesResult);
+
+  const result = await electron.state.exposedApi!.convertPptx("/slides/talk.pptx");
+
+  const delivered = structuredClone(result);
+  expect(delivered.success).toBe(true);
+  const slide = delivered.success ? delivered.slides[0]! : undefined;
+  expect(slide!.slideIndex).toBe(3);
+  expect(formatNarrationSections(slide!.sections)).toBe(notes);
 });

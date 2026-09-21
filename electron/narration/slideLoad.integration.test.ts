@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { getSpeakerNames } from "../../shared/narration/speaker.js";
+import { slideIndexFromLegacyNumber } from "../../shared/slides/slideCoordinates.js";
 import type { SlidePptResult, SlidesPptResult } from "../platform/types.js";
 import type { SpeakerMapping } from "../tts/TtsProvider.js";
 import { withSlideSections, withSlidesSections } from "./structuredSlideNotes.js";
@@ -49,12 +50,14 @@ it("hands the renderer a loaded presentation as structured sections, not note te
     success: true,
     slides: [
       {
+        slideIndex: slideIndexFromLegacyNumber(1),
         index: 1,
         image: "slide-1.png",
         src: "app://slide-1.png",
         sections: [expect.objectContaining({ speaker: "Narrator", text: "Opening line" })],
       },
       {
+        slideIndex: slideIndexFromLegacyNumber(2),
         index: 2,
         image: "slide-2.png",
         src: "app://slide-2.png",
@@ -75,6 +78,7 @@ it("hands the renderer a reloaded slide as structured sections, not note text", 
   expect(result).toEqual({
     success: true,
     slide: {
+      slideIndex: slideIndexFromLegacyNumber(1),
       index: 1,
       image: "slide-1.png",
       src: "app://slide-1.png",

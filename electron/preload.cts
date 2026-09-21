@@ -8,10 +8,9 @@ import type {
   ReloadSlideRequest,
   RemoveAudioRequest,
   SetGcpKeyResult,
-  StructuredSlideResult,
-  StructuredSlidesResult,
   VideoPptResult,
 } from "./platform/types.js";
+import type { StructuredSlideResult, StructuredSlidesResult } from "../shared/types/slides.js";
 import type { Voice } from "../shared/types/tts.js";
 import type {
   NarratedPresentationSaveRequest,
