@@ -44,10 +44,6 @@ function openedEditor(): SlideNoteEditor {
 
 const sectionTexts = (editor: SlideNoteEditor) => editor.sections.map((section) => section.text);
 
-/** The sections as they would reach the codec, without renderer-only identities. */
-const formattableSections = (editor: SlideNoteEditor) =>
-  editor.sections.map(({ id: _id, ...section }) => section);
-
 describe("opening an editing session", () => {
   it("holds every slide's sections up front", () => {
     const editor = openedEditor();
@@ -187,6 +183,41 @@ describe("editing section text", () => {
   });
 });
 
+describe("handing sections onward", () => {
+  it("sheds renderer-only identities from the selected slide's sections", () => {
+    const editor = openedEditor();
+
+    expect(editor.narrationSections).toEqual([
+      {
+        speaker: "Alice",
+        text: "First narration",
+        format: { speakerPrefix: "[", speakerSuffix: "]" },
+      },
+      { speaker: "", text: "Second section", format: { separatorBefore: "\n---\n" } },
+    ]);
+    expect(editor.narrationSections.some((section) => "id" in section)).toBe(false);
+  });
+
+  it("keeps the projection in the order narration positions are counted in", () => {
+    const editor = openedEditor();
+
+    const added = editor.addSection();
+
+    expect(added.narrationSections.map((section) => section.text)).toEqual(
+      added.sections.map((section) => section.text),
+    );
+  });
+
+  it("refuses to be edited through the projection it hands out", () => {
+    const editor = openedEditor();
+
+    expect(() => {
+      (editor.narrationSections[0] as { text: string }).text = "Tampered";
+    }).toThrow(TypeError);
+    expect(sectionTexts(editor)).toEqual(["First narration", "Second section"]);
+  });
+});
+
 describe("dirty state", () => {
   it("marks the edited slide dirty", () => {
     const editor = openedEditor();
@@ -237,7 +268,7 @@ describe("editing speakers", () => {
 
     const edited = editor.setSectionSpeaker(editor.sections[0]!.id, "Bob");
 
-    expect(formatNarrationSections(formattableSections(edited))).toBe("[  Bob  ]\nText");
+    expect(formatNarrationSections(edited.narrationSections)).toBe("[  Bob  ]\nText");
   });
 
   it("uses canonical formatting for a speaker tag the section did not have", () => {
@@ -245,7 +276,7 @@ describe("editing speakers", () => {
 
     const edited = editor.setSectionSpeaker(editor.sections[0]!.id, "Bob");
 
-    expect(formatNarrationSections(formattableSections(edited))).toBe("[Bob]\nText");
+    expect(formatNarrationSections(edited.narrationSections)).toBe("[Bob]\nText");
   });
 
   it("clears the speaker when no speaker is chosen", () => {
@@ -283,7 +314,7 @@ describe("editing inline prompts", () => {
 
     const edited = editor.setSectionPrompt(editor.sections[0]!.id, "excited");
 
-    expect(formatNarrationSections(formattableSections(edited))).toBe("[prompt:excited]\nText");
+    expect(formatNarrationSections(edited.narrationSections)).toBe("[prompt:excited]\nText");
   });
 
   it("uses canonical formatting for a prompt the section did not have", () => {
@@ -291,7 +322,7 @@ describe("editing inline prompts", () => {
 
     const edited = editor.setSectionPrompt(editor.sections[0]!.id, "excited");
 
-    expect(formatNarrationSections(formattableSections(edited))).toBe("[prompt: excited]\nText");
+    expect(formatNarrationSections(edited.narrationSections)).toBe("[prompt: excited]\nText");
   });
 });
 
@@ -318,7 +349,7 @@ describe("adding sections", () => {
   it("separates the added section with canonical formatting", () => {
     const editor = SlideNoteEditor.open([slide(at(0), "Text")], speakers).addSection();
 
-    expect(formatNarrationSections(formattableSections(editor))).toBe("Text\n---\n");
+    expect(formatNarrationSections(editor.narrationSections)).toBe("Text\n---\n");
   });
 
   it("marks the slide dirty", () => {
@@ -498,11 +529,11 @@ describe("undo and redo", () => {
 
   it("restores structured sections without reparsing notes", () => {
     const editor = openedEditor();
-    const formatted = formattableSections(editor);
+    const formatted = editor.narrationSections;
 
     const speaking = editor.setSectionSpeaker(editor.sections[1]!.id, "Bob");
 
-    expect(formattableSections(speaking.undo())).toEqual(formatted);
+    expect(speaking.undo().narrationSections).toEqual(formatted);
     expect(speaking.undo().redo().sections[1]?.speaker).toBe("Bob");
   });
 
@@ -864,7 +895,7 @@ describe("saving", () => {
     const { snapshot } = editor.beginSave();
 
     expect(snapshot.slides.map((slide) => slide.slideIndex)).toEqual([at(0), at(1)]);
-    expect(snapshot.slides[0]?.sections).toEqual(formattableSections(editor));
+    expect(snapshot.slides[0]?.sections).toEqual(editor.narrationSections);
   });
 
   it("submits only the requested slides", () => {

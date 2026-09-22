@@ -241,6 +241,7 @@ const sameSpeakerNames = (current: readonly string[], next: readonly string[]) =
 export class SlideNoteEditor {
   readonly #state: EditingState;
   #summaries: readonly SlideSummary[] | undefined;
+  #narrationSections: readonly ImmutableSection[] | undefined;
 
   private constructor(state: EditingState) {
     this.#state = { ...state, slides: freeze(state.slides) };
@@ -310,6 +311,18 @@ export class SlideNoteEditor {
   /** The sections of the slide being edited; no other slide's are on show. */
   get sections(): readonly EditorSection[] {
     return this.#activeSlide?.sections ?? [];
+  }
+
+  /**
+   * The selected slide's sections as anything outside the renderer must see
+   * them: section identities are minted for this editing session alone, so they
+   * are shed before sections cross a process boundary or reach narration, whose
+   * positions follow the order these sections are in.
+   */
+  get narrationSections(): readonly ImmutableSection[] {
+    this.#narrationSections ??= Object.freeze(this.sections.map(withoutIdentity));
+
+    return this.#narrationSections;
   }
 
   get activeSectionId(): SectionId | undefined {

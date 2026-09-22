@@ -5,7 +5,7 @@ import {
   formatNarrationSections,
   parseNarrationSections,
 } from "../../../shared/narration/NarrationSections";
-import type { NarratedSaveResult } from "../../../shared/types/narration";
+import type { NarratedSaveResult, PreviewNarrationRequest } from "../../../shared/types/narration";
 import { AudioProvider } from "../../context/AudioContext";
 import { toSlideIndex, type SlideIndex } from "../../../shared/slides/slideCoordinates";
 import type { Slide } from "../../types/electron";
@@ -38,6 +38,7 @@ interface ViewerElectronOverrides {
   playSlide?: typeof window.electronAPI.playSlide;
   removeAudio?: typeof window.electronAPI.removeAudio;
   convertPptx?: typeof window.electronAPI.convertPptx;
+  prepareNarrationPreview?: typeof window.electronAPI.prepareNarrationPreview;
 }
 
 function installElectronApi(overrides: ViewerElectronOverrides = {}) {
@@ -72,6 +73,9 @@ function installElectronApi(overrides: ViewerElectronOverrides = {}) {
     ),
     convertPptx: vi.fn<typeof window.electronAPI.convertPptx>(() =>
       Promise.resolve({ success: true as const, slides: [loadedSlide] }),
+    ),
+    prepareNarrationPreview: vi.fn<typeof window.electronAPI.prepareNarrationPreview>(() =>
+      Promise.resolve({ audio: new Uint8Array([1]), mediaType: "audio/mpeg" }),
     ),
     ...overrides,
   } as unknown as typeof window.electronAPI;
@@ -544,4 +548,30 @@ test("addresses the selected slide by its own index, not its place in the list",
       slideIndices: [0, 2],
     }),
   );
+});
+
+test("previews the section with plain sections and its position in their order", async () => {
+  const requests: PreviewNarrationRequest[] = [];
+  installElectronApi({
+    prepareNarrationPreview: (request) => {
+      requests.push(request);
+      return Promise.resolve({ audio: new Uint8Array([1]), mediaType: "audio/mpeg" });
+    },
+  });
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
+  const { screen } = await renderViewer(vi.fn<() => void>(), [
+    loadedWith("First narration\n---\nSecond section"),
+  ]);
+
+  await screen.getByRole("button", { name: "Preview effective speaker" }).nth(1).click();
+
+  await vi.waitFor(() => expect(requests).toHaveLength(1));
+  const [request] = requests;
+  expect(request?.sectionIndex).toBe(1);
+  expect(request?.sections).toEqual([
+    { speaker: "", text: "First narration" },
+    { speaker: "", text: "Second section", format: { separatorBefore: "\n---\n" } },
+  ]);
+  expect(request?.sections.some((section) => "id" in section)).toBe(false);
 });

@@ -1,6 +1,6 @@
 import { toSlideIndex } from "../../../shared/slides/slideCoordinates";
 import { MantineProvider } from "@mantine/core";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
 import type { SpeakerMapping, Voice } from "../../../shared/types/tts";
@@ -41,7 +41,10 @@ function sectionHandlers() {
   };
 }
 
-/** Deletion is applied here so stable identities are observable through the view. */
+/**
+ * Insertion and deletion are applied here so stable identities are observable
+ * through the view: the list re-renders with sections at different positions.
+ */
 function SectionsHarness({
   initialSections,
   handlers,
@@ -51,17 +54,28 @@ function SectionsHarness({
 }) {
   const [shown, setShown] = useState(initialSections);
   const textareas = useSectionTextareas();
+  const minted = useRef(initialSections.length);
 
   return (
     <NotesSectionList
       {...handlers}
       sections={shown}
+      narrationSections={shown.map(({ id: _id, ...section }) => section)}
       mappings={mappings}
       slideIndex={toSlideIndex(2)}
       textareas={textareas}
       onDeleteSection={(id) => {
         handlers.onDeleteSection(id);
         setShown((current) => current.filter((section) => section.id !== id));
+      }}
+      // Inserted mid-list, as reclassifying a bracketed line splits a section in two.
+      onAddSection={() => {
+        handlers.onAddSection();
+        setShown((current) => [
+          ...current.slice(0, 1),
+          { id: `section-${minted.current++}`, speaker: "", text: "Added section" },
+          ...current.slice(1),
+        ]);
       }}
     />
   );
@@ -156,5 +170,26 @@ test("keeps section-local state with its own section when an earlier one is dele
     .toHaveValue("Second section");
   await expect
     .element(screen.getByRole("textbox", { name: "Prompt for slide 3 section 1" }))
+    .not.toBeInTheDocument();
+});
+
+test("keeps section-local state with its own section when one is inserted above it", async () => {
+  const { screen } = await renderSections();
+
+  await screen.getByRole("button", { name: "Prompt for slide 3 section 2" }).click();
+  await expect
+    .element(screen.getByRole("textbox", { name: "Prompt for slide 3 section 2" }))
+    .toBeVisible();
+  await screen.getByRole("button", { name: "Add Section" }).click();
+
+  // The section that held the open prompt now renders third, and the prompt moved with it.
+  await expect
+    .element(screen.getByRole("textbox", { name: "Slide 3 section 3 notes" }))
+    .toHaveValue("Second section");
+  await expect
+    .element(screen.getByRole("textbox", { name: "Prompt for slide 3 section 3" }))
+    .toBeVisible();
+  await expect
+    .element(screen.getByRole("textbox", { name: "Prompt for slide 3 section 2" }))
     .not.toBeInTheDocument();
 });
