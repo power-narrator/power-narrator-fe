@@ -59,6 +59,7 @@ export function useSlideNoteEditor(
     activeSlideIndex: editor.activeSlideIndex,
     activeSlideSrc: editor.activeSlide?.src ?? "",
     sections: editor.sections,
+    narrationSections: editor.narrationSections,
     activeSectionId: editor.activeSectionId,
     canUndo: editor.canUndo,
     canRedo: editor.canRedo,

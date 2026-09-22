@@ -406,6 +406,7 @@ export function ViewerPage({
                 {activeSlideIndex !== undefined && (
                   <NotesSectionList
                     sections={editor.sections}
+                    narrationSections={editor.narrationSections}
                     mappings={mappings}
                     slideIndex={activeSlideIndex}
                     onFocusSection={editor.selectSection}

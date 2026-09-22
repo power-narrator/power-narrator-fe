@@ -13,7 +13,10 @@ import { getSpeakerOptions } from "../../utils/viewer";
 import type { SpeakerMapping } from "../../../shared/types/tts";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
 import { IconPlus } from "@tabler/icons-react";
-import { getEffectiveSpeaker } from "../../../shared/narration/NarrationSections";
+import {
+  getEffectiveSpeaker,
+  type NarrationSection,
+} from "../../../shared/narration/NarrationSections";
 import { slideNumberOf, type SlideIndex } from "../../../shared/slides/slideCoordinates";
 import { DEFAULT_SPEAKER_VALUE, toSynthesisSpeaker } from "../../../shared/narration/speaker";
 import { SpeakerPrompt } from "../SpeakerPrompt";
@@ -22,6 +25,8 @@ import type { SectionTextareas } from "./useSectionTextareas";
 
 interface NotesSectionListProps {
   sections: readonly EditorSection[];
+  /** The same sections with their renderer-only identities shed, for preview. */
+  narrationSections: readonly NarrationSection[];
   mappings: Record<string, SpeakerMapping>;
   onFocusSection: (id: SectionId) => void;
   onSpeakerChange: (id: SectionId, speaker: string | null) => void;
@@ -59,6 +64,7 @@ function SectionTextEditor({ label, value, onChange, onFocus, assignRef }: Secti
 
 export function NotesSectionList({
   sections,
+  narrationSections,
   mappings,
   onFocusSection,
   onSpeakerChange,
@@ -136,7 +142,7 @@ export function NotesSectionList({
                   id={section.id}
                   slideIndex={slideIndex}
                   sectionIndex={sectionIndex}
-                  sections={sections}
+                  sections={narrationSections}
                   mappings={mappings}
                   onFocus={() => onFocusSection(section.id)}
                   getSelectedText={() => textareas.selectedTextIn(section.id)}
