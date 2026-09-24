@@ -1,5 +1,6 @@
 import { MantineProvider } from "@mantine/core";
 import { expect, test, vi } from "vitest";
+import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import {
   slideNumberOf,
@@ -59,7 +60,8 @@ test("marks the active thumbnail as the current slide", async () => {
 test("selects a slide when its thumbnail is activated from the keyboard", async () => {
   const { screen, onSelectSlide } = await renderThumbnails(at(0));
 
-  await screen.getByRole("button", { name: "Slide 2" }).click();
+  screen.getByRole("button", { name: "Slide 2" }).element().focus();
+  await userEvent.keyboard("{Enter}");
 
   expect(onSelectSlide).toHaveBeenCalledWith(at(1));
 });

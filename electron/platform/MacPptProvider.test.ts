@@ -8,6 +8,7 @@ import { MacPptProvider } from "./MacPptProvider.js";
 
 const spawnCalls: Array<{ command: string; args: string[] }> = [];
 let spawnStdout = "";
+let beforeSpawnClose: (() => void) | undefined;
 
 vi.mock("node:child_process", () => ({
   spawn: (command: string, args: string[]) => {
@@ -15,6 +16,7 @@ vi.mock("node:child_process", () => ({
     const listeners = new Map<string, (value: string) => void>();
 
     queueMicrotask(() => {
+      beforeSpawnClose?.();
       if (spawnStdout) {
         listeners.get("stdout")?.(spawnStdout);
       }
@@ -40,14 +42,6 @@ vi.mock("electron", () => ({
   },
 }));
 
-type RunAppleScriptJson = (
-  scriptName: string,
-  args: string[],
-) => Promise<
-  | { success: true; data: { image: string } | { manifestPath: string } }
-  | { success: false; message: string }
->;
-
 let tempDir: string | undefined;
 
 beforeEach(() => {
@@ -64,6 +58,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   spawnCalls.length = 0;
   spawnStdout = "";
+  beforeSpawnClose = undefined;
   if (tempDir) {
     fs.rmSync(tempDir, { recursive: true, force: true });
     tempDir = undefined;
@@ -73,15 +68,10 @@ afterEach(() => {
 describe("MacPptProvider.reloadSlideImage", () => {
   it("derives the 1-based slide number the image export script expects", async () => {
     const provider = new MacPptProvider();
-    const runAppleScriptJson = vi
-      .spyOn(
-        provider as unknown as { runAppleScriptJson: RunAppleScriptJson },
-        "runAppleScriptJson",
-      )
-      .mockResolvedValue({
-        success: true,
-        data: { image: "slides/Slide_7_uuid.png" },
-      });
+    spawnStdout = JSON.stringify({
+      success: true,
+      data: { image: "slides/Slide_7_uuid.png" },
+    });
     if (!tempDir) {
       throw new Error("Expected a temporary test directory");
     }
@@ -93,11 +83,15 @@ describe("MacPptProvider.reloadSlideImage", () => {
       outputDir,
     );
 
-    expect(runAppleScriptJson).toHaveBeenCalledWith("export-slide-images.applescript", [
-      "/presentations/deck.pptx",
-      outputDir,
-      "7",
-    ]);
+    expect(spawnCalls.at(-1)).toEqual({
+      command: "osascript",
+      args: [
+        expect.stringMatching(/export-slide-images\.applescript$/),
+        "/presentations/deck.pptx",
+        outputDir,
+        "7",
+      ],
+    });
     expect(result).toEqual({ success: true, image: "slides/Slide_7_uuid.png" });
   });
 });
@@ -111,23 +105,19 @@ function officeContainerPath(fileName: string): string {
 }
 
 /**
- * The macro and AppleScript seams take 1-based slide numbers, so these capture
- * what the provider writes before its `finally` block removes the files.
+ * The macro seam takes 1-based slide numbers, so capture what the provider
+ * writes while the fake AppleScript process runs, before cleanup removes it.
  */
-function spyOnAppleScriptJson(provider: MacPptProvider, capture: () => void) {
-  return vi
-    .spyOn(provider as unknown as { runAppleScriptJson: RunAppleScriptJson }, "runAppleScriptJson")
-    .mockImplementation(() => {
-      capture();
-      return Promise.resolve({ success: true, data: { image: "" } });
-    });
+function succeedAppleScript(capture: () => void = () => {}) {
+  spawnStdout = JSON.stringify({ success: true, data: {} });
+  beforeSpawnClose = capture;
 }
 
 describe("MacPptProvider native slide numbers", () => {
   it("writes notes blocks under the 1-based slide number the macro expects", async () => {
     const provider = new MacPptProvider();
     let notesData = "";
-    spyOnAppleScriptJson(provider, () => {
+    succeedAppleScript(() => {
       const params = fs.readFileSync(officeContainerPath("update_notes_params.txt"), "utf8");
       notesData = fs.readFileSync(params.split("|")[1]!, "utf8");
     });
@@ -145,7 +135,7 @@ describe("MacPptProvider native slide numbers", () => {
   it("names the 1-based slide numbers the remove-audio macro expects", async () => {
     const provider = new MacPptProvider();
     let params = "";
-    spyOnAppleScriptJson(provider, () => {
+    succeedAppleScript(() => {
       params = fs.readFileSync(officeContainerPath("remove_audio_params.txt"), "utf8");
     });
 
@@ -156,14 +146,14 @@ describe("MacPptProvider native slide numbers", () => {
 
   it("starts the slideshow at the 1-based slide number", async () => {
     const provider = new MacPptProvider();
-    const runAppleScriptJson = spyOnAppleScriptJson(provider, () => {});
+    succeedAppleScript();
 
     await provider.playSlide("/presentations/deck.pptx", toSlideIndex(0));
 
-    expect(runAppleScriptJson).toHaveBeenCalledWith("play-slide.applescript", [
-      "1",
-      "/presentations/deck.pptx",
-    ]);
+    expect(spawnCalls.at(-1)).toEqual({
+      command: "osascript",
+      args: [expect.stringMatching(/play-slide\.applescript$/), "1", "/presentations/deck.pptx"],
+    });
   });
 });
 
@@ -209,10 +199,7 @@ describe("MacPptProvider.exportSlideImages", () => {
         { slideNumber: 4, image: "slides/Slide_4_uuid.png" },
       ]),
     );
-    vi.spyOn(
-      provider as unknown as { runAppleScriptJson: RunAppleScriptJson },
-      "runAppleScriptJson",
-    ).mockResolvedValue({ success: true, data: { manifestPath } });
+    spawnStdout = JSON.stringify({ success: true, data: { manifestPath } });
 
     const result = await provider.exportSlideImages("/presentations/deck.pptx", "/tmp/deck");
 
@@ -262,7 +249,7 @@ describe("MacPptProvider.insertAudio", () => {
   it("names the 1-based slide number in the batch the macro reads", async () => {
     const provider = new MacPptProvider();
     let params = "";
-    spyOnAppleScriptJson(provider, () => {
+    succeedAppleScript(() => {
       params = fs.readFileSync(officeContainerPath("insert_audio_params.txt"), "utf8");
     });
 
