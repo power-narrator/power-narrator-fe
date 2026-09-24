@@ -2,11 +2,43 @@ import fs from "node:fs";
 import { app } from "electron";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toSlideIndex } from "../../shared/slides/slideCoordinates.js";
 import { XmlPptProvider } from "./XmlPptProvider.js";
 import type { NativePlatformProvider } from "./PptProvider.js";
-import type { QuerySlidesResult, RunXmlCliResult, XmlCliOperation } from "./types.js";
+import type { XmlCliOperation, XmlCliResponse, XmlSlideData } from "./types.js";
+
+interface XmlCliRequest {
+  input: string;
+  output: string | null;
+  ops: XmlCliOperation[];
+}
+
+const xmlCliCalls: XmlCliRequest[] = [];
+const xmlCliResponses: XmlCliResponse[] = [];
+
+vi.mock("node:child_process", () => ({
+  spawn: (_command: string, [requestPath, responsePath]: string[]) => {
+    xmlCliCalls.push(JSON.parse(fs.readFileSync(requestPath!, "utf8")) as XmlCliRequest);
+    const listeners = new Map<string, (value: string | number) => void>();
+
+    queueMicrotask(() => {
+      const response = xmlCliResponses.shift() ?? { results: [] };
+      fs.writeFileSync(responsePath!, JSON.stringify(response), "utf8");
+      listeners.get("close")?.(0);
+    });
+
+    return {
+      stdout: {
+        on: (_: string, cb: (value: string | number) => void) => listeners.set("stdout", cb),
+      },
+      stderr: {
+        on: (_: string, cb: (value: string | number) => void) => listeners.set("stderr", cb),
+      },
+      on: (event: string, cb: (value: string | number) => void) => listeners.set(event, cb),
+    };
+  },
+}));
 
 vi.mock("electron", () => ({
   app: {
@@ -18,13 +50,32 @@ vi.mock("electron", () => ({
 
 let tempDir: string | undefined;
 
+beforeEach(() => {
+  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "power-narrator-xml-provider-"));
+  // `app.getPath` is an Electron-owned method; mocking it requires an unbound reference.
+  // oxlint-disable-next-line typescript/unbound-method
+  vi.mocked(app.getPath).mockReturnValue(tempDir);
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
+  xmlCliCalls.length = 0;
+  xmlCliResponses.length = 0;
   if (tempDir) {
     fs.rmSync(tempDir, { recursive: true, force: true });
     tempDir = undefined;
   }
 });
+
+function respondWithSlides(slideData: XmlSlideData[]): void {
+  xmlCliResponses.push({
+    results: [{ success: true, result: slideData, message: "" }],
+  });
+}
+
+function respondWithSuccess(): void {
+  xmlCliResponses.push({ results: [] });
+}
 
 function createNativeProvider(
   reloadSlideImage: NativePlatformProvider["reloadSlideImage"],
@@ -49,11 +100,11 @@ function createNativeProvider(
   };
 }
 
-type QuerySlides = (filePath: string) => Promise<QuerySlidesResult>;
-
 describe("XmlPptProvider.reloadSlide", () => {
   it("uses the requested slide notes and commits only its staged image", async () => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "power-narrator-xml-provider-"));
+    if (!tempDir) {
+      throw new Error("Expected a temporary test directory");
+    }
     const outputDir = path.join(tempDir, "deck");
     const slidesDir = path.join(outputDir, "slides");
     fs.mkdirSync(slidesDir, { recursive: true });
@@ -69,15 +120,10 @@ describe("XmlPptProvider.reloadSlide", () => {
       .fn<NativePlatformProvider["reloadSlideImage"]>()
       .mockResolvedValue({ success: true, image: "slides/Slide_2_staged.png" });
     const provider = new XmlPptProvider(createNativeProvider(reloadSlideImage));
-    const querySlides = vi
-      .spyOn(provider as unknown as { querySlides: QuerySlides }, "querySlides")
-      .mockResolvedValue({
-        success: true,
-        slideData: [
-          { notes: "First slide", audio: [] },
-          { notes: "Fresh\r\nnotes", audio: [] },
-        ],
-      });
+    respondWithSlides([
+      { notes: "First slide", audio: [] },
+      { notes: "Fresh\r\nnotes", audio: [] },
+    ]);
 
     const result = await provider.reloadSlide(
       "/presentations/deck.pptx",
@@ -90,7 +136,11 @@ describe("XmlPptProvider.reloadSlide", () => {
       toSlideIndex(1),
       outputDir,
     );
-    expect(querySlides).toHaveBeenCalledWith("/presentations/deck.pptx");
+    expect(xmlCliCalls).toContainEqual({
+      input: "/presentations/deck.pptx",
+      output: null,
+      ops: [{ op: "get_slides", args: {} }],
+    });
     expect(result.success).toBe(true);
     if (!result.success) {
       throw new Error(result.message);
@@ -106,46 +156,36 @@ describe("XmlPptProvider.reloadSlide", () => {
   });
 });
 
-type RunXmlCli = (
-  inputPath: string,
-  outputPath: string | null,
-  ops: XmlCliOperation[],
-  options?: { skipClose?: boolean; skipReopen?: boolean },
-) => Promise<RunXmlCliResult>;
-
-function spyOnRunXmlCli(provider: XmlPptProvider) {
-  return vi
-    .spyOn(provider as unknown as { runXmlCli: RunXmlCli }, "runXmlCli")
-    .mockResolvedValue({ success: true, data: { results: [] } });
-}
-
 describe("XmlPptProvider slide addressing", () => {
   it("hands the CLI its already 0-based slide index when saving notes", async () => {
     const provider = new XmlPptProvider();
-    const runXmlCli = spyOnRunXmlCli(provider);
+    respondWithSuccess();
 
     await provider.saveNotes("/presentations/deck.pptx", [
       { slideIndex: toSlideIndex(0), notes: "First" },
       { slideIndex: toSlideIndex(4), notes: "Fifth" },
     ]);
 
-    expect(runXmlCli).toHaveBeenCalledWith("/presentations/deck.pptx", "/presentations/deck.pptx", [
-      { op: "set_slide_notes", args: { slide_index: 0, notes: "First" } },
-      { op: "set_slide_notes", args: { slide_index: 4, notes: "Fifth" } },
+    expect(xmlCliCalls).toEqual([
+      {
+        input: "/presentations/deck.pptx",
+        output: "/presentations/deck.pptx",
+        ops: [
+          { op: "set_slide_notes", args: { slide_index: 0, notes: "First" } },
+          { op: "set_slide_notes", args: { slide_index: 4, notes: "Fifth" } },
+        ],
+      },
     ]);
   });
 
   it("deletes audio from the requested slide indices without renumbering them", async () => {
     const provider = new XmlPptProvider();
-    const runXmlCli = spyOnRunXmlCli(provider);
-    vi.spyOn(provider as unknown as { querySlides: QuerySlides }, "querySlides").mockResolvedValue({
-      success: true,
-      slideData: [
-        { notes: "First", audio: [{ name: "ppt_audio_1.mp3" }] },
-        { notes: "Second", audio: [{ name: "ppt_audio_1.mp3" }] },
-        { notes: "Third", audio: [{ name: "ppt_audio_1.mp3" }, { name: "narrator.mp3" }] },
-      ],
-    });
+    respondWithSlides([
+      { notes: "First", audio: [{ name: "ppt_audio_1.mp3" }] },
+      { notes: "Second", audio: [{ name: "ppt_audio_1.mp3" }] },
+      { notes: "Third", audio: [{ name: "ppt_audio_1.mp3" }, { name: "narrator.mp3" }] },
+    ]);
+    respondWithSuccess();
 
     const result = await provider.removeAudio("/presentations/deck.pptx", [
       toSlideIndex(0),
@@ -153,24 +193,26 @@ describe("XmlPptProvider slide addressing", () => {
     ]);
 
     expect(result).toEqual({ success: true, data: { results: [] } });
-    expect(runXmlCli).toHaveBeenCalledWith(
-      "/presentations/deck.pptx",
-      "/presentations/deck.pptx",
-      [
-        { op: "delete_audio_for_slide", args: { slide_index: 0, name: "ppt_audio_1.mp3" } },
-        { op: "delete_audio_for_slide", args: { slide_index: 2, name: "ppt_audio_1.mp3" } },
-      ],
-      { skipClose: true, skipReopen: true },
-    );
+    expect(xmlCliCalls).toEqual([
+      {
+        input: "/presentations/deck.pptx",
+        output: null,
+        ops: [{ op: "get_slides", args: {} }],
+      },
+      {
+        input: "/presentations/deck.pptx",
+        output: "/presentations/deck.pptx",
+        ops: [
+          { op: "delete_audio_for_slide", args: { slide_index: 0, name: "ppt_audio_1.mp3" } },
+          { op: "delete_audio_for_slide", args: { slide_index: 2, name: "ppt_audio_1.mp3" } },
+        ],
+      },
+    ]);
   });
 
   it("reports a slide index the presentation does not have", async () => {
     const provider = new XmlPptProvider();
-    spyOnRunXmlCli(provider);
-    vi.spyOn(provider as unknown as { querySlides: QuerySlides }, "querySlides").mockResolvedValue({
-      success: true,
-      slideData: [{ notes: "First", audio: [] }],
-    });
+    respondWithSlides([{ notes: "First", audio: [] }]);
 
     await expect(
       provider.removeAudio("/presentations/deck.pptx", [toSlideIndex(3)]),
@@ -182,13 +224,10 @@ describe("XmlPptProvider slide addressing", () => {
 
   it("keys all slide notes by their presentation-wide slide index", async () => {
     const provider = new XmlPptProvider();
-    vi.spyOn(provider as unknown as { querySlides: QuerySlides }, "querySlides").mockResolvedValue({
-      success: true,
-      slideData: [
-        { notes: "First", audio: [] },
-        { notes: "Second\r\nnotes", audio: [] },
-      ],
-    });
+    respondWithSlides([
+      { notes: "First", audio: [] },
+      { notes: "Second\r\nnotes", audio: [] },
+    ]);
 
     const result = await provider.readAllSlideNotes("/presentations/deck.pptx");
 
@@ -204,27 +243,20 @@ describe("XmlPptProvider slide addressing", () => {
 
 describe("XmlPptProvider.insertAudio", () => {
   it("saves audio against the slide index the CLI already counts from zero", async () => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "power-narrator-xml-audio-"));
-    // `app.getPath` is an Electron-owned method; mocking it requires an unbound reference.
-    // oxlint-disable-next-line typescript/unbound-method
-    vi.mocked(app.getPath).mockReturnValue(tempDir);
     const provider = new XmlPptProvider();
-    const runXmlCli = spyOnRunXmlCli(provider);
-    vi.spyOn(provider as unknown as { querySlides: QuerySlides }, "querySlides").mockResolvedValue({
-      success: true,
-      slideData: [
-        { notes: "First", audio: [] },
-        { notes: "Second", audio: [] },
-        { notes: "Third", audio: [] },
-      ],
-    });
+    respondWithSlides([
+      { notes: "First", audio: [] },
+      { notes: "Second", audio: [] },
+      { notes: "Third", audio: [] },
+    ]);
+    respondWithSuccess();
 
     await provider.insertAudio("/presentations/deck.pptx", [
       { slideIndex: toSlideIndex(0), sectionIndex: 0, audioData: new Uint8Array([1]) },
       { slideIndex: toSlideIndex(2), sectionIndex: 1, audioData: new Uint8Array([2]) },
     ]);
 
-    const [, , ops] = runXmlCli.mock.calls[0]!;
+    const ops = xmlCliCalls[1]?.ops ?? [];
     expect(ops.map((op) => ({ op: op.op, slide_index: op.args.slide_index }))).toEqual([
       { op: "save_audio_for_slide", slide_index: 0 },
       { op: "save_audio_for_slide", slide_index: 2 },

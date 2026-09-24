@@ -1,6 +1,5 @@
 import { toSlideIndex } from "../../../shared/slides/slideCoordinates";
 import { MantineProvider } from "@mantine/core";
-import { useRef, useState } from "react";
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
 import type { SpeakerMapping, Voice } from "../../../shared/types/tts";
@@ -42,63 +41,45 @@ function sectionHandlers() {
   };
 }
 
-/**
- * Insertion and deletion are applied here so stable identities are observable
- * through the view: the list re-renders with sections at different positions.
- */
-function SectionsHarness({
-  initialSections,
+function SectionsView({
+  sections,
   handlers,
 }: {
-  initialSections: EditorSection[];
+  sections: EditorSection[];
   handlers: SectionHandlers;
 }) {
-  const [shown, setShown] = useState(initialSections);
   const textareas = useSectionTextareas();
-  const minted = useRef(initialSections.length);
 
   return (
     <NotesSectionList
       {...handlers}
-      sections={shown}
-      narrationSections={shown.map(({ id: _id, ...section }) => section)}
+      sections={sections}
+      narrationSections={sections.map(({ id: _id, ...section }) => section)}
       mappings={mappings}
       slideIndex={toSlideIndex(2)}
       textareas={textareas}
-      onDeleteSection={(id) => {
-        handlers.onDeleteSection(id);
-        setShown((current) => current.filter((section) => section.id !== id));
-      }}
-      // Inserted mid-list, as reclassifying a bracketed line splits a section in two.
-      onAddSection={() => {
-        handlers.onAddSection();
-        setShown((current) => [
-          ...current.slice(0, 1),
-          {
-            id: sectionIdentity(`section-${minted.current++}`),
-            speaker: "",
-            text: "Added section",
-          },
-          ...current.slice(1),
-        ]);
-      }}
     />
   );
 }
 
 async function renderSections(initialSections = sections) {
   const handlers = sectionHandlers();
-  const screen = await render(
+  const view = (shown: EditorSection[]) => (
     <MantineProvider>
       <AudioProvider>
         <NarrationPreviewProvider>
-          <SectionsHarness initialSections={initialSections} handlers={handlers} />
+          <SectionsView sections={shown} handlers={handlers} />
         </NarrationPreviewProvider>
       </AudioProvider>
-    </MantineProvider>,
+    </MantineProvider>
   );
+  const screen = await render(view(initialSections));
 
-  return { screen, handlers };
+  return {
+    screen,
+    handlers,
+    rerenderSections: (shown: EditorSection[]) => screen.rerender(view(shown)),
+  };
 }
 
 test("names each section's controls after the section they act on", async () => {
@@ -161,9 +142,14 @@ test("reports inline prompt edits for the edited section", async () => {
 });
 
 test("keeps section-local state with its own section when an earlier one is deleted", async () => {
-  const { screen } = await renderSections([
+  const survivingSection: EditorSection = {
+    id: sectionIdentity("section-1"),
+    speaker: "Bob",
+    text: "Second section",
+  };
+  const { screen, rerenderSections } = await renderSections([
     { id: sectionIdentity("section-0"), speaker: "Alice", text: "First narration" },
-    { id: sectionIdentity("section-1"), speaker: "Bob", text: "Second section" },
+    survivingSection,
   ]);
 
   await screen.getByRole("button", { name: "Prompt for slide 3 section 1" }).click();
@@ -171,6 +157,7 @@ test("keeps section-local state with its own section when an earlier one is dele
     .element(screen.getByRole("textbox", { name: "Prompt for slide 3 section 1" }))
     .toBeVisible();
   await screen.getByRole("button", { name: "Remove slide 3 section 1" }).click();
+  await rerenderSections([survivingSection]);
 
   // The survivor now renders first, but the opened prompt belonged to the deleted section.
   await expect
@@ -182,15 +169,23 @@ test("keeps section-local state with its own section when an earlier one is dele
 });
 
 test("keeps section-local state with its own section when one is inserted above it", async () => {
-  const { screen } = await renderSections();
+  const { screen, rerenderSections } = await renderSections();
 
   await screen.getByRole("button", { name: "Prompt for slide 3 section 2" }).click();
   await expect
     .element(screen.getByRole("textbox", { name: "Prompt for slide 3 section 2" }))
     .toBeVisible();
-  await screen.getByRole("button", { name: "Add Section" }).click();
+  await rerenderSections([
+    sections[0]!,
+    {
+      id: sectionIdentity("section-2"),
+      speaker: "",
+      text: "Inserted section",
+    },
+    sections[1]!,
+  ]);
 
-  // The section that held the open prompt now renders third, and the prompt moved with it.
+  // Reclassification can insert a section in the middle. The prompt follows its stable identity.
   await expect
     .element(screen.getByRole("textbox", { name: "Slide 3 section 3 notes" }))
     .toHaveValue("Second section");

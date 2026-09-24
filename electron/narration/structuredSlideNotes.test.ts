@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import { getSpeakerNames } from "../../shared/narration/speaker.js";
 import { slideIndexFromOneBased } from "../../shared/slides/slideCoordinates.js";
 import type { SlidePptResult, SlidesPptResult } from "../platform/types.js";
@@ -24,29 +24,16 @@ const rawSlide = (slideNumber: number, notes: string) => ({
   notes,
 });
 
-/** The adapters hand back raw note text; main adapts their results at this seam. */
-function powerPointAdapter() {
-  return {
-    convertPptx: vi.fn<() => Promise<SlidesPptResult>>().mockResolvedValue({
-      success: true,
-      slides: [
-        rawSlide(1, "[Narrator]\nOpening line"),
-        rawSlide(2, "[Stage direction]\nSecond slide"),
-      ],
-    }),
-    reloadSlide: vi.fn<() => Promise<SlidePptResult>>().mockResolvedValue({
-      success: true,
-      slide: rawSlide(1, "[Narrator]\nReplaced line"),
-    }),
+it("structures every slide in a loaded presentation", () => {
+  const loaded: SlidesPptResult = {
+    success: true,
+    slides: [
+      rawSlide(1, "[Narrator]\nOpening line"),
+      rawSlide(2, "[Stage direction]\nSecond slide"),
+    ],
   };
-}
 
-it("hands the renderer a loaded presentation as structured sections, not note text", async () => {
-  const powerpoint = powerPointAdapter();
-
-  const result = withSlidesSections(await powerpoint.convertPptx(), getSpeakerNames(mappings));
-
-  expect(result).toEqual({
+  expect(withSlidesSections(loaded, getSpeakerNames(mappings))).toEqual({
     success: true,
     slides: [
       {
@@ -68,12 +55,13 @@ it("hands the renderer a loaded presentation as structured sections, not note te
   });
 });
 
-it("hands the renderer a reloaded slide as structured sections, not note text", async () => {
-  const powerpoint = powerPointAdapter();
+it("structures one reloaded slide", () => {
+  const loaded: SlidePptResult = {
+    success: true,
+    slide: rawSlide(1, "[Narrator]\nReplaced line"),
+  };
 
-  const result = withSlideSections(await powerpoint.reloadSlide(), getSpeakerNames(mappings));
-
-  expect(result).toEqual({
+  expect(withSlideSections(loaded, getSpeakerNames(mappings))).toEqual({
     success: true,
     slide: {
       slideIndex: slideIndexFromOneBased(1),
