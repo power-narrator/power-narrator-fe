@@ -6,6 +6,7 @@ import { render } from "vitest-browser-react";
 import type { SpeakerMapping, Voice } from "../../../shared/types/tts";
 import { AudioProvider } from "../../context/AudioContext";
 import { NotesSectionList } from "./NotesSectionList";
+import { sectionIdentity } from "./sectionIdentity.test-support";
 import type { EditorSection, SectionId } from "./SlideNoteEditor";
 import { NarrationPreviewProvider } from "./useNarrationPreview";
 import { useSectionTextareas } from "./useSectionTextareas";
@@ -24,8 +25,8 @@ const mappings: Record<string, SpeakerMapping> = {
 };
 
 const sections: EditorSection[] = [
-  { id: "section-0", speaker: "Alice", text: "First narration" },
-  { id: "section-1", speaker: "", text: "Second section" },
+  { id: sectionIdentity("section-0"), speaker: "Alice", text: "First narration" },
+  { id: sectionIdentity("section-1"), speaker: "", text: "Second section" },
 ];
 
 type SectionHandlers = ReturnType<typeof sectionHandlers>;
@@ -73,7 +74,11 @@ function SectionsHarness({
         handlers.onAddSection();
         setShown((current) => [
           ...current.slice(0, 1),
-          { id: `section-${minted.current++}`, speaker: "", text: "Added section" },
+          {
+            id: sectionIdentity(`section-${minted.current++}`),
+            speaker: "",
+            text: "Added section",
+          },
           ...current.slice(1),
         ]);
       }}
@@ -130,7 +135,7 @@ test("reports a speaker choice for the edited section", async () => {
   await screen.getByRole("combobox", { name: "Speaker for slide 3 section 2" }).click();
   await screen.getByRole("option", { name: "Bob" }).click();
 
-  expect(handlers.onSpeakerChange).toHaveBeenCalledWith("section-1", "Bob");
+  expect(handlers.onSpeakerChange).toHaveBeenCalledWith(sectionIdentity("section-1"), "Bob");
 });
 
 test("reports deletion and addition of sections", async () => {
@@ -139,7 +144,7 @@ test("reports deletion and addition of sections", async () => {
   await screen.getByRole("button", { name: "Remove slide 3 section 2" }).click();
   await screen.getByRole("button", { name: "Add Section" }).click();
 
-  expect(handlers.onDeleteSection).toHaveBeenCalledWith("section-1");
+  expect(handlers.onDeleteSection).toHaveBeenCalledWith(sectionIdentity("section-1"));
   expect(handlers.onAddSection).toHaveBeenCalled();
 });
 
@@ -149,13 +154,16 @@ test("reports inline prompt edits for the edited section", async () => {
   await screen.getByRole("button", { name: "Prompt for slide 3 section 2" }).click();
   await screen.getByRole("textbox", { name: "Prompt for slide 3 section 2" }).fill("calm");
 
-  expect(handlers.onSectionPromptChange).toHaveBeenLastCalledWith("section-1", "calm");
+  expect(handlers.onSectionPromptChange).toHaveBeenLastCalledWith(
+    sectionIdentity("section-1"),
+    "calm",
+  );
 });
 
 test("keeps section-local state with its own section when an earlier one is deleted", async () => {
   const { screen } = await renderSections([
-    { id: "section-0", speaker: "Alice", text: "First narration" },
-    { id: "section-1", speaker: "Bob", text: "Second section" },
+    { id: sectionIdentity("section-0"), speaker: "Alice", text: "First narration" },
+    { id: sectionIdentity("section-1"), speaker: "Bob", text: "Second section" },
   ]);
 
   await screen.getByRole("button", { name: "Prompt for slide 3 section 1" }).click();

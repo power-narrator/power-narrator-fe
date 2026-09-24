@@ -67,6 +67,10 @@ _Avoid_: Slide position, slide id, 0-based slide number
 The 1-based ordinal by which an author recognizes a slide, derived by adding one to its slide index. It is a human-facing label rather than a separate slide identity or internal address.
 _Avoid_: 1-based slide index, slide position, slide id
 
+**Saved baseline**:
+The structured slide-note sections a slide was last known to hold in PowerPoint, which dirty state is measured against. Each baseline carries the revision at which it was set — the order among every event that can move one, whether a completed save, a reload, or a mapping reclassification — so an older save completing later can never displace a newer baseline.
+_Avoid_: Saved copy, last-saved text, baseline timestamp
+
 **Section identity**:
 The token the editor mints for each slide-note section so that per-section view state and selection follow their own section through insertions and deletions above it. It lives only for one renderer editing session — never written into PowerPoint, minted afresh on reload — and does not determine narration audio position, which still derives from current section order.
 _Avoid_: Stable section index, section key, persistent id
