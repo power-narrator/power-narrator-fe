@@ -6,7 +6,14 @@ import {
 import type { SlideIndex } from "../../../shared/slides/slideCoordinates";
 import type { Slide } from "../../types/electron";
 
-export type SectionId = string;
+declare const sectionIdBrand: unique symbol;
+
+/**
+ * A section's identity for one renderer editing session, minted by the editor.
+ * Branded so no other string can be addressed to a section command, and so an
+ * identity cannot be written down and expected to mean anything later.
+ */
+export type SectionId = string & { readonly [sectionIdBrand]: "section id" };
 
 export type EditorSection = NarrationSection & { id: SectionId };
 
@@ -54,10 +61,16 @@ export interface SaveSubmission {
   snapshot: SaveSnapshot;
 }
 
+/**
+ * Where a saved baseline stands among every event that can move one: a
+ * submission, a reload, a reclassification. Baselines only ever move forward, so
+ * an older revision can never displace a newer one.
+ */
+type BaselineRevision = number;
+
 interface SavedBaseline {
   readonly sections: readonly ImmutableSection[];
-  /** The event that set this baseline, so an older completion cannot replace it. */
-  readonly at: number;
+  readonly revision: BaselineRevision;
 }
 
 type SavedBaselines = ReadonlyMap<SlideIndex, SavedBaseline>;
@@ -73,20 +86,19 @@ export class SaveSnapshot {
 }
 
 /**
- * Orders every event that can move a saved baseline: a submission, a reload, a
- * reclassification. Completion compares orders rather than baseline contents or
- * identities, which cannot tell a baseline that has moved past a snapshot from
- * one an overlapping save of the same slide moved the same way.
+ * Completion compares revisions rather than baseline contents or identities,
+ * which cannot tell a baseline that has moved past a snapshot from one an
+ * overlapping save of the same slide moved the same way.
  */
-let lastBaselineEvent = 0;
-const nextBaselineEvent = (): number => ++lastBaselineEvent;
+let lastBaselineRevision: BaselineRevision = 0;
+const nextBaselineRevision = (): BaselineRevision => ++lastBaselineRevision;
 
 /**
- * When each snapshot was submitted, kept beside the snapshot rather than in it:
- * the author holds the snapshot while the operation runs, and where it falls
- * among other saves is not theirs to read or move.
+ * The revision each snapshot was submitted at, kept beside the snapshot rather
+ * than in it: the author holds the snapshot while the operation runs, and where
+ * it falls among other saves is not theirs to read or move.
  */
-const submittedAt = new WeakMap<SaveSnapshot, number>();
+const submittedRevision = new WeakMap<SaveSnapshot, BaselineRevision>();
 
 interface EditorSlide extends SlideSummary {
   sections: readonly EditorSection[];
@@ -131,7 +143,7 @@ const sameSection = (edited: NarrationSection, saved: NarrationSection) =>
   (edited.prompt || "") === (saved.prompt || "") &&
   FORMAT_KEYS.every((key) => (edited.format?.[key] || "") === (saved.format?.[key] || ""));
 
-const sectionId = (number: number): SectionId => `section-${number}`;
+const sectionId = (number: number): SectionId => `section-${number}` as SectionId;
 
 function freezeSection(section: NarrationSection): ImmutableSection {
   Object.freeze(section.format);
@@ -142,16 +154,19 @@ const withoutIdentity = ({ id: _id, ...section }: EditorSection): ImmutableSecti
   freezeSection(section);
 
 /** Frozen because a baseline is evidence: what it recorded cannot be rewritten later. */
-const baselineOf = (sections: readonly NarrationSection[], at: number): SavedBaseline => ({
+const baselineOf = (
+  sections: readonly NarrationSection[],
+  revision: BaselineRevision,
+): SavedBaseline => ({
   sections: Object.freeze(sections.map(freezeSection)),
-  at,
+  revision,
 });
 
-const baselineOfSlide = (slide: EditorSlide, at: number): SavedBaseline =>
-  baselineOf(slide.sections.map(withoutIdentity), at);
+const baselineOfSlide = (slide: EditorSlide, revision: BaselineRevision): SavedBaseline =>
+  baselineOf(slide.sections.map(withoutIdentity), revision);
 
-const baselinesOf = (slides: readonly EditorSlide[], at: number): SavedBaselines =>
-  new Map(slides.map((slide) => [slide.slideIndex, baselineOfSlide(slide, at)]));
+const baselinesOf = (slides: readonly EditorSlide[], revision: BaselineRevision): SavedBaselines =>
+  new Map(slides.map((slide) => [slide.slideIndex, baselineOfSlide(slide, revision)]));
 
 /**
  * Where an address lands when the presentation no longer holds that slide: the
@@ -257,7 +272,7 @@ export class SlideNoteEditor {
 
     return new SlideNoteEditor({
       slides: editorSlides,
-      savedBaselines: baselinesOf(editorSlides, nextBaselineEvent()),
+      savedBaselines: baselinesOf(editorSlides, nextBaselineRevision()),
       activeSlideIndex: editorSlides[0]?.slideIndex,
       speakerNames: [...knownSpeakers],
       activeSectionId,
@@ -306,6 +321,19 @@ export class SlideNoteEditor {
   /** Where a slide sits in the list held, which is no part of how it is addressed. */
   #listOffsetOf(slideIndex: SlideIndex | undefined): number {
     return this.#state.slides.findIndex((slide) => slide.slideIndex === slideIndex);
+  }
+
+  /**
+   * Whether a command may reach this section at all: only the slide being
+   * edited is addressable, so stale input from a slide the author has left
+   * cannot change content they cannot see.
+   */
+  #holdsSection(id: SectionId): boolean {
+    return this.sections.some((section) => section.id === id);
+  }
+
+  get #activeListOffset(): number {
+    return this.#listOffsetOf(this.#state.activeSlideIndex);
   }
 
   /** The sections of the slide being edited; no other slide's are on show. */
@@ -436,12 +464,6 @@ export class SlideNoteEditor {
     return next === finalized ? this : next.#checkpoint(finalized.#state.activeSectionId);
   }
 
-  #listOffsetOfSection(id: SectionId): number {
-    return this.#state.slides.findIndex((slide) =>
-      slide.sections.some((section) => section.id === id),
-    );
-  }
-
   #withSlideSections(
     listOffset: number,
     change: (sections: readonly EditorSection[]) => EditorSection[],
@@ -462,8 +484,12 @@ export class SlideNoteEditor {
    * An edit that changes nothing is not an edit, so it earns no undo step.
    */
   #editSection(id: SectionId, change: (section: EditorSection) => EditorSection): SlideNoteEditor {
+    if (!this.#holdsSection(id)) {
+      return this;
+    }
+
     let changed = false;
-    const edited = this.#withSlideSections(this.#listOffsetOfSection(id), (sections) =>
+    const edited = this.#withSlideSections(this.#activeListOffset, (sections) =>
       sections.map((section) => {
         if (section.id !== id) {
           return section;
@@ -504,13 +530,13 @@ export class SlideNoteEditor {
   }
 
   #appendSection(): SlideNoteEditor {
-    const { activeSlideIndex, mintedSectionCount } = this.#state;
+    const { mintedSectionCount } = this.#state;
     if (!this.#activeSlide) {
       return this;
     }
 
     const added: EditorSection = { id: sectionId(mintedSectionCount), speaker: "", text: "" };
-    const appended = this.#withSlideSections(this.#listOffsetOf(activeSlideIndex), (sections) => [
+    const appended = this.#withSlideSections(this.#activeListOffset, (sections) => [
       ...sections,
       added,
     ]);
@@ -526,8 +552,12 @@ export class SlideNoteEditor {
   }
 
   #removeSection(id: SectionId): SlideNoteEditor {
+    if (!this.#holdsSection(id)) {
+      return this;
+    }
+
     let nearest: EditorSection | undefined;
-    const removed = this.#withSlideSections(this.#listOffsetOfSection(id), (sections) => {
+    const removed = this.#withSlideSections(this.#activeListOffset, (sections) => {
       const position = sections.findIndex((section) => section.id === id);
       const remaining = sections.filter((section) => section.id !== id);
       nearest = remaining[position] ?? remaining.at(-1);
@@ -606,7 +636,10 @@ export class SlideNoteEditor {
     const substitute = (slides: readonly EditorSlide[]): readonly EditorSlide[] =>
       slides.map((slide, offset) => (offset === listOffset ? replacement : slide));
     const savedBaselines = new Map(state.savedBaselines);
-    savedBaselines.set(replacement.slideIndex, baselineOfSlide(replacement, nextBaselineEvent()));
+    savedBaselines.set(
+      replacement.slideIndex,
+      baselineOfSlide(replacement, nextBaselineRevision()),
+    );
 
     return editor.#with({
       slides: substitute(state.slides),
@@ -638,7 +671,7 @@ export class SlideNoteEditor {
 
     return this.#with({
       slides,
-      savedBaselines: baselinesOf(slides, nextBaselineEvent()),
+      savedBaselines: baselinesOf(slides, nextBaselineRevision()),
       activeSlideIndex,
       activeSectionId,
       mintedSectionCount,
@@ -700,7 +733,7 @@ export class SlideNoteEditor {
     const slides = state.slides.map(rereadSlide);
     const sections =
       slides.find((slide) => slide.slideIndex === state.activeSlideIndex)?.sections ?? [];
-    const reclassifiedAt = nextBaselineEvent();
+    const reclassifiedRevision = nextBaselineRevision();
 
     return editor.#with({
       slides,
@@ -710,7 +743,7 @@ export class SlideNoteEditor {
           slideIndex,
           // Reinterpreted content is a new baseline, so a save submitted under
           // the obsolete names can no longer be reconciled against it.
-          baselineOf(saved.sections.flatMap(reread), reclassifiedAt),
+          baselineOf(saved.sections.flatMap(reread), reclassifiedRevision),
         ]),
       ),
       history: state.history.map((snapshot) => ({
@@ -736,7 +769,7 @@ export class SlideNoteEditor {
       (slide) => slideIndices === undefined || slideIndices.includes(slide.slideIndex),
     );
     const snapshot = new SaveSnapshot(submitted.map(toSnapshotSlide));
-    submittedAt.set(snapshot, nextBaselineEvent());
+    submittedRevision.set(snapshot, nextBaselineRevision());
 
     return { editor, snapshot };
   }
@@ -752,7 +785,7 @@ export class SlideNoteEditor {
    * A slide the presentation no longer holds has no baseline to advance.
    */
   saveSucceeded(snapshot: SaveSnapshot): SlideNoteEditor {
-    const submitted = submittedAt.get(snapshot);
+    const submitted = submittedRevision.get(snapshot);
     if (submitted === undefined) {
       return this;
     }
@@ -761,11 +794,11 @@ export class SlideNoteEditor {
     let advanced = false;
     for (const slide of snapshot.slides) {
       const current = savedBaselines.get(slide.slideIndex);
-      if (!current || current.at > submitted) {
+      if (!current || current.revision > submitted) {
         continue;
       }
 
-      savedBaselines.set(slide.slideIndex, { sections: slide.sections, at: submitted });
+      savedBaselines.set(slide.slideIndex, { sections: slide.sections, revision: submitted });
       advanced = true;
     }
 

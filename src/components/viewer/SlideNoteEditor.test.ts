@@ -174,12 +174,12 @@ describe("editing section text", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("ignores edits to an unknown section", () => {
+  it("ignores edits to a section the slide no longer holds", () => {
     const editor = openedEditor();
+    const staleId = editor.sections[0]!.id;
+    const shortened = editor.deleteSection(staleId);
 
-    expect(sectionTexts(editor.setSectionText("missing", "Rewritten"))).toEqual(
-      sectionTexts(editor),
-    );
+    expect(shortened.setSectionText(staleId, "Rewritten")).toBe(shortened);
   });
 });
 
@@ -411,10 +411,83 @@ describe("deleting sections", () => {
     expect(deleted.activeSectionId).toBeUndefined();
   });
 
-  it("ignores deleting an unknown section", () => {
+  it("ignores deleting a section the slide no longer holds", () => {
+    const editor = openedEditor();
+    const staleId = editor.sections[0]!.id;
+    const shortened = editor.deleteSection(staleId);
+
+    expect(shortened.deleteSection(staleId)).toBe(shortened);
+  });
+});
+
+describe("keeping commands within the active slide", () => {
+  /** An identity the author cannot have in view: it belongs to the slide they left. */
+  const foreignSection = () => {
+    const editor = openedEditor();
+    return { editor, foreignId: editor.selectSlide(at(1)).sections[0]!.id };
+  };
+
+  it("ignores text edits addressed to a hidden slide's section", () => {
+    const { editor, foreignId } = foreignSection();
+
+    expect(editor.setSectionText(foreignId, "Rewritten")).toBe(editor);
+    expect(sectionTexts(editor.setSectionText(foreignId, "Rewritten").selectSlide(at(1)))).toEqual([
+      "Other narration",
+    ]);
+  });
+
+  it("ignores speaker edits addressed to a hidden slide's section", () => {
+    const { editor, foreignId } = foreignSection();
+
+    expect(editor.setSectionSpeaker(foreignId, "Bob")).toBe(editor);
+  });
+
+  it("ignores prompt edits addressed to a hidden slide's section", () => {
+    const { editor, foreignId } = foreignSection();
+
+    expect(editor.setSectionPrompt(foreignId, "whispering")).toBe(editor);
+  });
+
+  it("ignores deleting a hidden slide's section", () => {
+    const { editor, foreignId } = foreignSection();
+
+    expect(editor.deleteSection(foreignId)).toBe(editor);
+  });
+
+  it("leaves the hidden slide's content, selection, dirty state, and history untouched", () => {
+    const { editor, foreignId } = foreignSection();
+
+    const unchanged = editor
+      .setSectionText(foreignId, "Rewritten")
+      .setSectionSpeaker(foreignId, "Bob")
+      .setSectionPrompt(foreignId, "whispering")
+      .deleteSection(foreignId);
+    const hidden = unchanged.selectSlide(at(1));
+
+    expect(sectionTexts(hidden)).toEqual(["Other narration"]);
+    expect(hidden.sections.map((section) => section.speaker)).toEqual([""]);
+    expect(hidden.sections.map((section) => section.prompt)).toEqual([undefined]);
+    expect(unchanged.activeSectionId).toBe(editor.activeSectionId);
+    expect(unchanged.hasUnsavedChanges).toBe(false);
+    expect(unchanged.canUndo).toBe(false);
+  });
+
+  it("keeps an open typing group open", () => {
+    const opened = openedEditor();
+    const foreignId = opened.selectSlide(at(1)).sections[0]!.id;
+    const typing = opened.setSectionText(opened.sections[0]!.id, "Typed");
+
+    const unchanged = typing.deleteSection(foreignId);
+
+    expect(unchanged).toBe(typing);
+    expect(sectionTexts(unchanged.undo())).toEqual(["First narration", "Second section"]);
+  });
+
+  it("rejects an identity the editor did not mint", () => {
     const editor = openedEditor();
 
-    expect(editor.deleteSection("missing")).toBe(editor);
+    // @ts-expect-error a section identity is minted by the editor, not written by a caller
+    expect(editor.setSectionText("first section", "Rewritten")).toBe(editor);
   });
 });
 

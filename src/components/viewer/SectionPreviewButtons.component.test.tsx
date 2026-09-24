@@ -11,6 +11,7 @@ import type { NarrationSection } from "../../../shared/narration/NarrationSectio
 import type { SpeakerMapping, Voice } from "../../../shared/types/tts";
 import { AudioProvider } from "../../context/AudioContext";
 import { SectionPreviewButtons } from "./SectionPreviewButtons";
+import { sectionIdentity } from "./sectionIdentity.test-support";
 import { NarrationPreviewProvider } from "./useNarrationPreview";
 import { useSectionTextareas } from "./useSectionTextareas";
 
@@ -158,17 +159,17 @@ function renderLivePreview(previewRequests: PreviewNarrationRequest[]) {
         <label htmlFor="preview-editor">Narration text</label>
         <textarea
           id="preview-editor"
-          ref={(element) => textareas.assign("section-0", element)}
+          ref={(element) => textareas.assign(sectionIdentity("section-0"), element)}
           defaultValue="Read only this phrase please"
         />
         <SectionPreviewButtons
-          id="section-0"
+          id={sectionIdentity("section-0")}
           slideIndex={toSlideIndex(0)}
           sectionIndex={0}
           sections={[liveSection]}
           mappings={{ Narrator: { voice: narratorVoice } }}
           onFocus={() => {}}
-          getSelectedText={() => textareas.selectedTextIn("section-0")}
+          getSelectedText={() => textareas.selectedTextIn(sectionIdentity("section-0"))}
         />
       </PreviewProviders>
     );
