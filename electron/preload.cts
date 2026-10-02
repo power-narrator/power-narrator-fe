@@ -11,7 +11,7 @@ import type {
 } from "../shared/types/powerpoint.js";
 import type { StructuredSlideResult, StructuredSlidesResult } from "../shared/types/slides.js";
 import type { Result } from "../shared/types/result.js";
-import type { SelectGcpKeyResult, Settings } from "../shared/types/settings.js";
+import type { SelectGcpKeyResult, Settings, VoicePreview } from "../shared/types/settings.js";
 import type { Voice } from "../shared/types/tts.js";
 import type {
   NarratedPresentationSaveRequest,
@@ -57,6 +57,8 @@ const electronAPI = {
     ipcRenderer.invoke("prepare-narration-preview", payload),
   getSettings: (): Promise<Settings> => ipcRenderer.invoke("get-settings"),
   selectGcpKey: (): Promise<SelectGcpKeyResult> => ipcRenderer.invoke("select-gcp-key"),
+  previewVoices: (keyPath: string): Promise<VoicePreview> =>
+    ipcRenderer.invoke("preview-voices", keyPath),
   saveSettings: (settings: Settings): Promise<Result> =>
     ipcRenderer.invoke("save-settings", settings),
   getSpeakerMappings: (): Promise<Record<string, Voice>> =>

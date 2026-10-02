@@ -116,6 +116,7 @@ function renderSettings({
       getSpeakerMappings: () => Promise.resolve(stored.speakerMappings),
       getVoices: () => Promise.resolve(voiceOptions),
       selectGcpKey: () => Promise.resolve({ success: true, path: null }),
+      previewVoices: () => Promise.resolve({ voices: voiceOptions, failure: null }),
       saveSettings,
       ...electronApi,
     },
@@ -692,14 +693,15 @@ const dismissals: [string, (screen: SettingsScreen) => Promise<void>][] = [
 
 test.each(dismissals)("discards the draft when dismissed with %s", async (_, dismiss) => {
   const screen = await renderSettings({
-    voiceOptions: [gcpOption],
     electronApi: {
       selectGcpKey: () => Promise.resolve({ success: true, path: "/keys/new.json" }),
+      previewVoices: () => Promise.resolve({ voices: [gcpOption], failure: null }),
     },
   });
 
   await waitForMapping(screen);
   await screen.getByRole("button", { name: "Select Key File..." }).click();
+  await choose(screen, "Voice for Default", "Aoede (FEMALE)");
   await screen.getByRole("button", { name: "Delete mapping for Narrator" }).click();
   await screen.getByRole("switch", { name: "Enable XML CLI engine" }).click();
   await dismiss(screen);
@@ -709,6 +711,7 @@ test.each(dismissals)("discards the draft when dismissed with %s", async (_, dis
   await screen.getByRole("button", { name: "Open settings" }).click();
   await expect.element(screen.getByText("/keys/saved.json")).toBeVisible();
   await expect.element(screen.getByText("[Narrator]")).toBeVisible();
+  await expect.element(screen.getByRole("combobox", { name: "Voice for Default" })).toHaveValue("");
   await expect
     .element(screen.getByRole("switch", { name: "Enable XML CLI engine" }))
     .not.toBeChecked();
@@ -772,4 +775,100 @@ test("holds the modal open while saving and keeps the draft for a retry after fa
   await save.click();
   await waitForClosed(screen);
   expect(saveSettings).toHaveBeenLastCalledWith({ ...savedSettings, xmlCliEnabled: true });
+});
+
+test("lets a first-time user choose a voice from a newly selected key and save both", async () => {
+  const previewVoices = vi.fn<typeof window.electronAPI.previewVoices>(() =>
+    Promise.resolve({ voices: [gcpOption, registryOption], failure: null }),
+  );
+  const screen = await renderSettings({
+    settings: { gcpKeyPath: null, speakerMappings: {} },
+    voiceOptions: [registryOption],
+    electronApi: {
+      selectGcpKey: () => Promise.resolve({ success: true, path: "/keys/new.json" }),
+      previewVoices,
+    },
+  });
+
+  await expect.element(screen.getByText("Not Configured")).toBeVisible();
+  await screen.getByRole("button", { name: "Select Key File..." }).click();
+  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
+  await screen.getByRole("button", { name: "Add Mapping" }).click();
+  await choose(screen, "Voice for Narrator", "Aoede (FEMALE)");
+  await screen.getByRole("combobox", { name: "Voice for Default" }).click();
+  await expect
+    .element(screen.getByRole("option", { name: "future-voice (NEUTRAL)" }))
+    .toBeVisible();
+  await userEvent.keyboard("{Escape}");
+
+  expect(previewVoices).toHaveBeenCalledExactlyOnceWith("/keys/new.json");
+  await screen.getByRole("button", { name: "Save" }).click();
+  await waitForClosed(screen);
+  expect(window.electronAPI.saveSettings).toHaveBeenCalledExactlyOnceWith({
+    gcpKeyPath: "/keys/new.json",
+    speakerMappings: { Narrator: { voice: gcpVoice } },
+    xmlCliEnabled: false,
+  });
+});
+
+test("shows a failed voice preview yet saves the selected key and keeps existing mappings", async () => {
+  const screen = await renderSettings({
+    settings: { speakerMappings: { Narrator: { voice: gcpVoice, prompt: "Whisper" } } },
+    voiceOptions: [gcpOption],
+    electronApi: {
+      selectGcpKey: () => Promise.resolve({ success: true, path: "/keys/new.json" }),
+      previewVoices: () =>
+        Promise.resolve({ voices: [registryOption], failure: "Network unavailable" }),
+    },
+  });
+
+  await waitForMapping(screen);
+  await screen.getByRole("button", { name: "Select Key File..." }).click();
+
+  await expect
+    .element(screen.getByText("Failed to load voices for the selected key: Network unavailable"))
+    .toBeVisible();
+  await expect
+    .element(screen.getByRole("combobox", { name: "Voice for Narrator" }))
+    .toHaveValue("Aoede (unavailable)");
+  await screen.getByRole("button", { name: "Save" }).click();
+  await waitForClosed(screen);
+  expect(window.electronAPI.saveSettings).toHaveBeenCalledExactlyOnceWith({
+    ...savedSettings,
+    gcpKeyPath: "/keys/new.json",
+    speakerMappings: { Narrator: { voice: gcpVoice, prompt: "Whisper" } },
+  });
+});
+
+test("ignores voices previewed for a key that has since been replaced", async () => {
+  const previews: ((voices: VoiceOption[]) => void)[] = [];
+  const selectGcpKey = vi
+    .fn<typeof window.electronAPI.selectGcpKey>()
+    .mockResolvedValueOnce({ success: true, path: "/keys/old.json" })
+    .mockResolvedValueOnce({ success: true, path: "/keys/new.json" });
+  const screen = await renderSettings({
+    settings: { speakerMappings: {} },
+    electronApi: {
+      selectGcpKey,
+      previewVoices: () =>
+        new Promise((resolve) => {
+          previews.push((voices) => resolve({ voices, failure: null }));
+        }),
+    },
+  });
+  const selectKey = screen.getByRole("button", { name: "Select Key File..." });
+
+  await selectKey.click();
+  await expect.poll(() => previews.length).toBe(1);
+  await selectKey.click();
+  await expect.poll(() => previews.length).toBe(2);
+  previews[1]!([gcpOption]);
+  await expect.element(screen.getByText("/keys/new.json")).toBeVisible();
+  previews[0]!([registryOption]);
+
+  await screen.getByRole("combobox", { name: "Voice for Default" }).click();
+  await expect.element(screen.getByRole("option", { name: "Aoede (FEMALE)" })).toBeVisible();
+  await expect
+    .element(screen.getByRole("option", { name: "future-voice (NEUTRAL)" }))
+    .not.toBeInTheDocument();
 });

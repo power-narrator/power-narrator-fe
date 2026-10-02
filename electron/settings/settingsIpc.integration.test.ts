@@ -4,7 +4,9 @@ import path from "node:path";
 import type { IpcMainInvokeEvent } from "electron";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import type { Settings } from "../../shared/types/settings.js";
-import { registerSettingsIpc } from "./registerSettingsIpc.js";
+import type { VoiceOption } from "../../shared/types/tts.js";
+import type { TtsProvider } from "../tts/TtsProvider.js";
+import { registerSettingsIpc, type SettingsAdapters } from "./registerSettingsIpc.js";
 
 type IpcHandler = (event: IpcMainInvokeEvent, ...args: never[]) => unknown;
 
@@ -44,9 +46,30 @@ function createStore(initial: Record<string, unknown>, failingKey?: string) {
   };
 }
 
+function voiceOption(provider: string, name: string): VoiceOption {
+  return { provider, name, ssmlGender: "NEUTRAL", models: [] };
+}
+
+function voiceProvider(getVoices: () => Promise<VoiceOption[]>): TtsProvider {
+  return {
+    getVoices,
+    prepareSpeech: () => {
+      throw new Error("Not used");
+    },
+  };
+}
+
+type VoiceAdapters = Pick<SettingsAdapters, "voiceProviders" | "createGcpProvider">;
+
+const defaultVoiceAdapters: VoiceAdapters = {
+  voiceProviders: new Map(),
+  createGcpProvider: () => voiceProvider(() => Promise.resolve([])),
+};
+
 function registerSettingsHandlers(
   store: ReturnType<typeof createStore>["store"],
   pickKeyFile: () => Promise<string | null> = () => Promise.resolve(null),
+  voiceAdapters: VoiceAdapters = defaultVoiceAdapters,
 ) {
   const handlers = new Map<string, IpcHandler>();
   registerSettingsIpc(
@@ -55,7 +78,7 @@ function registerSettingsHandlers(
         handlers.set(channel, handler);
       },
     },
-    { store, pickKeyFile },
+    { store, pickKeyFile, ...voiceAdapters },
   );
   const invoke = (channel: string, ...args: unknown[]) =>
     Promise.resolve(handlers.get(channel)!(event, ...(args as never[])));
@@ -130,4 +153,53 @@ it("refuses to commit a key that is no longer a valid service account key", asyn
   ).resolves.toEqual({ success: false, message: "Invalid JSON file" });
 
   expect(read()).toEqual(savedState);
+});
+
+it("previews voices with a staged key without saving or activating it", async () => {
+  const stagedKey = writeKeyFile("staged.json", JSON.stringify({ type: "service_account" }));
+  const { store, read } = createStore(savedState);
+  const stagedKeys: string[] = [];
+  const { invoke } = registerSettingsHandlers(store, undefined, {
+    voiceProviders: new Map([
+      ["gcp", voiceProvider(() => Promise.resolve([voiceOption("gcp", "Saved-key voice")]))],
+      ["local", voiceProvider(() => Promise.resolve([voiceOption("local", "Local voice")]))],
+    ]),
+    createGcpProvider: (keyPath) => {
+      stagedKeys.push(keyPath);
+      return voiceProvider(() => Promise.resolve([voiceOption("gcp", "Staged-key voice")]));
+    },
+  });
+
+  await expect(invoke("preview-voices", stagedKey)).resolves.toEqual({
+    voices: [voiceOption("gcp", "Staged-key voice"), voiceOption("local", "Local voice")],
+    failure: null,
+  });
+
+  expect(stagedKeys).toEqual([stagedKey]);
+  expect(read()).toEqual(savedState);
+});
+
+it("reports a staged key's provider failure apart from an empty catalogue", async () => {
+  const stagedKey = writeKeyFile("staged.json", JSON.stringify({ type: "service_account" }));
+  const stagedCatalogues = [
+    () => Promise.resolve([]),
+    () => Promise.reject(new Error("Network unavailable")),
+  ];
+  const { store } = createStore(savedState);
+  const { invoke } = registerSettingsHandlers(store, undefined, {
+    voiceProviders: new Map([
+      ["gcp", voiceProvider(() => Promise.resolve([]))],
+      ["local", voiceProvider(() => Promise.resolve([voiceOption("local", "Local voice")]))],
+    ]),
+    createGcpProvider: () => voiceProvider(stagedCatalogues.shift()!),
+  });
+
+  await expect(invoke("preview-voices", stagedKey)).resolves.toEqual({
+    voices: [voiceOption("local", "Local voice")],
+    failure: null,
+  });
+  await expect(invoke("preview-voices", stagedKey)).resolves.toEqual({
+    voices: [voiceOption("local", "Local voice")],
+    failure: "Network unavailable",
+  });
 });

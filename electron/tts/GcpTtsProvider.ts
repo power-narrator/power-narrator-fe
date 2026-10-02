@@ -169,15 +169,11 @@ export class GcpTtsProvider implements TtsProvider {
     const client = new TextToSpeechClient({ keyFilename: keyPath });
     const voices: GcpVoice[] = [];
 
-    try {
-      const [gbResult] = await client.listVoices({ languageCode: "en-GB" });
-      voices.push(...(gbResult.voices ?? []));
+    const [gbResult] = await client.listVoices({ languageCode: "en-GB" });
+    voices.push(...(gbResult.voices ?? []));
 
-      const [usResult] = await client.listVoices({ languageCode: "en-US" });
-      voices.push(...(usResult.voices ?? []));
-    } catch (error) {
-      console.error("Failed to list GCP voices:", error);
-    }
+    const [usResult] = await client.listVoices({ languageCode: "en-US" });
+    voices.push(...(usResult.voices ?? []));
 
     return toVoiceOptions(voices);
   }

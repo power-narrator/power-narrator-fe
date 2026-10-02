@@ -1,5 +1,5 @@
 import type { Result } from "../shared/types/result";
-import type { SelectGcpKeyResult, Settings } from "../shared/types/settings";
+import type { SelectGcpKeyResult, Settings, VoicePreview } from "../shared/types/settings";
 import type { SpeakerMapping, VoiceOption } from "../shared/types/tts";
 import type {
   NarratedPresentationSaveRequest,
@@ -38,6 +38,7 @@ declare global {
       ) => Promise<NarrationPreviewResult>;
       getSettings: () => Promise<Settings>;
       selectGcpKey: () => Promise<SelectGcpKeyResult>;
+      previewVoices: (keyPath: string) => Promise<VoicePreview>;
       saveSettings: (settings: Settings) => Promise<Result>;
       setInsertMethod: (method: string) => Promise<void>;
       getSpeakerMappings: () => Promise<Record<string, SpeakerMapping>>;

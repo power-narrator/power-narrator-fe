@@ -55,6 +55,14 @@ describe("GcpTtsProvider", () => {
     expect(warning).toHaveBeenCalledOnce();
   });
 
+  it("reports a failed voice listing rather than an empty catalogue", async () => {
+    listVoices.mockRejectedValue(new Error("PERMISSION_DENIED"));
+
+    await expect(new GcpTtsProvider(() => "/keys/gcp.json").getVoices()).rejects.toThrow(
+      "PERMISSION_DENIED",
+    );
+  });
+
   it("parses a legacy provider voice name into stored voice details", () => {
     expect(parseGcpVoiceName("en-GB-Chirp3-HD-Aoede")).toEqual({
       voiceId: "Aoede",
