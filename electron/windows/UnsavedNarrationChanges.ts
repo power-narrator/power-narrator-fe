@@ -57,7 +57,6 @@ export class UnsavedNarrationChanges {
     });
   }
 
-  /** Intercepts `window`'s close while it still holds unsaved narration edits. */
   guard(window: BrowserWindow): void {
     const webContentsId = window.webContents.id;
     let allowClose = false;

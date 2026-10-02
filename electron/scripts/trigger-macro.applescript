@@ -1,9 +1,6 @@
 on run {macroName, pptPath}
     try
         tell application "Microsoft PowerPoint"
-            -- activate removed
-            
-            -- CHECK IF ALREADY OPEN
             set pres to missing value
             try
                 repeat with p in presentations
@@ -15,7 +12,6 @@ on run {macroName, pptPath}
             end try
 
             if pres is missing value then
-                 -- Open if not found
                  open (POSIX file pptPath)
                  set pres to active presentation
             else

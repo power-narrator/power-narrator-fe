@@ -14,7 +14,6 @@ interface SectionPreviewButtonsProps {
   sections: readonly NarrationSection[];
   mappings: Record<string, SpeakerMapping>;
   onFocus: () => void;
-  /** The author's current selection within the section, when the view can read one. */
   getSelectedText?: () => string | undefined;
 }
 

@@ -7,7 +7,6 @@ declare const slideNumberBrand: unique symbol;
  */
 export type SlideIndex = number & { readonly [slideIndexBrand]: "slide index" };
 
-/** The author-facing 1-based ordinal derived from a slide index. */
 export type SlideNumber = number & { readonly [slideNumberBrand]: "slide number" };
 
 function assertOrdinal(value: number, minimum: number, what: string): void {
@@ -40,12 +39,10 @@ export const slideIndexOf = (slideNumber: SlideNumber): SlideIndex =>
 export const slideIndexFromOneBased = (oneBased: number): SlideIndex =>
   slideIndexOf(toSlideNumber(oneBased));
 
-/** The same entry point for a value whose shape the caller has not yet vetted. */
 export function trySlideIndexFromOneBased(oneBased: unknown): SlideIndex | undefined {
   return typeof oneBased === "number" && Number.isInteger(oneBased) && oneBased >= 1
     ? slideIndexFromOneBased(oneBased)
     : undefined;
 }
 
-/** The index of the first slide in any presentation. */
 export const FIRST_SLIDE_INDEX = toSlideIndex(0);

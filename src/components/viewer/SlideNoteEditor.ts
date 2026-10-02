@@ -17,7 +17,6 @@ export type SectionId = string & { readonly [sectionIdBrand]: "section id" };
 
 export type EditorSection = NarrationSection & { id: SectionId };
 
-/** A slide as the view sees it listed: everything but the sections it holds. */
 export type SlideSummary = Omit<Slide, "sections">;
 
 export interface TextRange {
@@ -25,14 +24,12 @@ export interface TextRange {
   end: number;
 }
 
-/** Where the view should place focus and selection once the edit has rendered. */
 export interface SelectionIntent extends TextRange {
   sectionId: SectionId;
 }
 
 export interface SsmlInsertion {
   startTag: string;
-  /** Omitted for a self-closing tag, which is inserted at the caret. */
   endTag?: string;
   selection: TextRange;
 }
@@ -75,7 +72,6 @@ interface SavedBaseline {
 
 type SavedBaselines = ReadonlyMap<SlideIndex, SavedBaseline>;
 
-/** Exactly the structured content one persistence operation submitted. */
 export class SaveSnapshot {
   readonly slides: readonly SnapshotSlide[];
 
@@ -106,24 +102,18 @@ interface EditorSlide extends SlideSummary {
 
 interface HistorySnapshot {
   slides: readonly EditorSlide[];
-  /** Which section was being edited, so undo returns the author to it. */
   activeSectionId: SectionId | undefined;
 }
 
 interface EditingState {
   slides: readonly EditorSlide[];
-  /** Structured content each slide was last known to hold in PowerPoint. */
   savedBaselines: SavedBaselines;
-  /** The slide being edited, absent only while the presentation holds no slides. */
   activeSlideIndex: SlideIndex | undefined;
-  /** The speaker mapping names bracketed lines are currently read against. */
   speakerNames: readonly string[];
   activeSectionId: SectionId | undefined;
-  /** Identities a later section must not reuse, even after deletions. */
   mintedSectionCount: number;
   history: readonly HistorySnapshot[];
   historyIndex: number;
-  /** When the author last typed, while that typing is not yet a checkpoint. */
   pendingTypingAt: number | undefined;
 }
 
@@ -153,7 +143,6 @@ function freezeSection(section: NarrationSection): ImmutableSection {
 const withoutIdentity = ({ id: _id, ...section }: EditorSection): ImmutableSection =>
   freezeSection(section);
 
-/** Frozen because a baseline is evidence: what it recorded cannot be rewritten later. */
 const baselineOf = (
   sections: readonly NarrationSection[],
   revision: BaselineRevision,
@@ -233,7 +222,6 @@ function freeze(slides: readonly EditorSlide[]): readonly EditorSlide[] {
   return Object.freeze(slides);
 }
 
-/** A slide's sections are already immutable, so a snapshot only sheds their identities. */
 function toSnapshotSlide(slide: EditorSlide): SnapshotSlide {
   return Object.freeze({
     slideIndex: slide.slideIndex,
@@ -262,7 +250,6 @@ export class SlideNoteEditor {
     this.#state = { ...state, slides: freeze(state.slides) };
   }
 
-  /** Every slide is structured up front, so moving between them changes nothing. */
   static open(slides: readonly Slide[], knownSpeakers: Iterable<string>): SlideNoteEditor {
     let mintedSectionCount = 0;
     const editorSlides = slides.map((slide) =>
@@ -318,7 +305,6 @@ export class SlideNoteEditor {
       : this.#state.slides.find((slide) => slide.slideIndex === slideIndex);
   }
 
-  /** Where a slide sits in the list held, which is no part of how it is addressed. */
   #listOffsetOf(slideIndex: SlideIndex | undefined): number {
     return this.#state.slides.findIndex((slide) => slide.slideIndex === slideIndex);
   }
@@ -336,7 +322,6 @@ export class SlideNoteEditor {
     return this.#listOffsetOf(this.#state.activeSlideIndex);
   }
 
-  /** The sections of the slide being edited; no other slide's are on show. */
   get sections(): readonly EditorSection[] {
     return this.#activeSlide?.sections ?? [];
   }
@@ -446,7 +431,6 @@ export class SlideNoteEditor {
     });
   }
 
-  /** Typing joins the open group until the author pauses. */
   #typingEdit(change: (editor: SlideNoteEditor) => SlideNoteEditor): SlideNoteEditor {
     const typedAt = Date.now();
     const pendingTypingAt = this.#state.pendingTypingAt;
@@ -524,7 +508,6 @@ export class SlideNoteEditor {
     );
   }
 
-  /** A section carrying no formatting metadata is formatted canonically. */
   addSection(): SlideNoteEditor {
     return this.#discreteEdit((discrete) => discrete.#appendSection());
   }

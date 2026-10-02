@@ -10,7 +10,6 @@ export interface PreviewNarrationRequest {
   /** The author's current slide-note sections, in the order narration positions follow. */
   sections: readonly NarrationSection[];
   slideIndex: SlideIndex;
-  /** Where the section sits within its slide, counted from zero. */
   sectionIndex: number;
   text: string;
   speakerChoice: PreviewSpeakerChoice;

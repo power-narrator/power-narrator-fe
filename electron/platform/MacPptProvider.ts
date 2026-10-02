@@ -45,12 +45,6 @@ type AppleScriptResult<T = Record<string, unknown>> =
       message: string;
     };
 
-/**
- * MacPptProvider
- *
- * Provides macOS-specific implementations for interacting with Microsoft PowerPoint
- * via AppleScript (osascript).
- */
 export class MacPptProvider implements PptProvider, NativePlatformProvider {
   constructor() {
     this.cleanup();
@@ -193,9 +187,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     });
   }
 
-  /**
-   * Programmatically returns focus to the Electron window.
-   */
   private focusApp(): void {
     const [firstWindow] = BrowserWindow.getAllWindows();
     if (firstWindow) {
@@ -204,9 +195,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
-  /**
-   * Clears all temporary audio session data from the Office Container.
-   */
   private cleanup(): void {
     try {
       const officeContainer = this.getOfficeContainerPath();
@@ -217,14 +205,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
-  /**
-   * Closes the currently active PowerPoint presentation.
-   *
-   * @param filePath - The path to the PowerPoint file to close.
-   * @returns A promise resolving to the slide the user was on before closing,
-   * or the first slide if PowerPoint reports nothing usable. AppleScript
-   * answers with a 1-based slide number, converted here.
-   */
   async closePresentation(filePath: string): Promise<SlideIndex> {
     try {
       const closeScript = resolveScriptPath("close-presentation.applescript");
@@ -244,12 +224,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
-  /**
-   * Reopens a presentation and navigates to the specified slide index.
-   *
-   * @param filePath - The path to the PowerPoint file to open.
-   * @param slideIndex - The slide to navigate to.
-   */
   async reopenPresentation(filePath: string, slideIndex: SlideIndex): Promise<void> {
     try {
       const reopenScript = resolveScriptPath("reopen-presentation.applescript");
@@ -372,13 +346,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
-  /**
-   * Extracts images and notes from a PowerPoint presentation into an output directory.
-   *
-   * @param filePath - The path to the PowerPoint file to convert.
-   * @param outputDir - The directory where the extracted assets should be saved.
-   * @returns A promise resolving to the conversion success status and extracted slide data.
-   */
   async convertPptx(filePath: string, outputDir: string): Promise<SlidesPptResult> {
     const imageResult = await this.exportSlideImages(filePath, outputDir);
     if (!imageResult.success) {
@@ -400,13 +367,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
-  /**
-   * Inserts audio into the specified slides using a VBA macro triggered via AppleScript.
-   *
-   * @param filePath - The path to the PowerPoint file.
-   * @param slidesAudio - An array containing objects with audio data and target slide indices.
-   * @returns A promise resolving to the success status of the operation.
-   */
   async insertAudio(filePath: string, slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult> {
     if (!slidesAudio || slidesAudio.length === 0) return { success: true };
 
@@ -454,14 +414,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
-  /**
-   * Removes audio from the specified slides.
-   *
-   * @param filePath - The path to the PowerPoint file.
-   * @param slideIndices - The slides to update. The macro takes 1-based slide
-   * numbers, derived here.
-   * @returns A promise resolving to the success status of the operation.
-   */
   async removeAudio(filePath: string, slideIndices: SlideIndex[]): Promise<BasicPptResult> {
     const officeContainer = this.getOfficeContainerPath();
     const paramsPath = path.join(officeContainer, "remove_audio_params.txt");
@@ -486,13 +438,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
-  /**
-   * Updates speaker notes for the specified slides using a VBA macro.
-   *
-   * @param filePath - The path to the PowerPoint file.
-   * @param slides - An array of slide objects containing updated notes.
-   * @returns A promise resolving to the success status of the operation.
-   */
   async saveNotes(filePath: string, slides: SlideNotesEntry[]): Promise<BasicPptResult> {
     const officeContainer = this.getOfficeContainerPath();
 
@@ -524,13 +469,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
-  /**
-   * Exports the PowerPoint presentation to a video file.
-   *
-   * @param filePath - The path to the PowerPoint file.
-   * @param videoOutputPath - The target path for the generated video file.
-   * @returns A promise resolving to the success status and the output path.
-   */
   async generateVideo(filePath: string, videoOutputPath: string): Promise<VideoPptResult> {
     try {
       const exportScriptPath = resolveScriptPath("export-to-video.applescript");
@@ -556,12 +494,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
-  /**
-   * Enters presentation mode and navigates to the specified slide.
-   *
-   * @param slideIndex - The slide to start playing from.
-   * @returns A promise resolving to the success status.
-   */
   async playSlide(filePath: string, slideIndex: SlideIndex): Promise<BasicPptResult> {
     const scriptResult = await this.runAppleScriptJson("play-slide.applescript", [
       slideNumberOf(slideIndex).toString(),
@@ -574,14 +506,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     return { success: true };
   }
 
-  /**
-   * Reloads an individual slide by re-exporting its image and fetching its notes.
-   *
-   * @param filePath - The path to the PowerPoint file.
-   * @param slideIndex - The slide to reload.
-   * @param outputDir - The directory where the reloaded slide assets should be updated.
-   * @returns A promise resolving to the fresh set of slides or an error message.
-   */
   async reloadSlide(
     filePath: string,
     slideIndex: SlideIndex,

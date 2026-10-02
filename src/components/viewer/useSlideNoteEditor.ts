@@ -94,7 +94,6 @@ export function useSlideNoteEditor(
     },
     undo: () => command((current) => current.undo()),
     redo: () => command((current) => current.redo()),
-    /** For the actions the editor does not own: opening settings, and reload confirmation. */
     finalizePendingTyping: () => command((current) => current.finalizePendingTyping()),
 
     submitSave: (slideIndices?: readonly SlideIndex[]): SaveSnapshot => {

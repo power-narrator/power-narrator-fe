@@ -65,8 +65,6 @@ export function ViewerPage({
   const busy = operation.busy;
   const slides = editor.slides;
   const activeSlideIndex = editor.activeSlideIndex;
-  // Authors name slides as PowerPoint does, so the 1-based number is derived
-  // here, at the boundary where the interface speaks to them.
   const activeSlideNumber =
     activeSlideIndex === undefined ? undefined : slideNumberOf(activeSlideIndex);
 
@@ -77,8 +75,6 @@ export function ViewerPage({
     generateVideo: operation.actionState("generateVideo"),
   };
 
-  // A presentation with no slides has no slide to act on, so every slide action
-  // is unavailable rather than addressing whichever slide was loaded last.
   const slideActionState = (key: SlideActionBarKey): ActionButtonState => {
     const state = operation.actionState(key);
     return activeSlideIndex === undefined ? { ...state, unavailable: true } : state;
@@ -134,8 +130,6 @@ export function ViewerPage({
    * narration audio are validated, synthesized, and committed together.
    */
   async function commitNarratedPresentation(setStatus: (status: string) => void) {
-    // The snapshot that was submitted, which completion reconciles against
-    // rather than against whatever the author has edited by the time it returns.
     const snapshot = editor.submitSave();
     const result = await electronAPI.saveNarratedPresentation(
       {

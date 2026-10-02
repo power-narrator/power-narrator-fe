@@ -12,7 +12,6 @@ import { registerNarrationPreviewIpc } from "./registerNarrationPreviewIpc.js";
 
 export type NarrationPowerPoint = Pick<PptProvider, "saveNotes" | "insertAudio" | "removeAudio">;
 
-/** Everything narration preparation reaches for outside itself. */
 export interface NarrationAdapters {
   mappingSource: SpeakerMappingSource;
   synthesizer: NarrationSynthesizer;
