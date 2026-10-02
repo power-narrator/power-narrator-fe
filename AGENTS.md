@@ -11,3 +11,9 @@ Triage uses the five default canonical role names. See `docs/agents/triage-label
 ### Domain docs
 
 Domain documentation uses a single-context layout. See `docs/agents/domain.md`.
+
+### Code style
+
+When adding or reviewing tests, see `docs/style/testing.md`.
+When changing frontend UI, see `docs/style/frontend.md`.
+When defining types, see `docs/style/typescript.md`.
