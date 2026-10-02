@@ -37,7 +37,7 @@ type SettingsModalProps = {
 type SpeakerMappingControlsProps = {
   speakerLabel: string;
   mapping: SpeakerMapping | undefined;
-  voiceOptions: VoiceOption[];
+  voiceOptions: VoiceOption[] | null;
   onChange: (change: Partial<SpeakerMapping>) => void;
 };
 
@@ -89,7 +89,7 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
   const [keyError, setKeyError] = useState<string | null>(null);
   const [newAlias, setNewAlias] = useState("");
   const [aliasProblem, setAliasProblem] = useState<string | null>(null);
-  const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([]);
+  const [voiceOptions, setVoiceOptions] = useState<VoiceOption[] | null>(null);
   const { saveSettings } = useSettings();
   const mappings = draft?.speakerMappings ?? {};
   const mappedSpeakers = Object.entries(mappings).filter(([key]) => key !== DEFAULT_SPEAKER_KEY);
@@ -173,7 +173,7 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
   };
 
   const addAlias = () => {
-    if (!newAlias.trim() || voiceOptions.length === 0) return;
+    if (!newAlias.trim() || !voiceOptions?.length) return;
     const trimmedAlias = newAlias.trim();
     const problem = speakerNameProblem(trimmedAlias);
     if (problem) {
@@ -348,7 +348,7 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
                 <Button
                   size="xs"
                   type="submit"
-                  disabled={!newAlias.trim() || voiceOptions.length === 0}
+                  disabled={!newAlias.trim() || !voiceOptions?.length}
                 >
                   Add Mapping
                 </Button>
