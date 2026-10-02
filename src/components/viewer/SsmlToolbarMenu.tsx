@@ -2,19 +2,19 @@ import { ActionIcon, Menu } from "@mantine/core";
 import { IconChevronDown } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 
-export interface SsmlToolbarMenuItem {
+export type SsmlToolbarMenuItem = {
   label: string;
   onClick?: () => void;
   leftSection?: ReactNode;
-}
+};
 
-interface SsmlToolbarMenuProps {
+type SsmlToolbarMenuProps = {
   icon: ReactNode;
   menuLabel?: string;
   items: SsmlToolbarMenuItem[];
   closeOnItemClick?: boolean;
   children?: ReactNode;
-}
+};
 
 export function SsmlToolbarMenu({
   icon,

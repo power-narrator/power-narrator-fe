@@ -11,11 +11,9 @@ export type ViewerOperationKind =
   | "playSlide"
   | "removeAudio";
 
-export interface OperationState {
-  owner: ViewerOperationKind | null;
-  running: boolean;
-  status: string;
-}
+export type OperationState =
+  | { owner: null; running: false; status: "" }
+  | { owner: ViewerOperationKind; running: boolean; status: string };
 
 export type OperationAction =
   | { type: "started"; owner: ViewerOperationKind; status: string }
@@ -35,11 +33,11 @@ export function reduceOperation(state: OperationState, action: OperationAction):
   return INITIAL_OPERATION_STATE;
 }
 
-interface OperationControls {
+type OperationControls = {
   setStatus: (status: string) => void;
   clearStatus: () => void;
   showOutcome: (status: string) => void;
-}
+};
 
 export function useViewerOperation() {
   const [state, dispatch] = useReducer(reduceOperation, INITIAL_OPERATION_STATE);

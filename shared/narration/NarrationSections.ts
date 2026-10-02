@@ -7,7 +7,7 @@ const SECTION_DIVIDER_PATTERN = /^[ \t]*-{3,}[ \t]*(?:\n)?$/;
 const BRACKETED_LINE_PATTERN = /^((?:[ \t]*\n)*[ \t]*)\[([^\]]*)\]([ \t]*)(?:\n|$)/;
 const SAME_LINE_PADDING = { leading: /^[ \t]*/, trailing: /[ \t]*$/ };
 
-export interface NarrationSection {
+export type NarrationSection = {
   speaker: string;
   prompt?: string;
   text: string;
@@ -18,12 +18,12 @@ export interface NarrationSection {
     promptPrefix?: string;
     promptSuffix?: string;
   };
-}
+};
 
-interface RawNarrationSection {
+type RawNarrationSection = {
   separatorBefore?: string;
   text: string;
-}
+};
 
 const normalizeNotes = (text: string): string => text.replaceAll(/\r\n|[\r\u2028\u2029]/g, "\n");
 

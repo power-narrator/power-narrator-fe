@@ -24,17 +24,17 @@ import type { SpeakerMapping, VoiceOption } from "../../../shared/types/tts";
 import { SpeakerPrompt } from "../SpeakerPrompt";
 import { VoiceSelector } from "./VoiceSelector";
 
-interface SettingsModalProps {
+type SettingsModalProps = {
   opened: boolean;
   onClose: () => void;
-}
+};
 
-interface SpeakerMappingControlsProps {
+type SpeakerMappingControlsProps = {
   speakerLabel: string;
   mapping: SpeakerMapping | undefined;
   voiceOptions: VoiceOption[];
   onChange: (change: Partial<SpeakerMapping>) => void;
-}
+};
 
 function SpeakerMappingControls({
   speakerLabel,

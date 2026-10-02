@@ -2,10 +2,10 @@ import { createContext, useCallback, useEffect, useMemo, useState } from "react"
 import type { ReactNode } from "react";
 import type { SpeakerMapping } from "../../shared/types/tts";
 
-interface SettingsContextValue {
+type SettingsContextValue = {
   mappings: Record<string, SpeakerMapping>;
   saveMappings: (newMappings: Record<string, SpeakerMapping>) => Promise<void>;
-}
+};
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
 

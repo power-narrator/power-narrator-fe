@@ -38,14 +38,14 @@ const formatBreakLabel = (value: (typeof BREAK_OPTIONS)[number]) => {
   return `${value.replace("s", "")} seconds`;
 };
 
-interface SsmlToolbarProps {
+type SsmlToolbarProps = {
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
   onInsertSelfClosingTag: (tag: string) => void;
   onInsertWrappedTag: (startTag: string, endTag?: string) => void;
-}
+};
 
 export function SsmlToolbar({
   canUndo,

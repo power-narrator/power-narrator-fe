@@ -1,11 +1,11 @@
 import type { SpeakerMapping, TtsProviderId, Voice } from "../tts/TtsProvider.js";
 import { parseGcpVoiceName } from "../tts/GcpTtsProvider.js";
 
-interface LegacySpeakerMapping {
+type LegacySpeakerMapping = {
   name?: unknown;
   provider?: unknown;
   prompt?: unknown;
-}
+};
 
 const legacyVoiceNameParsers: Record<
   TtsProviderId,

@@ -5,10 +5,10 @@ import { ActionButtonList } from "./ActionButtonList";
 
 export type SlideActionBarKey = "reloadSlide" | "saveSlide" | "playSlide" | "removeAudio";
 
-interface SlideActionsBarProps {
+type SlideActionsBarProps = {
   actionStates: Record<SlideActionBarKey, ActionButtonState>;
   handlers: Record<SlideActionBarKey, () => void>;
-}
+};
 
 const SLIDE_ACTION_ITEMS = [
   { key: "reloadSlide", label: "Reload Slide", icon: <IconRefresh size={14} /> },

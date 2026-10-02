@@ -1,6 +1,6 @@
 import { createContext } from "react";
 
-export interface AudioContextType {
+export type AudioContextType = {
   activeId: string | null;
   isPlaying: boolean;
   currentTime: number;
@@ -9,6 +9,6 @@ export interface AudioContextType {
   stop: () => void;
   seek: (time: number) => void;
   setSeeking: (seeking: boolean) => void;
-}
+};
 
 export const AudioContext = createContext<AudioContextType | undefined>(undefined);

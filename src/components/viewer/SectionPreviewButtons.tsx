@@ -7,7 +7,7 @@ import type { SpeakerMapping } from "../../../shared/types/tts";
 import type { SlideIndex } from "../../../shared/slides/slideCoordinates";
 import { useNarrationPreview } from "./useNarrationPreview";
 
-interface SectionPreviewButtonsProps {
+type SectionPreviewButtonsProps = {
   id: string;
   slideIndex: SlideIndex;
   sectionIndex: number;
@@ -15,7 +15,7 @@ interface SectionPreviewButtonsProps {
   mappings: Record<string, SpeakerMapping>;
   onFocus: () => void;
   getSelectedText?: () => string | undefined;
-}
+};
 
 function formatTime(time: number) {
   const minutes = Math.floor(time / 60);

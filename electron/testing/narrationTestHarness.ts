@@ -10,10 +10,10 @@ import type {
  * against deterministic fakes. It replaces the narration adapters and the
  * discard-changes prompt, and nothing else.
  */
-export interface PowerNarratorTestHarness {
+export type PowerNarratorTestHarness = {
   useNarrationAdapters(adapters: NarrationAdapters): void;
   useDiscardConfirmation(confirmDiscard: DiscardConfirmation): void;
-}
+};
 
 declare global {
   var powerNarratorTestHarness: PowerNarratorTestHarness | undefined;

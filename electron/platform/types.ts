@@ -17,20 +17,20 @@ export type {
   VideoPptResult,
 } from "../../shared/types/powerpoint.js";
 
-export interface SlideManifestEntry {
+export type SlideManifestEntry = {
   slideIndex: SlideIndex;
   image: string;
   notes: string;
-}
+};
 
-export interface SlideNotesEntry {
+export type SlideNotesEntry = {
   slideIndex: SlideIndex;
   notes: string;
-}
+};
 
-export interface SlideWithSrc extends SlideManifestEntry {
+export type SlideWithSrc = SlideManifestEntry & {
   src: string;
-}
+};
 
 /**
  * Slide images keyed by presentation-wide slide index, so a partial or
@@ -40,11 +40,11 @@ export type SlideImageMap = ReadonlyMap<SlideIndex, { image: string }>;
 
 export type SlideNotesMap = ReadonlyMap<SlideIndex, string>;
 
-export interface SlideAudioEntry {
+export type SlideAudioEntry = {
   slideIndex: SlideIndex;
   sectionIndex: number;
   audioData: Uint8Array;
-}
+};
 
 export type SlidesPptResult = Result<{ slides: SlideWithSrc[] }>;
 
@@ -58,14 +58,14 @@ export type ReadAllSlideNotesResult = Result<{ notes: SlideNotesMap }>;
 
 export type ReadSlideNotesResult = Result<{ notes: string }>;
 
-export interface XmlSlideAudio {
+export type XmlSlideAudio = {
   name: string;
-}
+};
 
-export interface XmlSlideData {
+export type XmlSlideData = {
   notes: string;
   audio: XmlSlideAudio[];
-}
+};
 
 export type XmlCliOperationName =
   | "get_slides"
@@ -73,20 +73,20 @@ export type XmlCliOperationName =
   | "save_audio_for_slide"
   | "delete_audio_for_slide";
 
-export interface XmlCliOperation {
+export type XmlCliOperation = {
   op: XmlCliOperationName;
   args: Record<string, string | number>;
-}
+};
 
-export interface XmlCliOperationResult {
+export type XmlCliOperationResult = {
   success: boolean;
   result: unknown;
   message: string;
-}
+};
 
-export interface XmlCliResponse {
+export type XmlCliResponse = {
   results: XmlCliOperationResult[];
-}
+};
 
 export type RunXmlCliResult = Result<{ data: XmlCliResponse }>;
 

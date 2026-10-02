@@ -12,22 +12,22 @@ export type VideoPptResult = Result<{ outputPath: string }>;
 
 export type SetGcpKeyResult = Result<{ path: string }>;
 
-export interface GenerateVideoRequest {
+export type GenerateVideoRequest = {
   filePath: string;
   videoOutputPath: string;
-}
+};
 
-export interface PlaySlideRequest {
+export type PlaySlideRequest = {
   filePath: string;
   slideIndex: SlideIndex;
-}
+};
 
-export interface ReloadSlideRequest {
+export type ReloadSlideRequest = {
   filePath: string;
   slideIndex: SlideIndex;
-}
+};
 
-export interface RemoveAudioRequest {
+export type RemoveAudioRequest = {
   filePath: string;
   slideIndices: SlideIndex[];
-}
+};

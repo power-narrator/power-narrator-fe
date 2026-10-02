@@ -1,12 +1,12 @@
 import { ActionIcon, Tooltip } from "@mantine/core";
 import type { ReactNode } from "react";
 
-interface SsmlToolbarButtonProps {
+type SsmlToolbarButtonProps = {
   label: string;
   icon: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
-}
+};
 
 export function SsmlToolbarButton({
   label,

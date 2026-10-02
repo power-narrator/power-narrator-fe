@@ -12,7 +12,7 @@ import type {
   VideoPptResult,
 } from "./types.js";
 
-export interface PptProvider {
+export type PptProvider = {
   convertPptx(filePath: string, outputDir: string): Promise<SlidesPptResult>;
   insertAudio(filePath: string, slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult>;
   removeAudio(filePath: string, slideIndices: SlideIndex[]): Promise<BasicPptResult>;
@@ -20,9 +20,9 @@ export interface PptProvider {
   readSlideNotes(filePath: string, slideIndex: SlideIndex): Promise<ReadSlideNotesResult>;
   saveNotes(filePath: string, slides: SlideNotesEntry[]): Promise<BasicPptResult>;
   reloadSlide(filePath: string, slideIndex: SlideIndex, outputDir: string): Promise<SlidePptResult>;
-}
+};
 
-export interface NativePlatformProvider {
+export type NativePlatformProvider = {
   generateVideo(filePath: string, videoOutputPath: string): Promise<VideoPptResult>;
   playSlide(filePath: string, slideIndex: SlideIndex): Promise<BasicPptResult>;
   exportSlideImages(filePath: string, outputDir: string): Promise<ExportSlideImagesResult>;
@@ -34,4 +34,4 @@ export interface NativePlatformProvider {
   /** Resolves to the slide the author was on, defaulting to the first slide. */
   closePresentation(filePath: string): Promise<SlideIndex>;
   reopenPresentation(filePath: string, slideIndex: SlideIndex): Promise<void>;
-}
+};

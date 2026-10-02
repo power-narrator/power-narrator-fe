@@ -17,19 +17,19 @@ export type CacheIdentityValue =
   | readonly CacheIdentityValue[]
   | { readonly [key: string]: CacheIdentityValue };
 
-export interface PreparedSpeechRequest {
+export type PreparedSpeechRequest = {
   cacheIdentity: CacheIdentityValue;
   synthesize(): Promise<Uint8Array | Buffer>;
-}
+};
 
-export interface SynthesizedSpeech {
+export type SynthesizedSpeech = {
   audio: Uint8Array;
   mediaType: string;
-}
+};
 
-export interface TtsProvider {
+export type TtsProvider = {
   getVoices: () => Promise<VoiceOption[]>;
   prepareSpeech: (text: string, voice: Voice, prompt?: string) => PreparedSpeechRequest;
-}
+};
 
 export type TtsProviderRegistry = ReadonlyMap<TtsProviderId, TtsProvider>;

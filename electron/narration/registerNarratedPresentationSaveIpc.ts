@@ -3,9 +3,9 @@ import type { NarratedPresentationSaveRequest } from "../../shared/types/narrati
 import type { NarratedPresentationSaver } from "./NarratedPresentationSaver.js";
 import { resolvePresentationSaveTarget } from "./resolvePresentationSaveTarget.js";
 
-interface NarratedPresentationSaveIpcRequest extends NarratedPresentationSaveRequest {
+type NarratedPresentationSaveIpcRequest = NarratedPresentationSaveRequest & {
   progressChannel: string;
-}
+};
 
 export function registerNarratedPresentationSaveIpc(
   ipc: Pick<IpcMain, "handle">,

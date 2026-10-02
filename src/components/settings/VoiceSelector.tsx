@@ -2,18 +2,18 @@ import { Group, Select } from "@mantine/core";
 import { useState } from "react";
 import type { Voice, VoiceModel, VoiceOption } from "../../../shared/types/tts";
 
-interface VoiceSelectorProps {
+type VoiceSelectorProps = {
   speakerLabel: string;
   value: Voice | undefined;
   onChange: (voice: Voice | undefined) => void;
   options: VoiceOption[];
-}
+};
 
-interface Draft {
+type Draft = {
   key: string;
   model: string | null;
   language: string | null;
-}
+};
 
 function getOptionKey(option: VoiceOption): string {
   return JSON.stringify([option.provider, option.name, option.ssmlGender]);

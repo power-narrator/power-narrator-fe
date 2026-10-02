@@ -21,14 +21,14 @@ import { slideNumberOf, type SlideIndex } from "../../shared/slides/slideCoordin
 const narrationPosition = (slideIndex: SlideIndex, sectionIndex: number): string =>
   `slide ${slideNumberOf(slideIndex)}, section ${sectionIndex + 1}`;
 
-export interface SpeakerMappingSource {
+export type SpeakerMappingSource = {
   getSpeakerMappings(): Record<string, SpeakerMapping> | Promise<Record<string, SpeakerMapping>>;
-}
+};
 
-export interface NarrationSynthesizer {
+export type NarrationSynthesizer = {
   supportsProvider(providerId: string): boolean;
   generateSpeech(text: string, voice: Voice, prompt?: string): Promise<SynthesizedSpeech>;
-}
+};
 
 type PreparedNarrationSection = {
   slideIndex: SlideIndex;
