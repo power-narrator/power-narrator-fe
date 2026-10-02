@@ -8,7 +8,6 @@ on run argv
             set pres to presentation i
             set presPath to full name of pres
             if presPath = targetPath then
-                -- Get current slide index
                 try
                     set theSelection to selection of document window 1
                     set targetSlideIndex to slide index of slide 1 of slide range of theSelection

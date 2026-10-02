@@ -151,9 +151,6 @@ app.on("window-all-closed", () => {
   }
 });
 
-// ==========================================
-// File & Dialog Handlers
-// ==========================================
 ipcMain.handle("select-file", async () => {
   const result = await dialog.showOpenDialog({
     properties: ["openFile"],
@@ -182,9 +179,6 @@ ipcMain.handle("get-video-save-path", async () => {
   return result.filePath;
 });
 
-// ==========================================
-// PowerPoint Lifecycle Handlers
-// ==========================================
 ipcMain.handle("convert-pptx", async (_, filePath: string) => {
   console.log("Convert request for (raw):", filePath);
   const absolutePath = path.resolve(filePath);
@@ -200,9 +194,6 @@ ipcMain.handle("convert-pptx", async (_, filePath: string) => {
   );
 });
 
-// ==========================================
-// PowerPoint Action Handlers
-// ==========================================
 ipcMain.handle("remove-audio", async (_, { filePath, slideIndices }: RemoveAudioRequest) => {
   const absolutePath = path.resolve(filePath);
   if (!fs.existsSync(absolutePath)) return { success: false, message: "File not found" };
@@ -243,9 +234,6 @@ ipcMain.handle("generate-video", async (_, { filePath, videoOutputPath }: Genera
   return nativeProvider.generateVideo(absolutePath, videoOutputPath);
 });
 
-// ==========================================
-// Settings Handlers
-// ==========================================
 ipcMain.handle("get-speaker-mappings", () => {
   return store.get("speakerMappings") || {};
 });
@@ -270,7 +258,6 @@ ipcMain.handle("set-gcp-key", async () => {
     return { success: false, message: "No file selected" };
   }
 
-  // Basic validation
   try {
     const content = JSON.parse(fs.readFileSync(keyPath, "utf8")) as { type?: string };
     if (!content.type || content.type !== "service_account") {
@@ -297,9 +284,6 @@ ipcMain.handle("set-xml-cli-enabled", (_, enabled: boolean) => {
   return { success: true };
 });
 
-// ==========================================
-// TTS Handlers
-// ==========================================
 ipcMain.handle("get-voices", async () => {
   return ttsManager.getVoices();
 });

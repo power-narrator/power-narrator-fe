@@ -25,7 +25,6 @@ import type { SectionTextareas } from "./useSectionTextareas";
 
 interface NotesSectionListProps {
   sections: readonly EditorSection[];
-  /** The same sections with their renderer-only identities shed, for preview. */
   narrationSections: readonly NarrationSection[];
   mappings: Record<string, SpeakerMapping>;
   onFocusSection: (id: SectionId) => void;

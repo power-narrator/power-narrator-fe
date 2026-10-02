@@ -177,8 +177,6 @@ Sub InsertAudio()
         Exit Sub
     End If
     
-    ' Batch Process Mode
-    
     hasPres = False
     
     fileNum = FreeFile
@@ -195,7 +193,6 @@ Sub InsertAudio()
                 slideIndex = CInt(params(1))
                 audioPath = params(2)
                 
-                ' Only find presentation once (on first valid line)
                 If Not hasPres Then
                     Set pres = GetPresentationOrShowError(targetPath)
                     
@@ -207,7 +204,6 @@ Sub InsertAudio()
                     hasPres = True
                 End If
                 
-                ' Process Audio Insertion for this line
                 If slideIndex > 0 And slideIndex <= pres.Slides.Count Then
                     Set sld = pres.Slides(slideIndex)
                     
@@ -221,8 +217,6 @@ Sub InsertAudio()
                     fileName = Left(fileName, InStrRev(fileName, ".") - 1)
                     audioTag = fileName
                     
-                    ' Variables to preserve animation state
-                    
                     hadExistingAudio = False
                     existingAnimIndex = 1
                     existingTriggerType = 3 ' 3 = msoAnimTriggerAfterPrevious
@@ -235,7 +229,6 @@ Sub InsertAudio()
                     For iShape = sld.Shapes.Count To 1 Step -1
                         Set s = sld.Shapes(iShape)
                         If s.Name = audioTag Then
-                            ' Find its effect in MainSequence to copy properties
                             For effIdx = 1 To sld.TimeLine.MainSequence.Count
                                 If Not sld.TimeLine.MainSequence(effIdx).Shape Is Nothing Then
                                     If sld.TimeLine.MainSequence(effIdx).Shape.Name = audioTag Then
@@ -254,7 +247,6 @@ Sub InsertAudio()
                         End If
                     Next iShape
                     
-                    ' Insert the audio object
                     Set shp = sld.Shapes.AddMediaObject2(audioPath, 0, -1, 10, 10)
                     
                     If Not shp Is Nothing Then
@@ -265,15 +257,10 @@ Sub InsertAudio()
                         ' Calculate vertical position based on section index to avoid stacking
                         sectionIdx = GetSectionIndex(audioTag)
                         
-                        ' Position on the right using SlideWidth
                         shp.Left = pres.PageSetup.SlideWidth + margin
                         
-                        ' Space them vertically using the section index
                         shp.Top = margin + (sectionIdx - 1) * (shp.Height + margin)
                         
-                        ' --- Animation Configuration ---
-                        
-                        ' 1. Ensure clean slate (remove any auto-added effects for this shape)
                         For i = sld.TimeLine.MainSequence.Count To 1 Step -1
                             If Not sld.TimeLine.MainSequence(i).Shape Is Nothing Then
                                 If sld.TimeLine.MainSequence(i).Shape.Name = shp.Name Then
@@ -282,10 +269,8 @@ Sub InsertAudio()
                             End If
                         Next i
                         
-                        ' 2. Add the media play effect to Main Sequence with preserved TriggerType
                         Set eff = sld.TimeLine.MainSequence.AddEffect(shp, MEDIA_PLAY_EFFECT, , existingTriggerType)
                         
-                        ' 3. Apply preserved delay and other settings
                         If hadExistingAudio Then
                             eff.Timing.TriggerDelayTime = existingDelay
                             eff.Timing.RepeatCount = existingRepeatCount
@@ -293,9 +278,7 @@ Sub InsertAudio()
                             eff.Timing.RewindAtEnd = existingRewindAtEnd
                         End If
                         
-                        ' 4. Move to appropriate position
                         If hadExistingAudio Then
-                            ' Move to previous index if valid.
                             If existingAnimIndex <= sld.TimeLine.MainSequence.Count And existingAnimIndex > 0 Then
                                 eff.MoveTo existingAnimIndex
                                 newAudioInsertIndex = existingAnimIndex + 1
@@ -396,7 +379,6 @@ Sub UpdateNotes()
     Dim isReadingNotes As Boolean
     Dim isFirstLine As Boolean
     
-    ' 1. Read Parameters (Presentation Path | Data File Path)
     paramsPath = GetOfficeFilePath("update_notes_params.txt")
     fileContent = ReadSingleLineFile(paramsPath, "Error: Could not find update_notes_params.txt")
     If fileContent = "" Then Exit Sub
@@ -407,11 +389,9 @@ Sub UpdateNotes()
     targetPath = params(0)
     dataPath = params(1)
     
-    ' 2. Find Presentation
     Set pres = GetPresentationOrShowError(targetPath)
     If pres Is Nothing Then Exit Sub
     
-    ' 3. Read Data File
     If Dir(dataPath) = "" Then
         MsgBox "Error: Data file not found: " & dataPath
         Exit Sub
@@ -430,14 +410,12 @@ Sub UpdateNotes()
         Line Input #dataNum, lineData
         
         If Left(lineData, 17) = "###SLIDE_START###" Then
-            ' Format: ###SLIDE_START### <index>
             currentSlideIndex = CInt(Mid(lineData, 19))
             currentNotes = ""
             isReadingNotes = True
             isFirstLine = True
         ElseIf Left(lineData, 15) = "###SLIDE_END###" Then
             If currentSlideIndex > 0 And currentSlideIndex <= pres.Slides.Count Then
-                ' Apply notes to slide
                 On Error Resume Next
                 pres.Slides(currentSlideIndex).NotesPage.Shapes(2).TextFrame.TextRange.Text = currentNotes
                 On Error GoTo 0
@@ -457,7 +435,6 @@ Sub UpdateNotes()
     
     Close dataNum
     
-    ' 4. Save
     pres.Save
     ' pres.Close
     
@@ -476,7 +453,6 @@ Sub RemoveAudio()
     Dim iShape As Integer
     Dim i As Integer
     
-    ' 1. Read Parameters
     paramsPath = GetOfficeFilePath("remove_audio_params.txt")
     fileContent = ReadSingleLineFile(paramsPath, "Error: Could not find remove_audio_params.txt")
     If fileContent = "" Then Exit Sub
@@ -488,11 +464,9 @@ Sub RemoveAudio()
     targetPath = params(0)
     slideIndices = Split(params(1), ",")
     
-    ' 2. Find Presentation
     Set pres = GetPresentationOrShowError(targetPath)
     If pres Is Nothing Then Exit Sub
     
-    ' 3. Remove Audio
     For i = LBound(slideIndices) To UBound(slideIndices)
         If Len(Trim(slideIndices(i))) > 0 Then
             slideIndex = CInt(Trim(slideIndices(i)))
@@ -508,6 +482,5 @@ Sub RemoveAudio()
         End If
     Next i
     
-    ' 4. Save
     pres.Save
 End Sub

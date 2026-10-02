@@ -38,7 +38,6 @@ export interface SlideWithSrc extends SlideManifestEntry {
  */
 export type SlideImageMap = ReadonlyMap<SlideIndex, { image: string }>;
 
-/** Slide notes keyed by presentation-wide slide index, for the same reason. */
 export type SlideNotesMap = ReadonlyMap<SlideIndex, string>;
 
 export interface SlideAudioEntry {

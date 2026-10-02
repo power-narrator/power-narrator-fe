@@ -37,11 +37,6 @@ import type {
 } from "./types.js";
 
 export class XmlPptProvider implements PptProvider {
-  /**
-   * Initializes a new instance of the XmlPptProvider class.
-   *
-   * @param baseProvider - The underlying PptProvider to use for delegated operations.
-   */
   constructor(private nativeProvider?: NativePlatformProvider) {}
 
   private async querySlides(
@@ -91,18 +86,6 @@ export class XmlPptProvider implements PptProvider {
     return deleteOps;
   }
 
-  /**
-   * Executes the XML-based CLI (slide-voice-pptx) to perform PowerPoint operations.
-   *
-   * This method handles state management by closing the presentation via the base provider
-   * before running the CLI and reopening it afterwards, ensuring consistency.
-   *
-   * @param inputPath - Path to the input .pptx file.
-   * @param outputPath - Path where the modified .pptx file should be saved (can be same as input).
-   * @param ops - An array of operation objects to be executed by the CLI.
-   * @param options - Optional configuration for controlling presentation closing/reopening.
-   * @returns A promise resolving to the CLI execution result.
-   */
   private async runXmlCli(
     inputPath: string,
     outputPath: string | null,
@@ -191,13 +174,6 @@ export class XmlPptProvider implements PptProvider {
     return cliResult;
   }
 
-  /**
-   * Inserts audio into the specified PowerPoint slides.
-   *
-   * @param filePath - Path to the .pptx file.
-   * @param slidesAudio - An array of objects containing slide indices and audio data.
-   * @returns A promise resolving to the result of the insertion operation.
-   */
   async insertAudio(filePath: string, slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult> {
     if (!slidesAudio || slidesAudio.length === 0) return { success: true };
 
@@ -270,13 +246,6 @@ export class XmlPptProvider implements PptProvider {
     }
   }
 
-  /**
-   * Removes audio from the specified PowerPoint slides.
-   *
-   * @param filePath - Path to the .pptx file.
-   * @param slideIndices - The slides to update.
-   * @returns A promise resolving to the result of the removal operation.
-   */
   async removeAudio(filePath: string, slideIndices: SlideIndex[]): Promise<BasicPptResult> {
     let slideIndexBefore = FIRST_SLIDE_INDEX;
     if (this.nativeProvider) {
@@ -353,13 +322,6 @@ export class XmlPptProvider implements PptProvider {
     return { success: true, notes: normalizeNotes(slide.notes || "") };
   }
 
-  /**
-   * Saves notes for multiple slides in the PowerPoint presentation.
-   *
-   * @param filePath - Path to the .pptx file.
-   * @param slides - An array of slide objects containing notes to be saved.
-   * @returns A promise resolving to the result of the save operation.
-   */
   async saveNotes(filePath: string, slides: SlideNotesEntry[]): Promise<BasicPptResult> {
     const ops = slides.map((s): XmlCliOperation => ({
       op: "set_slide_notes",
@@ -371,13 +333,6 @@ export class XmlPptProvider implements PptProvider {
     return await this.runXmlCli(filePath, filePath, ops);
   }
 
-  /**
-   * Converts a PPTX file to a set of images or other formats.
-   * Delegated to the base provider.
-   *
-   * @param filePath - Path to the .pptx file.
-   * @param outputDir - Directory where converted files should be stored.
-   */
   async convertPptx(filePath: string, outputDir: string): Promise<SlidesPptResult> {
     if (!this.nativeProvider) {
       return { success: false, message: "Slide image export is not supported on this platform" };
@@ -393,7 +348,6 @@ export class XmlPptProvider implements PptProvider {
       return queryResult;
     }
 
-    // As in `readAllSlideNotes`, the whole deck comes back in order.
     const slides = queryResult.slideData.map((slide, position) => {
       const slideIndex = toSlideIndex(position);
 
@@ -407,14 +361,6 @@ export class XmlPptProvider implements PptProvider {
     return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
   }
 
-  /**
-   * Reloads/Refreshes a specific slide.
-   * Delegated to the base provider.
-   *
-   * @param filePath - Path to the .pptx file.
-   * @param slideIndex - The slide to reload.
-   * @param outputDir - Directory for temporary output files.
-   */
   async reloadSlide(
     filePath: string,
     slideIndex: SlideIndex,

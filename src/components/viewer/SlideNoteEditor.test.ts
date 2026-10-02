@@ -14,10 +14,8 @@ import { SlideNoteEditor, type EditorSection, type SnapshotSlide } from "./Slide
 
 const speakers = ["Alice", "Bob"];
 
-/** The presentation-wide address of the slide sitting at this 0-based ordinal. */
 const at = (zeroBased: number): SlideIndex => toSlideIndex(zeroBased);
 
-/** Slides reach the editor already parsed, as the PowerPoint load seam parses them. */
 function slide(
   slideIndex: SlideIndex,
   notes: string,

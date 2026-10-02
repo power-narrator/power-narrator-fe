@@ -11,7 +11,6 @@ import { parseNarrationSections } from "../../shared/narration/NarrationSections
 import { NarrationPreparation } from "./NarrationPreparation.js";
 import { NarratedPresentationSaver } from "./NarratedPresentationSaver.js";
 
-/** Authored notes as the editor would hold them: parsed once, before any save. */
 const sections = (notes: string, knownSpeakers: string[] = ["Narrator"]) =>
   parseNarrationSections(notes, knownSpeakers);
 
@@ -31,7 +30,6 @@ const alternateNarratorVoice: Voice = {
 const temporaryDirectories: string[] = [];
 
 class FakePowerPointAdapter {
-  /** Keyed by the 0-based slide index the PowerPoint contract carries. */
   readonly committedNotes = new Map<number, string>();
   readonly insertedAudio = new Map<number, Map<number, Uint8Array>>();
   readonly removedAudio = new Set<number>();

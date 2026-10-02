@@ -15,7 +15,6 @@ import { NarrationPreviewProvider } from "./useNarrationPreview";
 
 const at = (zeroBased: number): SlideIndex => toSlideIndex(zeroBased);
 
-/** Slides reach the viewer parsed, as the PowerPoint load seam parses them. */
 function loadedWith(notes: string, knownSpeakers: readonly string[] = []): Slide {
   return {
     slideIndex: at(0),
