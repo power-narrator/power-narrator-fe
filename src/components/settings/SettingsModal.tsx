@@ -17,7 +17,7 @@ import {
   Title,
 } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DEFAULT_SPEAKER_KEY, DEFAULT_SPEAKER_LABEL } from "../../../shared/narration/speaker";
 import { toSpeakerPrompt } from "../../../shared/narration/prompt";
 import { speakerNameProblem } from "../../../shared/narration/speakerName";
@@ -90,6 +90,8 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
   const [newAlias, setNewAlias] = useState("");
   const [aliasProblem, setAliasProblem] = useState<string | null>(null);
   const [voiceOptions, setVoiceOptions] = useState<VoiceOption[] | null>(null);
+  const [previewFailure, setPreviewFailure] = useState<string | null>(null);
+  const voiceRequest = useRef(0);
   const { saveSettings } = useSettings();
   const mappings = draft?.speakerMappings ?? {};
   const mappedSpeakers = Object.entries(mappings).filter(([key]) => key !== DEFAULT_SPEAKER_KEY);
@@ -101,6 +103,7 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
     }
 
     let cancelled = false;
+    const request = voiceRequest.current;
     window.electronAPI
       .getSettings()
       .then((settings) => {
@@ -119,15 +122,28 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
     window.electronAPI
       .getVoices()
       .then((loadedVoices) => {
-        if (!cancelled) setVoiceOptions(loadedVoices || []);
+        if (!cancelled && request === voiceRequest.current) setVoiceOptions(loadedVoices || []);
       })
       .catch((loadError) => {
         if (!cancelled) console.error(loadError);
       });
     return () => {
       cancelled = true;
+      voiceRequest.current += 1;
     };
   }, [opened]);
+
+  const previewVoices = async (keyPath: string) => {
+    const request = ++voiceRequest.current;
+    setVoiceOptions(null);
+    setPreviewFailure(null);
+    const preview = await window.electronAPI
+      .previewVoices(keyPath)
+      .catch((error: unknown) => ({ voices: [], failure: getErrorMessage(error) }));
+    if (request !== voiceRequest.current) return;
+    setVoiceOptions(preview.voices);
+    setPreviewFailure(preview.failure);
+  };
 
   const dismiss = () => {
     if (!saving) onClose();
@@ -200,6 +216,7 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
         setKeyError(result.message);
       } else if (result.path) {
         updateDraft({ gcpKeyPath: result.path });
+        void previewVoices(result.path);
       }
     } catch (error) {
       console.error(error);
@@ -275,6 +292,12 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
               {keyError && (
                 <Text c="red" size="sm">
                   {keyError}
+                </Text>
+              )}
+
+              {previewFailure && (
+                <Text c="red" size="sm">
+                  Failed to load voices for the selected key: {previewFailure}
                 </Text>
               )}
 

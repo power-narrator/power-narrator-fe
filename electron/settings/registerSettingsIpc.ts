@@ -1,8 +1,11 @@
 import fs from "node:fs";
 import type { IpcMain } from "electron";
 import type { Result } from "../../shared/types/result.js";
-import type { SelectGcpKeyResult, Settings } from "../../shared/types/settings.js";
+import type { SelectGcpKeyResult, Settings, VoicePreview } from "../../shared/types/settings.js";
 import type { SpeakerMapping } from "../../shared/types/tts.js";
+import type { TtsProvider, TtsProviderRegistry } from "../tts/TtsProvider.js";
+
+const GCP_PROVIDER_ID = "gcp";
 
 /** `set` must persist all of its values or none of them. */
 export type SettingsStore = {
@@ -13,6 +16,9 @@ export type SettingsStore = {
 export type SettingsAdapters = {
   store: SettingsStore;
   pickKeyFile: () => Promise<string | null>;
+  voiceProviders: TtsProviderRegistry;
+  /** Creates a Google Cloud provider for a key that is not saved. */
+  createGcpProvider: (keyPath: string) => TtsProvider;
 };
 
 function gcpKeyProblem(keyPath: string): string | null {
@@ -34,7 +40,7 @@ function readSettings(store: SettingsStore): Settings {
 
 export function registerSettingsIpc(
   ipc: Pick<IpcMain, "handle">,
-  { store, pickKeyFile }: SettingsAdapters,
+  { store, pickKeyFile, voiceProviders, createGcpProvider }: SettingsAdapters,
 ): void {
   ipc.handle("get-settings", (): Settings => readSettings(store));
 
@@ -46,6 +52,26 @@ export function registerSettingsIpc(
 
     const problem = gcpKeyProblem(keyPath);
     return problem ? { success: false, message: problem } : { success: true, path: keyPath };
+  });
+
+  ipc.handle("preview-voices", async (_, keyPath: string): Promise<VoicePreview> => {
+    let failure: string | null = null;
+    const voiceLists = await Promise.all(
+      Array.from(voiceProviders, async ([providerId, provider]) => {
+        const staged = providerId === GCP_PROVIDER_ID;
+        try {
+          return await (staged ? createGcpProvider(keyPath) : provider).getVoices();
+        } catch (error: unknown) {
+          if (staged) {
+            failure = error instanceof Error ? error.message : String(error);
+          } else {
+            console.error(`Failed fetching voices from provider '${providerId}':`, error);
+          }
+          return [];
+        }
+      }),
+    );
+    return { voices: voiceLists.flat(), failure };
   });
 
   ipc.handle("save-settings", (_, settings: Settings): Result => {

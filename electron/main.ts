@@ -70,9 +70,10 @@ function getGcpKeyPath(): string | undefined {
   return store.get("gcpKeyPath") as string;
 }
 
-const ttsManager = new TtsManager(
-  new Map<TtsProviderId, TtsProvider>([["gcp", new GcpTtsProvider(getGcpKeyPath)]]),
-);
+const voiceProviders = new Map<TtsProviderId, TtsProvider>([
+  ["gcp", new GcpTtsProvider(getGcpKeyPath)],
+]);
+const ttsManager = new TtsManager(voiceProviders);
 const nativeProvider: (PptProvider & NativePlatformProvider) | null =
   process.platform === "darwin"
     ? new MacPptProvider()
@@ -106,6 +107,8 @@ registerSettingsIpc(ipcMain, {
     });
     return canceled ? null : (filePaths[0] ?? null);
   },
+  voiceProviders,
+  createGcpProvider: (keyPath) => new GcpTtsProvider(() => keyPath),
 });
 
 registerNarrationIpc(ipcMain, {
