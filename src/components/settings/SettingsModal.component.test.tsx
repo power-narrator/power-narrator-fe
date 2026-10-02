@@ -174,25 +174,87 @@ test("creates a mapping from the voices exposed by the provider registry", async
   });
 });
 
-test("replaces a persisted mapping whose provider is no longer registered", async () => {
-  const staleMapping: SpeakerMapping = {
-    voice: {
-      provider: "local",
-      voiceId: "apope_low",
-      model: "local-1",
-      languageCode: "en-GB",
-      supportsPrompt: false,
-    },
-  };
+const unavailableMapping: SpeakerMapping = {
+  voice: {
+    provider: "local",
+    voiceId: "apope_low",
+    model: "local-1",
+    languageCode: "en-GB",
+    supportsPrompt: true,
+  },
+  prompt: "Whisper",
+};
+
+test("identifies a saved voice missing from the catalogue as unavailable and keeps it", async () => {
   const screen = await renderSettings({
-    settings: { speakerMappings: { Narrator: staleMapping } },
+    settings: {
+      speakerMappings: {
+        Narrator: unavailableMapping,
+        Guest: { voice: gcpVoice },
+        Host: { voice: { ...gcpVoice, languageCode: "fr-FR" } },
+      },
+    },
     voiceOptions: [gcpOption],
   });
 
-  await waitForMapping(screen);
+  await expect
+    .element(screen.getByRole("combobox", { name: "Voice for Narrator" }))
+    .toHaveValue("apope_low (unavailable)");
+  await expect
+    .element(screen.getByRole("combobox", { name: "Model for Narrator" }))
+    .toHaveValue("local-1");
+  await expect
+    .element(screen.getByRole("combobox", { name: "Language for Narrator" }))
+    .toHaveValue("en-GB");
+  await expect
+    .element(screen.getByRole("textbox", { name: "Prompt for Narrator" }))
+    .toHaveValue("Whisper");
+  await expect
+    .element(screen.getByRole("combobox", { name: "Voice for Guest" }))
+    .toHaveValue("Aoede (FEMALE)");
+  await expect
+    .element(screen.getByRole("combobox", { name: "Voice for Host" }))
+    .toHaveValue("Aoede (unavailable)");
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+  await screen.getByRole("switch", { name: "Enable XML CLI engine" }).click();
+
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: unavailableMapping,
+    Guest: { voice: gcpVoice },
+    Host: { voice: { ...gcpVoice, languageCode: "fr-FR" } },
+  });
+});
+
+test.each([
+  ["loads", () => new Promise<VoiceOption[]>(() => {})],
+  ["fails to load", () => Promise.reject(new Error("Network down"))],
+])("does not mark a saved voice unavailable while the catalogue %s", async (_, getVoices) => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const screen = await renderSettings({
+    settings: { speakerMappings: { Narrator: { voice: gcpVoice } } },
+    electronApi: { getVoices },
+  });
+
+  await expect
+    .element(screen.getByRole("combobox", { name: "Voice for Narrator" }))
+    .toHaveValue("Aoede");
+});
+
+test("replaces an unavailable saved voice, keeping its prompt", async () => {
+  const screen = await renderSettings({
+    settings: { speakerMappings: { Narrator: unavailableMapping } },
+    voiceOptions: [gcpOption],
+  });
+
+  await expect
+    .element(screen.getByRole("combobox", { name: "Voice for Narrator" }))
+    .toHaveValue("apope_low (unavailable)");
   await choose(screen, "Voice for Narrator", /Aoede/);
 
-  await expect(saveAndGetMappings(screen)).resolves.toEqual({ Narrator: { voice: gcpVoice } });
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: { voice: gcpVoice, prompt: "Whisper" },
+  });
 });
 
 test("withholds a voice until its model is chosen, then saves the pair", async () => {
