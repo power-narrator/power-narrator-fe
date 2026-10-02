@@ -13,8 +13,8 @@ type SlideActionsBarProps = {
 const SLIDE_ACTION_ITEMS = [
   { key: "reloadSlide", label: "Reload Slide", icon: <IconRefresh size={14} /> },
   { key: "saveSlide", label: "Save Slide" },
-  { key: "playSlide", label: "Play", icon: <IconDeviceTv size={14} /> },
   { key: "removeAudio", label: "Remove Audio" },
+  { key: "playSlide", label: "Play", icon: <IconDeviceTv size={14} /> },
 ] satisfies Array<{ key: SlideActionBarKey; label: string; icon?: ReactNode }>;
 
 export function SlideActionsBar({ actionStates, handlers }: SlideActionsBarProps) {

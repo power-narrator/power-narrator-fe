@@ -7,26 +7,22 @@ import { ViewerPage } from "./components/viewer/ViewerPage";
 import type { Slide } from "./types/electron";
 import { getErrorMessage } from "./utils/errors";
 
-type AppViewState = "idle" | "loading" | "error" | "viewing";
+type AppViewState =
+  | { kind: "idle" }
+  | { kind: "loading"; filePath: string }
+  | { kind: "error"; message: string }
+  | { kind: "viewing"; filePath: string; slides: Slide[] };
 
 function App() {
-  const [viewState, setViewState] = useState<AppViewState>("idle");
-  const [slides, setSlides] = useState<Slide[] | null>(null);
-  const [currentFilePath, setCurrentFilePath] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<AppViewState>({ kind: "idle" });
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const resetViewer = () => {
-    setSlides(null);
-    setCurrentFilePath(null);
-    setError(null);
-    setViewState("idle");
+    setView({ kind: "idle" });
   };
 
   const processFile = async (filePath: string) => {
-    setViewState("loading");
-    setError(null);
-    setCurrentFilePath(filePath);
+    setView({ kind: "loading", filePath });
 
     try {
       const response = await window.electronAPI.convertPptx(filePath);
@@ -34,12 +30,9 @@ function App() {
         throw new Error(response.message);
       }
 
-      setSlides(response.slides);
-      setViewState("viewing");
+      setView({ kind: "viewing", filePath, slides: response.slides });
     } catch (error: unknown) {
-      setSlides(null);
-      setError(getErrorMessage(error));
-      setViewState("error");
+      setView({ kind: "error", message: getErrorMessage(error) });
     }
   };
 
@@ -51,45 +44,45 @@ function App() {
       }
     } catch (error: unknown) {
       console.error(error);
-      setError(getErrorMessage(error));
-      setViewState("error");
+      setView({ kind: "error", message: getErrorMessage(error) });
     }
   };
 
   let content;
 
-  if (viewState === "loading") {
+  if (view.kind === "loading") {
     content = (
       <Group>
         <Loader />
         <Text>Processing...</Text>
       </Group>
     );
-  } else if (viewState === "error" && error) {
+  } else if (view.kind === "error") {
     content = (
       <>
         <Text c="red" size="xl">
-          Error: {error}
+          Error: {view.message}
         </Text>
         <Button variant="light" onClick={resetViewer}>
           Try Again
         </Button>
       </>
     );
-  } else if (viewState === "viewing" && slides) {
+  } else if (view.kind === "viewing") {
     content = (
       <ViewerPage
-        key={currentFilePath}
-        slides={slides}
+        key={view.filePath}
+        slides={view.slides}
         onBack={resetViewer}
         onOpenSettings={() => setSettingsOpen(true)}
-        filePath={currentFilePath || ""}
+        filePath={view.filePath}
       />
     );
   } else {
     content = (
       <>
         <ActionIcon
+          aria-label="Open settings"
           variant="subtle"
           size="lg"
           pos="absolute"
@@ -108,8 +101,8 @@ function App() {
     <>
       <Stack
         h="100dvh"
-        justify={viewState === "viewing" ? "flex-start" : "center"}
-        align={viewState === "viewing" ? "stretch" : "center"}
+        justify={view.kind === "viewing" ? "flex-start" : "center"}
+        align={view.kind === "viewing" ? "stretch" : "center"}
       >
         {content}
       </Stack>

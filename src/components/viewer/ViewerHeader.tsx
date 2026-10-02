@@ -42,7 +42,7 @@ export function ViewerHeader({
         <Button variant="subtle" onClick={onBack}>
           &larr; Back
         </Button>
-        <ActionIcon variant="subtle" onClick={onOpenSettings}>
+        <ActionIcon aria-label="Open settings" variant="subtle" onClick={onOpenSettings}>
           <IconSettings />
         </ActionIcon>
       </Group>

@@ -10,7 +10,7 @@ export type SsmlToolbarMenuItem = {
 
 type SsmlToolbarMenuProps = {
   icon: ReactNode;
-  menuLabel?: string;
+  menuLabel: string;
   items: SsmlToolbarMenuItem[];
   closeOnItemClick?: boolean;
   children?: ReactNode;
@@ -26,13 +26,13 @@ export function SsmlToolbarMenu({
   return (
     <Menu trigger="hover" offset={0} closeOnItemClick={closeOnItemClick}>
       <Menu.Target>
-        <ActionIcon variant="subtle" color="gray" size="lg">
+        <ActionIcon aria-label={menuLabel} variant="subtle" color="gray" size="lg">
           {icon}
           <IconChevronDown size={12} />
         </ActionIcon>
       </Menu.Target>
       <Menu.Dropdown>
-        {menuLabel ? <Menu.Label>{menuLabel}</Menu.Label> : null}
+        <Menu.Label>{menuLabel}</Menu.Label>
         {items.map((item) => (
           <Menu.Item key={item.label} leftSection={item.leftSection} onClick={item.onClick}>
             {item.label}

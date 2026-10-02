@@ -107,7 +107,7 @@ export function SectionPreviewButtons({
         >
           {isAnyPreviewActive ? <IconPlayerStop size={12} /> : <IconPlayerPlay size={12} />}
         </ActionIcon>
-        <Box flex={1} pos="relative">
+        <Box flex={1}>
           {preview.isGenerating ? (
             <Center>
               <Loader size="xs" variant="dots" color="blue" />
