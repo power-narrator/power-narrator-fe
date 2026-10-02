@@ -19,19 +19,19 @@ import type { PreviewSpeakerChoice } from "../../../shared/types/narration";
 import { useAudio } from "../../context/useAudio";
 import { getErrorMessage } from "../../utils/errors";
 
-interface PreviewRequestState {
+type PreviewRequestState = {
   ownerId: string;
   target: string;
   generating: boolean;
-}
+};
 
-interface PreviewRequestCoordinator {
+type PreviewRequestCoordinator = {
   request: PreviewRequestState | null;
   claim: (ownerId: string, target: string) => number;
   isCurrent: (token: number) => boolean;
   finish: (token: number) => void;
   clear: (ownerId: string, token?: number) => void;
-}
+};
 
 const NarrationPreviewContext = createContext<PreviewRequestCoordinator | undefined>(undefined);
 
@@ -82,14 +82,14 @@ function usePreviewRequestCoordinator() {
   return coordinator;
 }
 
-interface NarrationPreviewOptions {
+type NarrationPreviewOptions = {
   id: string;
   slideIndex: SlideIndex;
   sectionIndex: number;
   sections: readonly NarrationSection[];
   onFocus: () => void;
   getSelectedText?: () => string | undefined;
-}
+};
 
 export function useNarrationPreview(options: NarrationPreviewOptions) {
   const effectiveSpeaker = getEffectiveSpeaker(options.sections, options.sectionIndex);

@@ -26,7 +26,7 @@ function loadedWith(notes: string, knownSpeakers: readonly string[] = []): Slide
 
 const loadedSlide = loadedWith("Loaded narration");
 
-interface ViewerElectronOverrides {
+type ViewerElectronOverrides = {
   getSpeakerMappings?: typeof window.electronAPI.getSpeakerMappings;
   confirmDiscardNarrationChanges?: () => Promise<boolean>;
   reloadSlide?: typeof window.electronAPI.reloadSlide;
@@ -38,7 +38,7 @@ interface ViewerElectronOverrides {
   removeAudio?: typeof window.electronAPI.removeAudio;
   convertPptx?: typeof window.electronAPI.convertPptx;
   prepareNarrationPreview?: typeof window.electronAPI.prepareNarrationPreview;
-}
+};
 
 function installElectronApi(overrides: ViewerElectronOverrides = {}) {
   const electronAPI = {

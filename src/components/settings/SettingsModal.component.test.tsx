@@ -67,11 +67,11 @@ afterEach(() => {
   Reflect.deleteProperty(window, "electronAPI");
 });
 
-interface SettingsSetup {
+type SettingsSetup = {
   mappings?: Record<string, SpeakerMapping>;
   voiceOptions?: VoiceOption[];
   electronApi?: Partial<typeof window.electronAPI>;
-}
+};
 
 function renderSettings(
   { mappings = { Narrator: {} }, voiceOptions = [], electronApi = {} }: SettingsSetup = {},

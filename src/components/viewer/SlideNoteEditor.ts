@@ -19,25 +19,25 @@ export type EditorSection = NarrationSection & { id: SectionId };
 
 export type SlideSummary = Omit<Slide, "sections">;
 
-export interface TextRange {
+export type TextRange = {
   start: number;
   end: number;
-}
+};
 
-export interface SelectionIntent extends TextRange {
+export type SelectionIntent = TextRange & {
   sectionId: SectionId;
-}
+};
 
-export interface SsmlInsertion {
+export type SsmlInsertion = {
   startTag: string;
   endTag?: string;
   selection: TextRange;
-}
+};
 
-export interface SsmlResult {
+export type SsmlResult = {
   editor: SlideNoteEditor;
   selection: SelectionIntent | undefined;
-}
+};
 
 /**
  * A section no holder can change: the content a save submitted, and the saved
@@ -48,15 +48,15 @@ export type ImmutableSection = Readonly<Omit<NarrationSection, "format">> & {
   readonly format?: Readonly<NonNullable<NarrationSection["format"]>>;
 };
 
-export interface SnapshotSlide {
+export type SnapshotSlide = {
   readonly slideIndex: SlideIndex;
   readonly sections: readonly ImmutableSection[];
-}
+};
 
-export interface SaveSubmission {
+export type SaveSubmission = {
   editor: SlideNoteEditor;
   snapshot: SaveSnapshot;
-}
+};
 
 /**
  * Where a saved baseline stands among every event that can move one: a
@@ -65,10 +65,10 @@ export interface SaveSubmission {
  */
 type BaselineRevision = number;
 
-interface SavedBaseline {
+type SavedBaseline = {
   readonly sections: readonly ImmutableSection[];
   readonly revision: BaselineRevision;
-}
+};
 
 type SavedBaselines = ReadonlyMap<SlideIndex, SavedBaseline>;
 
@@ -96,16 +96,16 @@ const nextBaselineRevision = (): BaselineRevision => ++lastBaselineRevision;
  */
 const submittedRevision = new WeakMap<SaveSnapshot, BaselineRevision>();
 
-interface EditorSlide extends SlideSummary {
+type EditorSlide = SlideSummary & {
   sections: readonly EditorSection[];
-}
+};
 
-interface HistorySnapshot {
+type HistorySnapshot = {
   slides: readonly EditorSlide[];
   activeSectionId: SectionId | undefined;
-}
+};
 
-interface EditingState {
+type EditingState = {
   slides: readonly EditorSlide[];
   savedBaselines: SavedBaselines;
   activeSlideIndex: SlideIndex | undefined;
@@ -115,7 +115,7 @@ interface EditingState {
   history: readonly HistorySnapshot[];
   historyIndex: number;
   pendingTypingAt: number | undefined;
-}
+};
 
 const TYPING_CHECKPOINT_PAUSE_MS = 800;
 

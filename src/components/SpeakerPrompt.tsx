@@ -3,14 +3,14 @@ import { IconMessage } from "@tabler/icons-react";
 import { useState, type ReactNode } from "react";
 import { toSpeakerPrompt } from "../../shared/narration/prompt";
 
-interface SpeakerPromptProps {
+type SpeakerPromptProps = {
   speakerLabel: string;
   value: string | undefined;
   supportsPrompt: boolean | undefined;
   onChange: (prompt: string | undefined) => void;
   rowContent?: { leading?: ReactNode; trailing?: ReactNode };
   textareaWidth?: number | string;
-}
+};
 
 export function SpeakerPrompt({
   speakerLabel,

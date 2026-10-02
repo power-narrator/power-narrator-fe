@@ -1,33 +1,33 @@
 export type TtsProviderId = string;
 
-export interface VoiceLanguage {
+export type VoiceLanguage = {
   code: string;
   label: string;
-}
+};
 
-export interface VoiceModel {
+export type VoiceModel = {
   id: string;
   label: string;
   supportsPrompt: boolean;
   languages: VoiceLanguage[];
-}
+};
 
-export interface VoiceOption {
+export type VoiceOption = {
   provider: TtsProviderId;
   name: string;
   ssmlGender: string;
   models: VoiceModel[];
-}
+};
 
-export interface Voice {
+export type Voice = {
   provider: TtsProviderId;
   voiceId: string;
   model: string;
   languageCode: string;
   supportsPrompt: boolean;
-}
+};
 
-export interface SpeakerMapping {
+export type SpeakerMapping = {
   voice?: Voice;
   prompt?: string;
-}
+};

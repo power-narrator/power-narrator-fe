@@ -8,11 +8,11 @@ import { XmlPptProvider } from "./XmlPptProvider.js";
 import type { NativePlatformProvider } from "./PptProvider.js";
 import type { XmlCliOperation, XmlCliResponse, XmlSlideData } from "./types.js";
 
-interface XmlCliRequest {
+type XmlCliRequest = {
   input: string;
   output: string | null;
   ops: XmlCliOperation[];
-}
+};
 
 const xmlCliCalls: XmlCliRequest[] = [];
 const xmlCliResponses: XmlCliResponse[] = [];

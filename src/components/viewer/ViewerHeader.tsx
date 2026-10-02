@@ -10,12 +10,12 @@ export type ViewerHeaderActionKey =
   | "removeAllAudio"
   | "generateVideo";
 
-interface ViewerHeaderProps {
+type ViewerHeaderProps = {
   onBack: () => void;
   onOpenSettings: () => void;
   actionStates: Record<ViewerHeaderActionKey, ActionButtonState>;
   handlers: Record<ViewerHeaderActionKey, () => void>;
-}
+};
 
 const HEADER_ACTION_ITEMS = [
   { key: "reloadAllSlides", label: "Reload All Slides", icon: <IconRefresh size={14} /> },

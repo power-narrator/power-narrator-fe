@@ -12,11 +12,11 @@ import { registerNarrationPreviewIpc } from "./registerNarrationPreviewIpc.js";
 
 export type NarrationPowerPoint = Pick<PptProvider, "saveNotes" | "insertAudio" | "removeAudio">;
 
-export interface NarrationAdapters {
+export type NarrationAdapters = {
   mappingSource: SpeakerMappingSource;
   synthesizer: NarrationSynthesizer;
   getPowerPoint: () => NarrationPowerPoint;
-}
+};
 
 type NarrationIpc = Pick<IpcMain, "handle" | "removeHandler">;
 

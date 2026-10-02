@@ -23,7 +23,7 @@ import { SpeakerPrompt } from "../SpeakerPrompt";
 import type { EditorSection, SectionId } from "./SlideNoteEditor";
 import type { SectionTextareas } from "./useSectionTextareas";
 
-interface NotesSectionListProps {
+type NotesSectionListProps = {
   sections: readonly EditorSection[];
   narrationSections: readonly NarrationSection[];
   mappings: Record<string, SpeakerMapping>;
@@ -35,15 +35,15 @@ interface NotesSectionListProps {
   onAddSection: () => void;
   textareas: SectionTextareas;
   slideIndex: SlideIndex;
-}
+};
 
-interface SectionTextEditorProps {
+type SectionTextEditorProps = {
   label: string;
   value: string;
   onChange: (value: string) => void;
   onFocus: () => void;
   assignRef: (element: HTMLTextAreaElement | null) => void;
-}
+};
 
 function SectionTextEditor({ label, value, onChange, onFocus, assignRef }: SectionTextEditorProps) {
   return (

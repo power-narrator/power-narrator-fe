@@ -18,12 +18,12 @@ import { useSectionTextareas } from "./useSectionTextareas";
 import { useSlideNoteEditor } from "./useSlideNoteEditor";
 import { useViewerOperation } from "./useViewerOperation";
 
-interface ViewerPageProps {
+type ViewerPageProps = {
   slides: Slide[];
   filePath: string;
   onBack: () => void;
   onOpenSettings: () => void;
-}
+};
 
 type RemoveAudioKey = "removeAudio" | "removeAllAudio";
 

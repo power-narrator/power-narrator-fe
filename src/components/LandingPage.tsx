@@ -1,8 +1,8 @@
 import { Button, Text } from "@mantine/core";
 
-interface LandingPageProps {
+type LandingPageProps = {
   onSelectFile?: () => void;
-}
+};
 
 export function LandingPage({ onSelectFile }: LandingPageProps) {
   return (

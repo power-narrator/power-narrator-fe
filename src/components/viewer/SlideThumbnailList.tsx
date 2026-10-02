@@ -2,11 +2,11 @@ import { Box, Image, ScrollArea, Stack, UnstyledButton } from "@mantine/core";
 import { slideNumberOf, type SlideIndex } from "../../../shared/slides/slideCoordinates";
 import type { Slide } from "../../types/electron";
 
-interface SlideThumbnailListProps {
+type SlideThumbnailListProps = {
   slides: readonly Pick<Slide, "slideIndex" | "src">[];
   activeSlideIndex: SlideIndex | undefined;
   onSelectSlide: (slideIndex: SlideIndex) => void;
-}
+};
 
 export function SlideThumbnailList({
   slides,
