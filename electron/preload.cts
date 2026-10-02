@@ -7,10 +7,11 @@ import type {
   PlaySlideRequest,
   ReloadSlideRequest,
   RemoveAudioRequest,
-  SetGcpKeyResult,
   VideoPptResult,
 } from "../shared/types/powerpoint.js";
 import type { StructuredSlideResult, StructuredSlidesResult } from "../shared/types/slides.js";
+import type { Result } from "../shared/types/result.js";
+import type { SelectGcpKeyResult, Settings } from "../shared/types/settings.js";
 import type { Voice } from "../shared/types/tts.js";
 import type {
   NarratedPresentationSaveRequest,
@@ -54,15 +55,12 @@ const electronAPI = {
   getVoices: (): Promise<Voice[]> => ipcRenderer.invoke("get-voices"),
   prepareNarrationPreview: (payload: PreviewNarrationRequest): Promise<NarrationPreviewResult> =>
     ipcRenderer.invoke("prepare-narration-preview", payload),
-  getGcpKeyPath: (): Promise<string | null> => ipcRenderer.invoke("get-gcp-key-path"),
-  setGcpKey: (): Promise<SetGcpKeyResult> => ipcRenderer.invoke("set-gcp-key"),
+  getSettings: (): Promise<Settings> => ipcRenderer.invoke("get-settings"),
+  selectGcpKey: (): Promise<SelectGcpKeyResult> => ipcRenderer.invoke("select-gcp-key"),
+  saveSettings: (settings: Settings): Promise<Result> =>
+    ipcRenderer.invoke("save-settings", settings),
   getSpeakerMappings: (): Promise<Record<string, Voice>> =>
     ipcRenderer.invoke("get-speaker-mappings"),
-  setSpeakerMappings: (mappings: Record<string, Voice>): Promise<BasicPptResult> =>
-    ipcRenderer.invoke("set-speaker-mappings", mappings),
-  getXmlCliEnabled: (): Promise<boolean> => ipcRenderer.invoke("get-xml-cli-enabled"),
-  setXmlCliEnabled: (enabled: boolean): Promise<BasicPptResult> =>
-    ipcRenderer.invoke("set-xml-cli-enabled", enabled),
   generateVideo: (payload: GenerateVideoRequest): Promise<VideoPptResult> =>
     ipcRenderer.invoke("generate-video", payload),
   removeAudio: (payload: RemoveAudioRequest): Promise<BasicPptResult> =>

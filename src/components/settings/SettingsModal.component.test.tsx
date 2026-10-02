@@ -1,10 +1,13 @@
 import { MantineProvider } from "@mantine/core";
 import "@mantine/core/styles.css";
+import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
+import type { Settings } from "../../../shared/types/settings";
 import type { SpeakerMapping, VoiceOption } from "../../../shared/types/tts";
 import { SettingsProvider } from "../../context/SettingsContext";
+import { useSettings } from "../../context/useSettings";
 import { SettingsModal } from "./SettingsModal";
 
 const registryOption: VoiceOption = {
@@ -68,28 +71,52 @@ afterEach(() => {
   Reflect.deleteProperty(window, "electronAPI");
 });
 
+const savedSettings: Settings = {
+  gcpKeyPath: "/keys/saved.json",
+  speakerMappings: { Narrator: {} },
+  xmlCliEnabled: false,
+};
+
 type SettingsSetup = {
-  mappings?: Record<string, SpeakerMapping>;
+  settings?: Partial<Settings>;
   voiceOptions?: VoiceOption[];
   electronApi?: Partial<typeof window.electronAPI>;
 };
 
-function renderSettings(
-  { mappings = { Narrator: {} }, voiceOptions = [], electronApi = {} }: SettingsSetup = {},
-  savedMappings: Record<string, SpeakerMapping>[] = [],
-) {
+function SavedSpeakers() {
+  const { mappings } = useSettings();
+  return <output aria-label="Saved speakers">{Object.keys(mappings).join(", ")}</output>;
+}
+
+function SettingsHarness() {
+  const [opened, setOpened] = useState(true);
+  return (
+    <>
+      <button onClick={() => setOpened(true)}>Open settings</button>
+      <SavedSpeakers />
+      <SettingsModal opened={opened} onClose={() => setOpened(false)} />
+    </>
+  );
+}
+
+function renderSettings({
+  settings = {},
+  voiceOptions = [],
+  electronApi = {},
+}: SettingsSetup = {}) {
+  let stored: Settings = { ...savedSettings, ...settings };
+  const saveSettings = vi.fn<typeof window.electronAPI.saveSettings>((next) => {
+    stored = next;
+    return Promise.resolve({ success: true });
+  });
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
     value: {
-      getSpeakerMappings: () => Promise.resolve(mappings),
-      setSpeakerMappings: (nextMappings: Record<string, SpeakerMapping>) => {
-        savedMappings.push(nextMappings);
-        return Promise.resolve({ success: true });
-      },
-      getGcpKeyPath: () => Promise.resolve(null),
+      getSettings: () => Promise.resolve(stored),
+      getSpeakerMappings: () => Promise.resolve(stored.speakerMappings),
       getVoices: () => Promise.resolve(voiceOptions),
-      getXmlCliEnabled: () => Promise.resolve(false),
-      setXmlCliEnabled: () => Promise.resolve({ success: true }),
+      selectGcpKey: () => Promise.resolve({ success: true, path: null }),
+      saveSettings,
       ...electronApi,
     },
   });
@@ -97,7 +124,7 @@ function renderSettings(
   return render(
     <MantineProvider>
       <SettingsProvider>
-        <SettingsModal opened onClose={() => {}} />
+        <SettingsHarness />
       </SettingsProvider>
     </MantineProvider>,
   );
@@ -114,37 +141,40 @@ async function choose(screen: SettingsScreen, controlName: string, optionName: s
   await screen.getByRole("option", { name: optionName }).click();
 }
 
+async function saveAndGetMappings(screen: SettingsScreen) {
+  await screen.getByRole("button", { name: "Save" }).click();
+  await waitForClosed(screen);
+  return vi.mocked(window.electronAPI.saveSettings).mock.lastCall?.[0].speakerMappings;
+}
+
+async function waitForClosed(screen: SettingsScreen) {
+  await vi.waitFor(() => expect(screen.getByRole("dialog").query()).toBeNull());
+}
+
 test("creates a mapping from the voices exposed by the provider registry", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings(
-    { mappings: {}, voiceOptions: [registryOption] },
-    savedMappings,
-  );
+  const screen = await renderSettings({
+    settings: { speakerMappings: {} },
+    voiceOptions: [registryOption],
+  });
 
   await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
   await screen.getByRole("button", { name: "Add Mapping" }).click();
-  await vi.waitFor(() => expect(savedMappings).toHaveLength(1));
-  expect(savedMappings[0]).toEqual({ Narrator: {} });
-
   await choose(screen, "Voice for Narrator", "future-voice (NEUTRAL)");
 
-  await vi.waitFor(() =>
-    expect(savedMappings.at(-1)).toEqual({
-      Narrator: {
-        voice: {
-          provider: "future-provider",
-          voiceId: "future-voice",
-          model: "future-model",
-          languageCode: "en-US",
-          supportsPrompt: true,
-        },
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: {
+      voice: {
+        provider: "future-provider",
+        voiceId: "future-voice",
+        model: "future-model",
+        languageCode: "en-US",
+        supportsPrompt: true,
       },
-    }),
-  );
+    },
+  });
 });
 
 test("replaces a persisted mapping whose provider is no longer registered", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
   const staleMapping: SpeakerMapping = {
     voice: {
       provider: "local",
@@ -154,42 +184,38 @@ test("replaces a persisted mapping whose provider is no longer registered", asyn
       supportsPrompt: false,
     },
   };
-  const screen = await renderSettings(
-    { mappings: { Narrator: staleMapping }, voiceOptions: [gcpOption] },
-    savedMappings,
-  );
+  const screen = await renderSettings({
+    settings: { speakerMappings: { Narrator: staleMapping } },
+    voiceOptions: [gcpOption],
+  });
 
   await waitForMapping(screen);
   await choose(screen, "Voice for Narrator", /Aoede/);
 
-  await vi.waitFor(() => expect(savedMappings).toContainEqual({ Narrator: { voice: gcpVoice } }));
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({ Narrator: { voice: gcpVoice } });
 });
 
 test("withholds a voice until its model is chosen, then saves the pair", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings({ voiceOptions: [multiModelOption] }, savedMappings);
+  const screen = await renderSettings({ voiceOptions: [multiModelOption] });
 
   await waitForMapping(screen);
   await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
 
-  expect(savedMappings.length).toBeGreaterThan(0);
-  expect(savedMappings.every((mappings) => !mappings.Narrator?.voice)).toBe(true);
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 
   await choose(screen, "Model for Narrator", "Gemini 2.5 Flash");
 
-  await vi.waitFor(() =>
-    expect(savedMappings).toContainEqual({
-      Narrator: {
-        voice: {
-          provider: "gcp",
-          voiceId: "Kore",
-          model: "gemini-2.5-flash-tts",
-          languageCode: "en-US",
-          supportsPrompt: true,
-        },
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: {
+      voice: {
+        provider: "gcp",
+        voiceId: "Kore",
+        model: "gemini-2.5-flash-tts",
+        languageCode: "en-US",
+        supportsPrompt: true,
       },
-    }),
-  );
+    },
+  });
 });
 
 test("preselects the sole model and language of a voice that offers one", async () => {
@@ -233,44 +259,36 @@ const bilingualOption: VoiceOption = {
 };
 
 test("withholds a voice until its language is chosen, then saves it", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings({ voiceOptions: [bilingualOption] }, savedMappings);
+  const screen = await renderSettings({ voiceOptions: [bilingualOption] });
 
   await waitForMapping(screen);
   await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
   await choose(screen, "Model for Narrator", "Gemini 2.5 Pro");
 
-  expect(savedMappings.length).toBeGreaterThan(0);
-  expect(savedMappings.every((mappings) => !mappings.Narrator?.voice)).toBe(true);
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 
   await choose(screen, "Language for Narrator", "fr-FR");
 
-  await vi.waitFor(() =>
-    expect(savedMappings).toContainEqual({
-      Narrator: {
-        voice: {
-          provider: "gcp",
-          voiceId: "Kore",
-          model: "gemini-2.5-pro-tts",
-          languageCode: "fr-FR",
-          supportsPrompt: true,
-        },
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: {
+      voice: {
+        provider: "gcp",
+        voiceId: "Kore",
+        model: "gemini-2.5-pro-tts",
+        languageCode: "fr-FR",
+        supportsPrompt: true,
       },
-    }),
-  );
+    },
+  });
 });
 
 test("keeps a language the newly chosen voice can also speak", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
   const soleModelOption: VoiceOption = {
     ...bilingualOption,
     name: "Puck",
     models: [bilingualOption.models[1]!],
   };
-  const screen = await renderSettings(
-    { voiceOptions: [bilingualOption, soleModelOption] },
-    savedMappings,
-  );
+  const screen = await renderSettings({ voiceOptions: [bilingualOption, soleModelOption] });
 
   await waitForMapping(screen);
   await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
@@ -278,41 +296,37 @@ test("keeps a language the newly chosen voice can also speak", async () => {
   await choose(screen, "Language for Narrator", "de-DE");
   await choose(screen, "Voice for Narrator", "Puck (FEMALE)");
 
-  await vi.waitFor(() =>
-    expect(savedMappings.at(-1)).toEqual({
-      Narrator: {
-        voice: {
-          provider: "gcp",
-          voiceId: "Puck",
-          model: "chirp-3-hd",
-          languageCode: "de-DE",
-          supportsPrompt: false,
-        },
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: {
+      voice: {
+        provider: "gcp",
+        voiceId: "Puck",
+        model: "chirp-3-hd",
+        languageCode: "de-DE",
+        supportsPrompt: false,
       },
-    }),
-  );
+    },
+  });
 });
 
 test("clears a language the newly chosen model cannot speak", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings({ voiceOptions: [bilingualOption] }, savedMappings);
+  const screen = await renderSettings({ voiceOptions: [bilingualOption] });
 
   await waitForMapping(screen);
   await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
   await choose(screen, "Model for Narrator", "Gemini 2.5 Pro");
   await choose(screen, "Language for Narrator", "fr-FR");
-  await vi.waitFor(() => expect(savedMappings.length).toBeGreaterThan(1));
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeEnabled();
 
   await choose(screen, "Model for Narrator", "Chirp 3 HD");
 
   await expect
     .element(screen.getByRole("combobox", { name: "Language for Narrator" }))
     .toHaveValue("");
-  await vi.waitFor(() => expect(savedMappings.at(-1)).toEqual({ Narrator: {} }));
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 });
 
 test("selects the sole language when a newly chosen model cannot speak the current one", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
   const option: VoiceOption = {
     ...bilingualOption,
     models: [
@@ -325,7 +339,7 @@ test("selects the sole language when a newly chosen model cannot speak the curre
       },
     ],
   };
-  const screen = await renderSettings({ voiceOptions: [option] }, savedMappings);
+  const screen = await renderSettings({ voiceOptions: [option] });
 
   await waitForMapping(screen);
   await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
@@ -336,20 +350,18 @@ test("selects the sole language when a newly chosen model cannot speak the curre
   await expect
     .element(screen.getByRole("combobox", { name: "Language for Narrator" }))
     .toHaveValue("de-DE");
-  await vi.waitFor(() =>
-    expect(savedMappings.at(-1)?.Narrator?.voice).toEqual({
-      provider: "gcp",
-      voiceId: "Kore",
-      model: "future-model",
-      languageCode: "de-DE",
-      supportsPrompt: true,
-    }),
-  );
+  const mappings = await saveAndGetMappings(screen);
+  expect(mappings?.Narrator?.voice).toEqual({
+    provider: "gcp",
+    voiceId: "Kore",
+    model: "future-model",
+    languageCode: "de-DE",
+    supportsPrompt: true,
+  });
 });
 
 test("keeps a language the newly chosen model can also speak", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings({ voiceOptions: [bilingualOption] }, savedMappings);
+  const screen = await renderSettings({ voiceOptions: [bilingualOption] });
 
   await waitForMapping(screen);
   await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
@@ -357,46 +369,23 @@ test("keeps a language the newly chosen model can also speak", async () => {
   await choose(screen, "Language for Narrator", "en-US");
   await choose(screen, "Model for Narrator", "Chirp 3 HD");
 
-  await vi.waitFor(() =>
-    expect(savedMappings.at(-1)).toEqual({
-      Narrator: {
-        voice: {
-          provider: "gcp",
-          voiceId: "Kore",
-          model: "chirp-3-hd",
-          languageCode: "en-US",
-          supportsPrompt: false,
-        },
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: {
+      voice: {
+        provider: "gcp",
+        voiceId: "Kore",
+        model: "chirp-3-hd",
+        languageCode: "en-US",
+        supportsPrompt: false,
       },
-    }),
-  );
-});
-
-test("saves a prompt on the speaker and clears it away entirely", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings({ voiceOptions: [multiModelOption] }, savedMappings);
-
-  await waitForMapping(screen);
-  await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
-  await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
-
-  await vi.waitFor(() => expect(savedMappings.at(-1)).toEqual({ Narrator: { prompt: "Whisper" } }));
-
-  await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("");
-
-  await vi.waitFor(() => expect(savedMappings.at(-1)).toEqual({ Narrator: {} }));
+    },
+  });
 });
 
 test("opens stored prompts after mappings load while empty prompts stay closed", async () => {
   const screen = await renderSettings({
-    mappings: { Narrator: { prompt: "Whisper" }, Guest: {} },
+    settings: { speakerMappings: { Narrator: { prompt: "Whisper" }, Guest: {} } },
     voiceOptions: [multiModelOption],
-    electronApi: {
-      getSpeakerMappings: () =>
-        new Promise((resolve) => {
-          setTimeout(() => resolve({ Narrator: { prompt: "Whisper" }, Guest: {} }), 0);
-        }),
-    },
   });
 
   await expect
@@ -427,8 +416,7 @@ test("keeps a prompt a voice will use open, closable again once it is ignored", 
 });
 
 test("keeps a prompt through a switch to a voice that ignores prompts, advising so", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings({ voiceOptions: [bilingualOption] }, savedMappings);
+  const screen = await renderSettings({ voiceOptions: [bilingualOption] });
 
   await waitForMapping(screen);
   await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
@@ -441,18 +429,15 @@ test("keeps a prompt through a switch to a voice that ignores prompts, advising 
   await expect
     .element(screen.getByRole("textbox", { name: "Prompt for Narrator" }))
     .toHaveValue("Whisper");
-  await vi.waitFor(() => expect(savedMappings.at(-1)?.Narrator?.prompt).toBe("Whisper"));
+  const mappings = await saveAndGetMappings(screen);
+  expect(mappings?.Narrator?.prompt).toBe("Whisper");
 });
 
 test("keeps two speakers sharing one voice on separate prompts", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings(
-    {
-      mappings: { Narrator: {}, Guest: {} },
-      voiceOptions: [multiModelOption],
-    },
-    savedMappings,
-  );
+  const screen = await renderSettings({
+    settings: { speakerMappings: { Narrator: {}, Guest: {} } },
+    voiceOptions: [multiModelOption],
+  });
 
   await waitForMapping(screen, "Guest");
   await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
@@ -460,35 +445,28 @@ test("keeps two speakers sharing one voice on separate prompts", async () => {
   await screen.getByRole("button", { name: "Prompt for Guest" }).click();
   await screen.getByRole("textbox", { name: "Prompt for Guest" }).fill("Shout");
 
-  await vi.waitFor(() =>
-    expect(savedMappings.at(-1)).toEqual({
-      Narrator: { prompt: "Whisper" },
-      Guest: { prompt: "Shout" },
-    }),
-  );
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: { prompt: "Whisper" },
+    Guest: { prompt: "Shout" },
+  });
 });
 
 test("counts a blank prompt as no prompt rather than one set but ignored", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings({ voiceOptions: [multiModelOption] }, savedMappings);
+  const screen = await renderSettings({ voiceOptions: [multiModelOption] });
 
   await waitForMapping(screen);
   await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
   await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("   ");
 
-  await vi.waitFor(() => expect(savedMappings.at(-1)).toEqual({ Narrator: {} }));
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Prompt for Narrator (set)" }).query()).toBeNull();
 });
 
 test("refuses a mapping name the notes syntax cannot express", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings(
-    {
-      mappings: { "prompt: legacy": {} },
-      voiceOptions: [gcpOption],
-    },
-    savedMappings,
-  );
+  const screen = await renderSettings({
+    settings: { speakerMappings: { "prompt: legacy": {} } },
+    voiceOptions: [gcpOption],
+  });
 
   await vi.waitFor(() => expect(screen.getByText("[prompt: legacy]").query()).not.toBeNull());
   await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("p:aside");
@@ -497,114 +475,239 @@ test("refuses a mapping name the notes syntax cannot express", async () => {
   await vi.waitFor(() =>
     expect(screen.getByText(/cannot start with p: or prompt:/).query()).not.toBeNull(),
   );
-  expect(savedMappings).toHaveLength(0);
+  expect(screen.getByText("[p:aside]").query()).toBeNull();
   expect(screen.getByText("[prompt: legacy]").query()).not.toBeNull();
 
   await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
   await screen.getByRole("button", { name: "Add Mapping" }).click();
-  await vi.waitFor(() => expect(savedMappings).toHaveLength(1));
+  await waitForMapping(screen);
   expect(screen.getByText(/cannot start with p: or prompt:/).query()).toBeNull();
 });
 
 test("submits an alias once with Enter", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings({ mappings: {}, voiceOptions: [gcpOption] }, savedMappings);
+  const screen = await renderSettings({
+    settings: { speakerMappings: {} },
+    voiceOptions: [gcpOption],
+  });
 
   await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
   await userEvent.keyboard("{Enter}");
 
   await waitForMapping(screen);
-  expect(savedMappings).toEqual([{ Narrator: {} }]);
+  expect(screen.getByText("[Narrator]").elements()).toHaveLength(1);
 });
 
 test("does not submit an alias from the keyboard before voices load", async () => {
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings({ mappings: {}, voiceOptions: [] }, savedMappings);
+  const screen = await renderSettings({
+    settings: { speakerMappings: {} },
+    voiceOptions: [],
+  });
 
   await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
   await userEvent.keyboard("{Enter}");
 
-  expect(savedMappings).toEqual([]);
   expect(screen.getByText("[Narrator]").query()).toBeNull();
 });
 
-test("keeps rapid edits to different mappings and persists them in order", async () => {
-  let finishFirstSave: ((result: { success: true }) => void) | undefined;
-  let saveCount = 0;
-  const setSpeakerMappings = vi.fn<typeof window.electronAPI.setSpeakerMappings>(() =>
-    ++saveCount === 1
-      ? new Promise((resolve) => {
-          finishFirstSave = resolve;
-        })
-      : Promise.resolve({ success: true }),
-  );
-  const screen = await renderSettings({
-    mappings: { Narrator: {}, Guest: {} },
-    voiceOptions: [gcpOption],
-    electronApi: { setSpeakerMappings },
-  });
-
-  await waitForMapping(screen, "Guest");
-  await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
-  await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
-  await screen.getByRole("button", { name: "Prompt for Guest" }).click();
-  await screen.getByRole("textbox", { name: "Prompt for Guest" }).fill("Shout");
-
-  await expect
-    .element(screen.getByRole("textbox", { name: "Prompt for Narrator" }))
-    .toHaveValue("Whisper");
-  await expect
-    .element(screen.getByRole("textbox", { name: "Prompt for Guest" }))
-    .toHaveValue("Shout");
-  expect(setSpeakerMappings).toHaveBeenCalledTimes(1);
-  finishFirstSave?.({ success: true });
-  await vi.waitFor(() => expect(setSpeakerMappings).toHaveBeenCalledTimes(2));
-  expect(setSpeakerMappings).toHaveBeenLastCalledWith({
-    Narrator: { prompt: "Whisper" },
-    Guest: { prompt: "Shout" },
-  });
-});
-
-test("keeps a local mapping edit when the initial load finishes late", async () => {
-  let finishLoad: ((mappings: Record<string, SpeakerMapping>) => void) | undefined;
-  const savedMappings: Record<string, SpeakerMapping>[] = [];
-  const screen = await renderSettings(
-    {
-      mappings: {},
-      voiceOptions: [gcpOption],
-      electronApi: {
-        getSpeakerMappings: () =>
-          new Promise((resolve) => {
-            finishLoad = resolve;
-          }),
-      },
-    },
-    savedMappings,
-  );
-
-  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
-  await screen.getByRole("button", { name: "Add Mapping" }).click();
-  await waitForMapping(screen);
-  finishLoad?.({ Old: {} });
-
-  await waitForMapping(screen, "Old");
-  expect(screen.getByText("[Narrator]").query()).not.toBeNull();
-  await vi.waitFor(() => expect(savedMappings).toEqual([{ Old: {}, Narrator: {} }]));
-});
-
-test("shows a failed mapping save", async () => {
+test("opens with the saved settings and enables Save only once they load and change", async () => {
+  let finishLoad: ((settings: Settings) => void) | undefined;
   const screen = await renderSettings({
     voiceOptions: [gcpOption],
     electronApi: {
-      setSpeakerMappings: () => Promise.resolve({ success: false, message: "Disk unavailable" }),
+      getSettings: () =>
+        new Promise((resolve) => {
+          finishLoad = resolve;
+        }),
+    },
+  });
+
+  await expect.element(screen.getByText("Loading settings…")).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+  finishLoad?.({ ...savedSettings, xmlCliEnabled: true });
+
+  await expect.element(screen.getByText("/keys/saved.json")).toBeVisible();
+  await expect.element(screen.getByText("[Narrator]")).toBeVisible();
+  await expect.element(screen.getByRole("switch", { name: "Enable XML CLI engine" })).toBeChecked();
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  await expect.element(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+});
+
+test("shows a failed load and offers nothing to save", async () => {
+  const screen = await renderSettings({
+    electronApi: { getSettings: () => Promise.reject(new Error("Store unreadable")) },
+  });
+
+  await expect.element(screen.getByText("Failed to load settings: Store unreadable")).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+});
+
+test("disables Save again once every edit is reversed", async () => {
+  const screen = await renderSettings({ voiceOptions: [gcpOption] });
+  const save = screen.getByRole("button", { name: "Save" });
+  const engine = screen.getByRole("switch", { name: "Enable XML CLI engine" });
+
+  await waitForMapping(screen);
+  await engine.click();
+  await screen.getByRole("button", { name: "Delete mapping for Narrator" }).click();
+  await expect.element(save).toBeEnabled();
+
+  await engine.click();
+  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
+  await screen.getByRole("button", { name: "Add Mapping" }).click();
+
+  await expect.element(save).toBeDisabled();
+});
+
+test("saves a draft of every setting together, leaving the app on saved settings until then", async () => {
+  const screen = await renderSettings({
+    settings: { speakerMappings: { Narrator: {}, Guest: {} } },
+    voiceOptions: [gcpOption],
+    electronApi: {
+      selectGcpKey: () => Promise.resolve({ success: true, path: "/keys/new.json" }),
+    },
+  });
+
+  await waitForMapping(screen, "Guest");
+  await screen.getByRole("button", { name: "Select Key File..." }).click();
+  await choose(screen, "Voice for Default", /Aoede/);
+  await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
+  await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
+  await screen.getByRole("button", { name: "Delete mapping for Guest" }).click();
+  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Host");
+  await screen.getByRole("button", { name: "Add Mapping" }).click();
+  await screen.getByRole("switch", { name: "Enable XML CLI engine" }).click();
+
+  await expect.element(screen.getByText("/keys/new.json")).toBeVisible();
+  await expect
+    .element(screen.getByRole("status", { name: "Saved speakers" }))
+    .toHaveTextContent("Narrator, Guest");
+
+  await screen.getByRole("button", { name: "Save" }).click();
+  await waitForClosed(screen);
+
+  const draft: Settings = {
+    gcpKeyPath: "/keys/new.json",
+    speakerMappings: { Narrator: { prompt: "Whisper" }, _default_: { voice: gcpVoice }, Host: {} },
+    xmlCliEnabled: true,
+  };
+  expect(window.electronAPI.saveSettings).toHaveBeenCalledExactlyOnceWith(draft);
+  await expect
+    .element(screen.getByRole("status", { name: "Saved speakers" }))
+    .toHaveTextContent("Narrator, _default_, Host");
+
+  await screen.getByRole("button", { name: "Open settings" }).click();
+  await expect.element(screen.getByText("/keys/new.json")).toBeVisible();
+  await expect
+    .element(screen.getByRole("textbox", { name: "Prompt for Narrator" }))
+    .toHaveValue("Whisper");
+  await expect.element(screen.getByText("[Host]")).toBeVisible();
+  expect(screen.getByText("[Guest]").query()).toBeNull();
+  await expect.element(screen.getByRole("switch", { name: "Enable XML CLI engine" })).toBeChecked();
+});
+
+test("disables Save again once a default voice chosen without a model is withdrawn", async () => {
+  const screen = await renderSettings({ voiceOptions: [multiModelOption] });
+
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Default", "Kore (FEMALE)");
+
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+});
+
+const dismissals: [string, (screen: SettingsScreen) => Promise<void>][] = [
+  ["Cancel", (screen) => screen.getByRole("button", { name: "Cancel" }).click()],
+  ["the close button", (screen) => screen.getByRole("button", { name: "Close settings" }).click()],
+  ["Escape", () => userEvent.keyboard("{Escape}")],
+  [
+    "a backdrop click",
+    () =>
+      userEvent.click(document.querySelector(".mantine-Modal-overlay")!, {
+        position: { x: 5, y: 5 },
+      }),
+  ],
+];
+
+test.each(dismissals)("discards the draft when dismissed with %s", async (_, dismiss) => {
+  const screen = await renderSettings({
+    voiceOptions: [gcpOption],
+    electronApi: {
+      selectGcpKey: () => Promise.resolve({ success: true, path: "/keys/new.json" }),
     },
   });
 
   await waitForMapping(screen);
-  await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
-  await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
+  await screen.getByRole("button", { name: "Select Key File..." }).click();
+  await screen.getByRole("button", { name: "Delete mapping for Narrator" }).click();
+  await screen.getByRole("switch", { name: "Enable XML CLI engine" }).click();
+  await dismiss(screen);
+  await waitForClosed(screen);
 
+  expect(window.electronAPI.saveSettings).not.toHaveBeenCalled();
+  await screen.getByRole("button", { name: "Open settings" }).click();
+  await expect.element(screen.getByText("/keys/saved.json")).toBeVisible();
+  await expect.element(screen.getByText("[Narrator]")).toBeVisible();
   await expect
-    .element(screen.getByText("Failed to save speaker mappings: Disk unavailable"))
-    .toBeVisible();
+    .element(screen.getByRole("switch", { name: "Enable XML CLI engine" }))
+    .not.toBeChecked();
+});
+
+test("keeps the draft key when the picker is dismissed or the chosen key is invalid", async () => {
+  const selectGcpKey = vi
+    .fn<typeof window.electronAPI.selectGcpKey>()
+    .mockResolvedValueOnce({ success: true, path: null })
+    .mockResolvedValueOnce({ success: false, message: "Invalid Service Account Key JSON" });
+  const screen = await renderSettings({ electronApi: { selectGcpKey } });
+  const selectKey = screen.getByRole("button", { name: "Select Key File..." });
+
+  await expect.element(screen.getByText("/keys/saved.json")).toBeVisible();
+  await selectKey.click();
+  await expect.poll(() => selectGcpKey.mock.calls.length).toBe(1);
+  await selectKey.click();
+
+  await expect.element(screen.getByText("Invalid Service Account Key JSON")).toBeVisible();
+  await expect.element(screen.getByText("/keys/saved.json")).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+});
+
+test("holds the modal open while saving and keeps the draft for a retry after failure", async () => {
+  let finishSave:
+    | ((result: Awaited<ReturnType<typeof window.electronAPI.saveSettings>>) => void)
+    | undefined;
+  const saveSettings = vi
+    .fn<typeof window.electronAPI.saveSettings>()
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishSave = resolve;
+        }),
+    )
+    .mockResolvedValueOnce({ success: true });
+  const screen = await renderSettings({ electronApi: { saveSettings } });
+  const save = screen.getByRole("button", { name: "Save" });
+
+  await waitForMapping(screen);
+  await screen.getByRole("switch", { name: "Enable XML CLI engine" }).click();
+  await save.click();
+
+  await expect.element(save).toBeDisabled();
+  await expect
+    .element(screen.getByRole("switch", { name: "Enable XML CLI engine" }))
+    .toBeDisabled();
+  await expect.element(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  await expect.element(screen.getByRole("button", { name: "Close settings" })).toBeDisabled();
+  await userEvent.keyboard("{Escape}");
+  await save.click({ force: true });
+  expect(screen.getByRole("dialog").query()).not.toBeNull();
+  expect(saveSettings).toHaveBeenCalledOnce();
+
+  finishSave?.({ success: false, message: "Disk unavailable" });
+
+  await expect.element(screen.getByText("Failed to save settings: Disk unavailable")).toBeVisible();
+  await expect.element(screen.getByRole("switch", { name: "Enable XML CLI engine" })).toBeChecked();
+  await expect.element(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+
+  await save.click();
+  await waitForClosed(screen);
+  expect(saveSettings).toHaveBeenLastCalledWith({ ...savedSettings, xmlCliEnabled: true });
 });

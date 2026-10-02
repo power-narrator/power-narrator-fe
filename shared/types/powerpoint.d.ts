@@ -10,8 +10,6 @@ export type BasicPptResult = Result;
 
 export type VideoPptResult = Result<{ outputPath: string }>;
 
-export type SetGcpKeyResult = Result<{ path: string }>;
-
 export type GenerateVideoRequest = {
   filePath: string;
   videoOutputPath: string;
