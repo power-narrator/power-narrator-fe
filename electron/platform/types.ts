@@ -13,7 +13,6 @@ export type {
   PlaySlideRequest,
   ReloadSlideRequest,
   RemoveAudioRequest,
-  SetGcpKeyResult,
   VideoPptResult,
 } from "../../shared/types/powerpoint.js";
 

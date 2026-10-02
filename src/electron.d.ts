@@ -1,3 +1,5 @@
+import type { Result } from "../shared/types/result";
+import type { SelectGcpKeyResult, Settings } from "../shared/types/settings";
 import type { SpeakerMapping, VoiceOption } from "../shared/types/tts";
 import type {
   NarratedPresentationSaveRequest,
@@ -15,7 +17,6 @@ import type {
   ReloadSlidePayload,
   RemoveAudioPayload,
   SlideElectronResult,
-  SetGcpKeyResult,
   VideoElectronResult,
 } from "./types/electron";
 
@@ -35,15 +36,11 @@ declare global {
       prepareNarrationPreview: (
         payload: PreviewNarrationRequest,
       ) => Promise<NarrationPreviewResult>;
-      getGcpKeyPath: () => Promise<string | null>;
-      setGcpKey: () => Promise<SetGcpKeyResult>;
+      getSettings: () => Promise<Settings>;
+      selectGcpKey: () => Promise<SelectGcpKeyResult>;
+      saveSettings: (settings: Settings) => Promise<Result>;
       setInsertMethod: (method: string) => Promise<void>;
       getSpeakerMappings: () => Promise<Record<string, SpeakerMapping>>;
-      setSpeakerMappings: (
-        mappings: Record<string, SpeakerMapping>,
-      ) => Promise<BasicElectronResult>;
-      getXmlCliEnabled: () => Promise<boolean>;
-      setXmlCliEnabled: (enabled: boolean) => Promise<BasicElectronResult>;
       generateVideo: (payload: GenerateVideoPayload) => Promise<VideoElectronResult>;
       removeAudio: (payload: RemoveAudioPayload) => Promise<BasicElectronResult>;
       playSlide: (payload: PlaySlidePayload) => Promise<BasicElectronResult>;

@@ -13,6 +13,7 @@ import { TtsManager } from "./tts/TtsManager.js";
 import { GcpTtsProvider } from "./tts/GcpTtsProvider.js";
 import type { SpeakerMapping, TtsProvider, TtsProviderId } from "./tts/TtsProvider.js";
 import { migrateSpeakerMappings } from "./settings/speakerMappingMigration.js";
+import { registerSettingsIpc } from "./settings/registerSettingsIpc.js";
 import type {
   GenerateVideoRequest,
   PlaySlideRequest,
@@ -95,6 +96,17 @@ function getActiveCoreProvider(): PptProvider {
 
 const getSpeakerMappings = (): Record<string, SpeakerMapping> =>
   (store.get("speakerMappings") as Record<string, SpeakerMapping>) || {};
+
+registerSettingsIpc(ipcMain, {
+  store,
+  pickKeyFile: async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      properties: ["openFile"],
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    return canceled ? null : (filePaths[0] ?? null);
+  },
+});
 
 registerNarrationIpc(ipcMain, {
   mappingSource: { getSpeakerMappings },
@@ -236,52 +248,6 @@ ipcMain.handle("generate-video", async (_, { filePath, videoOutputPath }: Genera
 
 ipcMain.handle("get-speaker-mappings", () => {
   return store.get("speakerMappings") || {};
-});
-
-ipcMain.handle("set-speaker-mappings", (_, mappings: Record<string, unknown>) => {
-  store.set("speakerMappings", mappings);
-  return { success: true };
-});
-
-ipcMain.handle("get-gcp-key-path", () => {
-  return store.get("gcpKeyPath");
-});
-
-ipcMain.handle("set-gcp-key", async () => {
-  const { canceled, filePaths } = await dialog.showOpenDialog({
-    properties: ["openFile"],
-    filters: [{ name: "JSON", extensions: ["json"] }],
-  });
-
-  const [keyPath] = filePaths;
-  if (canceled || !keyPath) {
-    return { success: false, message: "No file selected" };
-  }
-
-  try {
-    const content = JSON.parse(fs.readFileSync(keyPath, "utf8")) as { type?: string };
-    if (!content.type || content.type !== "service_account") {
-      return { success: false, message: "Invalid Service Account Key JSON" };
-    }
-  } catch (err: unknown) {
-    if (err instanceof SyntaxError) {
-      return { success: false, message: "Invalid JSON file" };
-    }
-
-    return { success: false, message: "Error reading file" };
-  }
-
-  store.set("gcpKeyPath", keyPath);
-  return { success: true, path: keyPath };
-});
-
-ipcMain.handle("get-xml-cli-enabled", () => {
-  return store.get("xmlCliEnabled") || false;
-});
-
-ipcMain.handle("set-xml-cli-enabled", (_, enabled: boolean) => {
-  store.set("xmlCliEnabled", enabled);
-  return { success: true };
 });
 
 ipcMain.handle("get-voices", async () => {

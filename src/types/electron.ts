@@ -4,7 +4,6 @@ import type {
   PlaySlideRequest,
   ReloadSlideRequest,
   RemoveAudioRequest,
-  SetGcpKeyResult as PowerPointSetGcpKeyResult,
   VideoPptResult,
 } from "../../shared/types/powerpoint.js";
 import type {
@@ -22,8 +21,6 @@ export type BasicElectronResult = BasicPptResult;
 export type SlideElectronResult = StructuredSlideResult;
 
 export type VideoElectronResult = VideoPptResult;
-
-export type SetGcpKeyResult = PowerPointSetGcpKeyResult;
 
 export type GenerateVideoPayload = GenerateVideoRequest;
 
