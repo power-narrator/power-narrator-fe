@@ -1,7 +1,7 @@
-import React, { useCallback, useMemo, useRef, useState, useEffect } from "react";
+import { useCallback, useMemo, useRef, useState, useEffect, type ReactNode } from "react";
 import { AudioContext } from "./audio-context";
 
-export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export function AudioProvider({ children }: { children: ReactNode }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [currentUrl, setCurrentUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -132,4 +132,4 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   );
 
   return <AudioContext.Provider value={value}>{children}</AudioContext.Provider>;
-};
+}

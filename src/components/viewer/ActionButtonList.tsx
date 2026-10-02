@@ -19,15 +19,9 @@ export function ActionButtonList<TKey extends string>({
   actionStates,
   handlers,
 }: ActionButtonListProps<TKey>) {
-  const sortedItems = items.toSorted((a, b) => {
-    if (a.key === "playSlide") return 1;
-    if (b.key === "playSlide") return -1;
-    return 0;
-  });
-
   return (
     <Group>
-      {sortedItems.map((item) => {
+      {items.map((item) => {
         const actionState = actionStates[item.key];
 
         return (

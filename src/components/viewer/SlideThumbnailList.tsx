@@ -30,18 +30,7 @@ export function SlideThumbnailList({
               pos="relative"
               bd={isActive ? "6 solid blue" : "6 solid transparent"}
             >
-              <Box
-                pos="absolute"
-                top={4}
-                left={4}
-                bg="rgba(0,0,0,0.6)"
-                p="2 6"
-                bdrs="xs"
-                fz="xs"
-                style={{
-                  zIndex: 10,
-                }}
-              >
+              <Box pos="absolute" top={4} left={4} bg="rgba(0,0,0,0.6)" p="2 6" bdrs="xs" fz="xs">
                 {slideNumber}
               </Box>
               <Image src={slide.src} alt="" radius={isActive ? "none" : "sm"} />

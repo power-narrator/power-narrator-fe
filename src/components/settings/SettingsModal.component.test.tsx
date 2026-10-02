@@ -1,6 +1,7 @@
 import { MantineProvider } from "@mantine/core";
 import "@mantine/core/styles.css";
 import { afterEach, expect, test, vi } from "vitest";
+import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import type { SpeakerMapping, VoiceOption } from "../../../shared/types/tts";
 import { SettingsProvider } from "../../context/SettingsContext";
@@ -503,4 +504,107 @@ test("refuses a mapping name the notes syntax cannot express", async () => {
   await screen.getByRole("button", { name: "Add Mapping" }).click();
   await vi.waitFor(() => expect(savedMappings).toHaveLength(1));
   expect(screen.getByText(/cannot start with p: or prompt:/).query()).toBeNull();
+});
+
+test("submits an alias once with Enter", async () => {
+  const savedMappings: Record<string, SpeakerMapping>[] = [];
+  const screen = await renderSettings({ mappings: {}, voiceOptions: [gcpOption] }, savedMappings);
+
+  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
+  await userEvent.keyboard("{Enter}");
+
+  await waitForMapping(screen);
+  expect(savedMappings).toEqual([{ Narrator: {} }]);
+});
+
+test("does not submit an alias from the keyboard before voices load", async () => {
+  const savedMappings: Record<string, SpeakerMapping>[] = [];
+  const screen = await renderSettings({ mappings: {}, voiceOptions: [] }, savedMappings);
+
+  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
+  await userEvent.keyboard("{Enter}");
+
+  expect(savedMappings).toEqual([]);
+  expect(screen.getByText("[Narrator]").query()).toBeNull();
+});
+
+test("keeps rapid edits to different mappings and persists them in order", async () => {
+  let finishFirstSave: ((result: { success: true }) => void) | undefined;
+  let saveCount = 0;
+  const setSpeakerMappings = vi.fn<typeof window.electronAPI.setSpeakerMappings>(() =>
+    ++saveCount === 1
+      ? new Promise((resolve) => {
+          finishFirstSave = resolve;
+        })
+      : Promise.resolve({ success: true }),
+  );
+  const screen = await renderSettings({
+    mappings: { Narrator: {}, Guest: {} },
+    voiceOptions: [gcpOption],
+    electronApi: { setSpeakerMappings },
+  });
+
+  await waitForMapping(screen, "Guest");
+  await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
+  await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
+  await screen.getByRole("button", { name: "Prompt for Guest" }).click();
+  await screen.getByRole("textbox", { name: "Prompt for Guest" }).fill("Shout");
+
+  await expect
+    .element(screen.getByRole("textbox", { name: "Prompt for Narrator" }))
+    .toHaveValue("Whisper");
+  await expect
+    .element(screen.getByRole("textbox", { name: "Prompt for Guest" }))
+    .toHaveValue("Shout");
+  expect(setSpeakerMappings).toHaveBeenCalledTimes(1);
+  finishFirstSave?.({ success: true });
+  await vi.waitFor(() => expect(setSpeakerMappings).toHaveBeenCalledTimes(2));
+  expect(setSpeakerMappings).toHaveBeenLastCalledWith({
+    Narrator: { prompt: "Whisper" },
+    Guest: { prompt: "Shout" },
+  });
+});
+
+test("keeps a local mapping edit when the initial load finishes late", async () => {
+  let finishLoad: ((mappings: Record<string, SpeakerMapping>) => void) | undefined;
+  const savedMappings: Record<string, SpeakerMapping>[] = [];
+  const screen = await renderSettings(
+    {
+      mappings: {},
+      voiceOptions: [gcpOption],
+      electronApi: {
+        getSpeakerMappings: () =>
+          new Promise((resolve) => {
+            finishLoad = resolve;
+          }),
+      },
+    },
+    savedMappings,
+  );
+
+  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
+  await screen.getByRole("button", { name: "Add Mapping" }).click();
+  await waitForMapping(screen);
+  finishLoad?.({ Old: {} });
+
+  await waitForMapping(screen, "Old");
+  expect(screen.getByText("[Narrator]").query()).not.toBeNull();
+  await vi.waitFor(() => expect(savedMappings).toEqual([{ Old: {}, Narrator: {} }]));
+});
+
+test("shows a failed mapping save", async () => {
+  const screen = await renderSettings({
+    voiceOptions: [gcpOption],
+    electronApi: {
+      setSpeakerMappings: () => Promise.resolve({ success: false, message: "Disk unavailable" }),
+    },
+  });
+
+  await waitForMapping(screen);
+  await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
+  await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
+
+  await expect
+    .element(screen.getByText("Failed to save speaker mappings: Disk unavailable"))
+    .toBeVisible();
 });

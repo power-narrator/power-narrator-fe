@@ -20,6 +20,7 @@ import { DEFAULT_SPEAKER_KEY, DEFAULT_SPEAKER_LABEL } from "../../../shared/narr
 import { toSpeakerPrompt } from "../../../shared/narration/prompt";
 import { speakerNameProblem } from "../../../shared/narration/speakerName";
 import { useSettings } from "../../context/useSettings";
+import { getErrorMessage } from "../../utils/errors";
 import type { SpeakerMapping, VoiceOption } from "../../../shared/types/tts";
 import { SpeakerPrompt } from "../SpeakerPrompt";
 import { VoiceSelector } from "./VoiceSelector";
@@ -62,12 +63,13 @@ function SpeakerMappingControls({
 
 export function SettingsModal({ opened, onClose }: SettingsModalProps) {
   const [keyPath, setKeyPath] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [keyError, setKeyError] = useState<string | null>(null);
+  const [mappingError, setMappingError] = useState<string | null>(null);
   const [newAlias, setNewAlias] = useState("");
   const [aliasProblem, setAliasProblem] = useState<string | null>(null);
   const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([]);
   const [xmlCliEnabled, setXmlCliEnabled] = useState(false);
-  const { mappings, saveMappings } = useSettings();
+  const { mappings, updateMappings } = useSettings();
   const mappedSpeakers = Object.entries(mappings).filter(([key]) => key !== DEFAULT_SPEAKER_KEY);
 
   useEffect(() => {
@@ -75,40 +77,61 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
       return;
     }
 
+    let cancelled = false;
     Promise.all([
       window.electronAPI.getGcpKeyPath(),
       window.electronAPI.getVoices(),
       window.electronAPI.getXmlCliEnabled(),
     ])
       .then(([path, loadedVoices, xmlEnabled]) => {
+        if (cancelled) return;
         setKeyPath(path || null);
         setVoiceOptions(loadedVoices || []);
         setXmlCliEnabled(Boolean(xmlEnabled));
       })
       .catch((loadError) => {
-        console.error(loadError);
+        if (!cancelled) console.error(loadError);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [opened]);
 
-  const updateMapping = (alias: string, change: Partial<SpeakerMapping>) => {
-    const nextMapping: SpeakerMapping = { ...mappings[alias], ...change };
-    if (!nextMapping.voice) {
-      delete nextMapping.voice;
-    }
-    if (!toSpeakerPrompt(nextMapping.prompt)) {
-      delete nextMapping.prompt;
-    }
+  const applyMappingChange = (
+    update: (current: Record<string, SpeakerMapping>) => Record<string, SpeakerMapping>,
+  ) => {
+    setMappingError(null);
+    void updateMappings(update).then(
+      () => setMappingError(null),
+      (saveError: unknown) =>
+        setMappingError(`Failed to save speaker mappings: ${getErrorMessage(saveError)}`),
+    );
+  };
 
-    void saveMappings({ ...mappings, [alias]: nextMapping });
+  const updateMapping = (alias: string, change: Partial<SpeakerMapping>) => {
+    applyMappingChange((current) => {
+      const nextMapping: SpeakerMapping = { ...current[alias], ...change };
+      if (!nextMapping.voice) {
+        delete nextMapping.voice;
+      }
+      if (!toSpeakerPrompt(nextMapping.prompt)) {
+        delete nextMapping.prompt;
+      }
+
+      return { ...current, [alias]: nextMapping };
+    });
   };
 
   const removeMapping = (alias: string) => {
-    const nextMappings = { ...mappings };
-    delete nextMappings[alias];
-    void saveMappings(nextMappings);
+    applyMappingChange((current) => {
+      const next = { ...current };
+      delete next[alias];
+      return next;
+    });
   };
 
   const addAlias = () => {
+    if (!newAlias.trim() || voiceOptions.length === 0) return;
     const trimmedAlias = newAlias.trim();
     const problem = speakerNameProblem(trimmedAlias);
     if (problem) {
@@ -121,12 +144,14 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
       return;
     }
 
-    void saveMappings({ ...mappings, [trimmedAlias]: {} });
+    applyMappingChange((current) =>
+      trimmedAlias in current ? current : { ...current, [trimmedAlias]: {} },
+    );
     setNewAlias("");
   };
 
   const handleSetKey = async () => {
-    setError(null);
+    setKeyError(null);
     try {
       const result = await window.electronAPI.setGcpKey();
       if (result.success) {
@@ -134,10 +159,10 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
         return;
       }
 
-      setError(result.message);
-    } catch (setKeyError) {
-      console.error(setKeyError);
-      setError("Failed to set key");
+      setKeyError(result.message);
+    } catch (error) {
+      console.error(error);
+      setKeyError("Failed to set key");
     }
   };
 
@@ -166,12 +191,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
           </Group>
         </Paper>
 
-        <Button
-          style={{ alignSelf: "flex-end" }}
-          onClick={() => void handleSetKey()}
-          variant="light"
-          size="xs"
-        >
+        <Button ml="auto" onClick={() => void handleSetKey()} variant="light" size="xs">
           Select Key File...
         </Button>
 
@@ -242,18 +262,19 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
             }}
             flex={1}
           />
-          <Button
-            size="xs"
-            onClick={addAlias}
-            disabled={!newAlias.trim() || voiceOptions.length === 0}
-          >
+          <Button size="xs" type="submit" disabled={!newAlias.trim() || voiceOptions.length === 0}>
             Add Mapping
           </Button>
         </Flex>
 
-        {error && (
+        {mappingError && (
           <Text c="red" size="sm">
-            {error}
+            {mappingError}
+          </Text>
+        )}
+        {keyError && (
+          <Text c="red" size="sm">
+            {keyError}
           </Text>
         )}
 
@@ -267,6 +288,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
           </Text>
         </Box>
         <Switch
+          aria-label="Enable XML CLI engine"
           checked={xmlCliEnabled}
           onChange={(event) => {
             const enabled = event.currentTarget.checked;
@@ -275,7 +297,7 @@ export function SettingsModal({ opened, onClose }: SettingsModalProps) {
           }}
         />
 
-        <Button onClick={onClose} style={{ alignSelf: "flex-end" }}>
+        <Button onClick={onClose} ml="auto">
           Close
         </Button>
       </Stack>

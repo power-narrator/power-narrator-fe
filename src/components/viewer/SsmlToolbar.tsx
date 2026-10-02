@@ -109,7 +109,7 @@ export function SsmlToolbar({
               }
             }}
           />
-          <ActionIcon size="sm" onClick={submitCustomBreak}>
+          <ActionIcon aria-label="Insert custom break" size="sm" onClick={submitCustomBreak}>
             <IconPlus size={14} />
           </ActionIcon>
         </Group>
