@@ -922,3 +922,203 @@ test("ignores voices previewed for a key that has since been replaced", async ()
     .element(screen.getByRole("option", { name: "future-voice (NEUTRAL)" }))
     .not.toBeInTheDocument();
 });
+
+const otherProviderOption: VoiceOption = {
+  provider: "vertex",
+  name: "Charon",
+  ssmlGender: "MALE",
+  models: [
+    {
+      id: "gemini-2.5-pro-tts",
+      label: "Gemini 2.5 Pro (Vertex)",
+      supportsPrompt: true,
+      languages: [
+        { code: "en-GB", label: "en-GB" },
+        { code: "fr-FR", label: "fr-FR" },
+      ],
+    },
+    {
+      id: "gemini-2.5-flash-tts",
+      label: "Gemini 2.5 Flash (Vertex)",
+      supportsPrompt: true,
+      languages: [
+        { code: "en-US", label: "en-US" },
+        { code: "fr-FR", label: "fr-FR" },
+      ],
+    },
+  ],
+};
+
+test("keeps the model when a voice from another provider offers it among several", async () => {
+  const screen = await renderSettings({
+    settings: {
+      speakerMappings: {
+        Narrator: {
+          voice: {
+            provider: "gcp",
+            voiceId: "Kore",
+            model: "gemini-2.5-flash-tts",
+            languageCode: "en-US",
+            supportsPrompt: true,
+          },
+        },
+      },
+    },
+    voiceOptions: [multiModelOption, otherProviderOption],
+  });
+
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", "Charon (MALE)");
+
+  await expect
+    .element(screen.getByRole("combobox", { name: "Model for Narrator" }))
+    .toHaveValue("Gemini 2.5 Flash (Vertex)");
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: {
+      voice: {
+        provider: "vertex",
+        voiceId: "Charon",
+        model: "gemini-2.5-flash-tts",
+        languageCode: "en-US",
+        supportsPrompt: true,
+      },
+    },
+  });
+});
+
+const flashVoice = {
+  provider: "gcp",
+  voiceId: "Kore",
+  model: "gemini-2.5-flash-tts",
+  languageCode: "en-US",
+  supportsPrompt: true,
+} as const;
+
+const detourOption: VoiceOption = { ...bilingualOption, name: "Puck" };
+
+test("restores the model and language after a detour through a voice without them", async () => {
+  const screen = await renderSettings({
+    settings: { speakerMappings: { Narrator: { voice: flashVoice } } },
+    voiceOptions: [multiModelOption, detourOption, otherProviderOption],
+  });
+
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", "Puck (FEMALE)");
+  await expect
+    .element(screen.getByRole("combobox", { name: "Model for Narrator" }))
+    .toHaveValue("");
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+  await choose(screen, "Voice for Narrator", "Charon (MALE)");
+
+  await expect
+    .element(screen.getByRole("combobox", { name: "Language for Narrator" }))
+    .toHaveValue("en-US");
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: { voice: { ...flashVoice, provider: "vertex", voiceId: "Charon" } },
+  });
+});
+
+test("carries a model chosen mid-detour forward, without substituting a different locale", async () => {
+  const screen = await renderSettings({
+    settings: { speakerMappings: { Narrator: { voice: flashVoice } } },
+    voiceOptions: [multiModelOption, detourOption, otherProviderOption],
+  });
+
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", "Puck (FEMALE)");
+  await choose(screen, "Model for Narrator", "Gemini 2.5 Pro");
+  await choose(screen, "Voice for Narrator", "Charon (MALE)");
+
+  await expect
+    .element(screen.getByRole("combobox", { name: "Model for Narrator" }))
+    .toHaveValue("Gemini 2.5 Pro (Vertex)");
+  await expect
+    .element(screen.getByRole("combobox", { name: "Language for Narrator" }))
+    .toHaveValue("");
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+  await choose(screen, "Language for Narrator", "fr-FR");
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: {
+      voice: {
+        provider: "vertex",
+        voiceId: "Charon",
+        model: "gemini-2.5-pro-tts",
+        languageCode: "fr-FR",
+        supportsPrompt: true,
+      },
+    },
+  });
+});
+
+test("carries a sole model chosen automatically through an incomplete voice", async () => {
+  const soleModelOption: VoiceOption = {
+    provider: "gcp",
+    name: "Zephyr",
+    ssmlGender: "FEMALE",
+    models: [
+      {
+        id: "chirp-3-hd",
+        label: "Chirp 3 HD",
+        supportsPrompt: false,
+        languages: [
+          { code: "de-DE", label: "de-DE" },
+          { code: "fr-FR", label: "fr-FR" },
+        ],
+      },
+    ],
+  };
+  const screen = await renderSettings({
+    settings: { speakerMappings: { Narrator: { voice: flashVoice } } },
+    voiceOptions: [multiModelOption, soleModelOption, detourOption],
+  });
+
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", "Zephyr (FEMALE)");
+  await expect
+    .element(screen.getByRole("combobox", { name: "Language for Narrator" }))
+    .toHaveValue("");
+  await choose(screen, "Voice for Narrator", "Puck (FEMALE)");
+
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: {
+      voice: {
+        provider: "gcp",
+        voiceId: "Puck",
+        model: "chirp-3-hd",
+        languageCode: "en-US",
+        supportsPrompt: false,
+      },
+    },
+  });
+});
+
+test("carries a sole language chosen automatically forward over the earlier one", async () => {
+  const flashModel = multiModelOption.models[1]!;
+  const germanOption: VoiceOption = {
+    ...multiModelOption,
+    name: "Fenrir",
+    models: [{ ...flashModel, languages: [{ code: "de-DE", label: "de-DE" }] }],
+  };
+  const bilingualFlashOption: VoiceOption = {
+    ...multiModelOption,
+    name: "Leda",
+    models: [
+      multiModelOption.models[0]!,
+      { ...flashModel, languages: [...flashModel.languages, { code: "de-DE", label: "de-DE" }] },
+    ],
+  };
+  const screen = await renderSettings({
+    settings: { speakerMappings: { Narrator: { voice: flashVoice } } },
+    voiceOptions: [multiModelOption, germanOption, bilingualFlashOption],
+  });
+
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", "Fenrir (FEMALE)");
+  await choose(screen, "Voice for Narrator", "Leda (FEMALE)");
+
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: { voice: { ...flashVoice, voiceId: "Leda", languageCode: "de-DE" } },
+  });
+});

@@ -16,6 +16,11 @@ type Draft = {
   language: string | null;
 };
 
+type Preference = {
+  model: string | null;
+  language: string | null;
+};
+
 const SAVED_VOICE_KEY = "saved";
 
 function getOptionKey(option: VoiceOption): string {
@@ -39,12 +44,23 @@ function findModel(option: VoiceOption, modelId: string | null): VoiceModel | un
   return option.models.find((candidate) => candidate.id === modelId);
 }
 
-function selectLanguageForModel(
+function selectModel(option: VoiceOption, preferredModel: string | null): string | null {
+  if (findModel(option, preferredModel)) {
+    return preferredModel;
+  }
+
+  return option.models.length === 1 ? option.models[0]!.id : null;
+}
+
+function selectLanguage(
   model: VoiceModel | undefined,
-  currentLanguage: string | null,
+  preferredLanguage: string | null,
 ): string | null {
-  if (!model || model.languages.some((candidate) => candidate.code === currentLanguage)) {
-    return model ? currentLanguage : null;
+  if (!model) {
+    return null;
+  }
+  if (model.languages.some((candidate) => candidate.code === preferredLanguage)) {
+    return preferredLanguage;
   }
 
   return model.languages.length === 1 ? model.languages[0]!.code : null;
@@ -68,6 +84,10 @@ export function VoiceSelector({
   options,
 }: VoiceSelectorProps) {
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [preference, setPreference] = useState<Preference>(() => ({
+    model: value?.model ?? null,
+    language: value?.languageCode ?? null,
+  }));
 
   const catalogue = options ?? [];
   const committedOption = value ? findOption(catalogue, value) : undefined;
@@ -90,6 +110,10 @@ export function VoiceSelector({
     languageCode: string | null,
   ) => {
     setDraft({ key: getOptionKey(option), model: modelId, language: languageCode });
+    setPreference((current) => ({
+      model: modelId ?? current.model,
+      language: languageCode ?? current.language,
+    }));
 
     const model = findModel(option, modelId);
     if (!model || !languageCode) {
@@ -107,11 +131,11 @@ export function VoiceSelector({
       return;
     }
 
-    const modelId = option.models.length === 1 ? option.models[0]!.id : null;
+    const modelId = selectModel(option, preference.model);
     updateDraftAndCommitVoice(
       option,
       modelId,
-      selectLanguageForModel(findModel(option, modelId), selectedLanguage),
+      selectLanguage(findModel(option, modelId), preference.language),
     );
   };
 
@@ -123,7 +147,7 @@ export function VoiceSelector({
     updateDraftAndCommitVoice(
       selectedOption,
       modelId,
-      selectLanguageForModel(findModel(selectedOption, modelId), selectedLanguage),
+      selectLanguage(findModel(selectedOption, modelId), preference.language),
     );
   };
 
