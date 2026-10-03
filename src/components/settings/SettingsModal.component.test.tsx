@@ -281,6 +281,56 @@ test("withholds a voice until its model is chosen, then saves the pair", async (
   });
 });
 
+test("blocks saving other edits while a replacement voice is incomplete", async () => {
+  const screen = await renderSettings({
+    settings: { speakerMappings: { Narrator: { voice: gcpVoice } } },
+    voiceOptions: [gcpOption, multiModelOption],
+  });
+
+  await waitForMapping(screen);
+  await screen.getByRole("switch", { name: "Enable XML CLI engine" }).click();
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+
+  await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+  await choose(screen, "Model for Narrator", "Gemini 2.5 Flash");
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: {
+      voice: {
+        provider: "gcp",
+        voiceId: "Kore",
+        model: "gemini-2.5-flash-tts",
+        languageCode: "en-US",
+        supportsPrompt: true,
+      },
+    },
+  });
+  expect(window.electronAPI.saveSettings).toHaveBeenCalledWith(
+    expect.objectContaining({ xmlCliEnabled: true }),
+  );
+});
+
+test("keeps the saved voice visible when a key preview removes an incomplete choice", async () => {
+  const screen = await renderSettings({
+    settings: { speakerMappings: { Narrator: { voice: gcpVoice } } },
+    voiceOptions: [gcpOption, multiModelOption],
+    electronApi: {
+      selectGcpKey: () => Promise.resolve({ success: true, path: "/keys/new.json" }),
+      previewVoices: () => Promise.resolve({ voices: [], failure: null }),
+    },
+  });
+
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", "Kore (FEMALE)");
+  await screen.getByRole("button", { name: "Select Key File..." }).click();
+
+  await expect
+    .element(screen.getByRole("combobox", { name: "Voice for Narrator" }))
+    .toHaveValue("Aoede (unavailable)");
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({ Narrator: { voice: gcpVoice } });
+});
+
 test("preselects the sole model and language of a voice that offers one", async () => {
   const screen = await renderSettings({ voiceOptions: [gcpOption] });
 

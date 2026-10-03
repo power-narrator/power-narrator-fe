@@ -5,7 +5,8 @@ import type { Voice, VoiceModel, VoiceOption } from "../../../shared/types/tts";
 type VoiceSelectorProps = {
   speakerLabel: string;
   value: Voice | undefined;
-  onChange: (voice: Voice | undefined) => void;
+  onChange: (voice: Voice) => void;
+  onIncompleteChange: (incomplete: boolean) => void;
   options: VoiceOption[] | null;
 };
 
@@ -59,7 +60,13 @@ function toVoice(option: VoiceOption, model: VoiceModel, languageCode: string): 
   };
 }
 
-export function VoiceSelector({ speakerLabel, value, onChange, options }: VoiceSelectorProps) {
+export function VoiceSelector({
+  speakerLabel,
+  value,
+  onChange,
+  onIncompleteChange,
+  options,
+}: VoiceSelectorProps) {
   const [draft, setDraft] = useState<Draft | null>(null);
 
   const catalogue = options ?? [];
@@ -85,7 +92,13 @@ export function VoiceSelector({ speakerLabel, value, onChange, options }: VoiceS
     setDraft({ key: getOptionKey(option), model: modelId, language: languageCode });
 
     const model = findModel(option, modelId);
-    onChange(model && languageCode ? toVoice(option, model, languageCode) : undefined);
+    if (!model || !languageCode) {
+      onIncompleteChange(true);
+      return;
+    }
+
+    onIncompleteChange(false);
+    onChange(toVoice(option, model, languageCode));
   };
 
   const handleVoiceChange = (optionKey: string | null) => {

@@ -38,21 +38,27 @@ type SpeakerMappingControlsProps = {
   speakerLabel: string;
   mapping: SpeakerMapping | undefined;
   voiceOptions: VoiceOption[] | null;
+  voiceCatalogueVersion: number;
   onChange: (change: Partial<SpeakerMapping>) => void;
+  onVoiceIncompleteChange: (incomplete: boolean) => void;
 };
 
 function SpeakerMappingControls({
   speakerLabel,
   mapping,
   voiceOptions,
+  voiceCatalogueVersion,
   onChange,
+  onVoiceIncompleteChange,
 }: SpeakerMappingControlsProps) {
   return (
     <Stack>
       <VoiceSelector
+        key={voiceCatalogueVersion}
         speakerLabel={speakerLabel}
         value={mapping?.voice}
         onChange={(voice) => onChange({ voice })}
+        onIncompleteChange={onVoiceIncompleteChange}
         options={voiceOptions}
       />
       <SpeakerPrompt
@@ -90,7 +96,9 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
   const [newAlias, setNewAlias] = useState("");
   const [aliasProblem, setAliasProblem] = useState<string | null>(null);
   const [voiceOptions, setVoiceOptions] = useState<VoiceOption[] | null>(null);
+  const [voiceCatalogueVersion, setVoiceCatalogueVersion] = useState(0);
   const [previewFailure, setPreviewFailure] = useState<string | null>(null);
+  const [incompleteVoices, setIncompleteVoices] = useState<Set<string>>(() => new Set());
   const voiceRequest = useRef(0);
   const { saveSettings } = useSettings();
   const mappings = draft?.speakerMappings ?? {};
@@ -135,6 +143,8 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
 
   const previewVoices = async (keyPath: string) => {
     const request = ++voiceRequest.current;
+    setVoiceCatalogueVersion((current) => current + 1);
+    setIncompleteVoices(new Set());
     setVoiceOptions(null);
     setPreviewFailure(null);
     const preview = await window.electronAPI
@@ -151,6 +161,16 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
 
   const updateDraft = (change: Partial<Settings>) => {
     setDraft((current) => current && { ...current, ...change });
+  };
+
+  const setVoiceIncomplete = (alias: string, incomplete: boolean) => {
+    setIncompleteVoices((current) => {
+      if (current.has(alias) === incomplete) return current;
+      const next = new Set(current);
+      if (incomplete) next.add(alias);
+      else next.delete(alias);
+      return next;
+    });
   };
 
   const applyMappingChange = (
@@ -181,6 +201,7 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
   };
 
   const removeMapping = (alias: string) => {
+    setVoiceIncomplete(alias, false);
     applyMappingChange((current) => {
       const next = { ...current };
       delete next[alias];
@@ -225,7 +246,7 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
   };
 
   const handleSave = async () => {
-    if (!draft || saving) return;
+    if (!draft || !dirty || incompleteVoices.size > 0 || saving) return;
     setSaving(true);
     setSaveError(null);
     try {
@@ -320,7 +341,11 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
                     speakerLabel={DEFAULT_SPEAKER_LABEL}
                     mapping={mappings[DEFAULT_SPEAKER_KEY]}
                     voiceOptions={voiceOptions}
+                    voiceCatalogueVersion={voiceCatalogueVersion}
                     onChange={(change) => updateMapping(DEFAULT_SPEAKER_KEY, change)}
+                    onVoiceIncompleteChange={(incomplete) =>
+                      setVoiceIncomplete(DEFAULT_SPEAKER_KEY, incomplete)
+                    }
                   />
                 </Group>
               </Paper>
@@ -335,7 +360,11 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
                       speakerLabel={alias}
                       mapping={mapping}
                       voiceOptions={voiceOptions}
+                      voiceCatalogueVersion={voiceCatalogueVersion}
                       onChange={(change) => updateMapping(alias, change)}
+                      onVoiceIncompleteChange={(incomplete) =>
+                        setVoiceIncomplete(alias, incomplete)
+                      }
                     />
                     <ActionIcon
                       aria-label={`Delete mapping for ${alias}`}
@@ -405,7 +434,11 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
           <Button variant="default" onClick={dismiss} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={() => void handleSave()} disabled={!dirty} loading={saving}>
+          <Button
+            onClick={() => void handleSave()}
+            disabled={!dirty || incompleteVoices.size > 0}
+            loading={saving}
+          >
             Save
           </Button>
         </Group>
