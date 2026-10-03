@@ -9,6 +9,7 @@ node_modules/
 /test-results/
 __screenshots__/
 /.vitest-attachments/
+/.vitest/
 
 # OS metadata
 .DS_Store
