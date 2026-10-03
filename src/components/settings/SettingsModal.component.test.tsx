@@ -949,20 +949,18 @@ const otherProviderOption: VoiceOption = {
   ],
 };
 
+const flashVoice = {
+  provider: "gcp",
+  voiceId: "Kore",
+  model: "gemini-2.5-flash-tts",
+  languageCode: "en-US",
+  supportsPrompt: true,
+} as const;
+
 test("keeps the model when a voice from another provider offers it among several", async () => {
   const screen = await renderSettings({
     settings: {
-      speakerMappings: {
-        Narrator: {
-          voice: {
-            provider: "gcp",
-            voiceId: "Kore",
-            model: "gemini-2.5-flash-tts",
-            languageCode: "en-US",
-            supportsPrompt: true,
-          },
-        },
-      },
+      speakerMappings: { Narrator: { voice: flashVoice } },
     },
     voiceOptions: [multiModelOption, otherProviderOption],
   });
@@ -974,32 +972,33 @@ test("keeps the model when a voice from another provider offers it among several
     .element(screen.getByRole("combobox", { name: "Model for Narrator" }))
     .toHaveValue("Gemini 2.5 Flash (Vertex)");
   await expect(saveAndGetMappings(screen)).resolves.toEqual({
-    Narrator: {
-      voice: {
-        provider: "vertex",
-        voiceId: "Charon",
-        model: "gemini-2.5-flash-tts",
-        languageCode: "en-US",
-        supportsPrompt: true,
-      },
-    },
+    Narrator: { voice: { ...flashVoice, provider: "vertex", voiceId: "Charon" } },
   });
 });
 
-const flashVoice = {
-  provider: "gcp",
-  voiceId: "Kore",
-  model: "gemini-2.5-flash-tts",
-  languageCode: "en-US",
-  supportsPrompt: true,
-} as const;
+const flashlessOption: VoiceOption = { ...bilingualOption, name: "Puck" };
 
-const detourOption: VoiceOption = { ...bilingualOption, name: "Puck" };
+const soleChirpOption: VoiceOption = {
+  provider: "gcp",
+  name: "Zephyr",
+  ssmlGender: "FEMALE",
+  models: [
+    {
+      id: "chirp-3-hd",
+      label: "Chirp 3 HD",
+      supportsPrompt: false,
+      languages: [
+        { code: "de-DE", label: "de-DE" },
+        { code: "fr-FR", label: "fr-FR" },
+      ],
+    },
+  ],
+};
 
 test("restores the model and language after a detour through a voice without them", async () => {
   const screen = await renderSettings({
     settings: { speakerMappings: { Narrator: { voice: flashVoice } } },
-    voiceOptions: [multiModelOption, detourOption, otherProviderOption],
+    voiceOptions: [multiModelOption, flashlessOption, otherProviderOption],
   });
 
   await waitForMapping(screen);
@@ -1022,7 +1021,7 @@ test("restores the model and language after a detour through a voice without the
 test("carries a model chosen mid-detour forward, without substituting a different locale", async () => {
   const screen = await renderSettings({
     settings: { speakerMappings: { Narrator: { voice: flashVoice } } },
-    voiceOptions: [multiModelOption, detourOption, otherProviderOption],
+    voiceOptions: [multiModelOption, flashlessOption, otherProviderOption],
   });
 
   await waitForMapping(screen);
@@ -1053,25 +1052,9 @@ test("carries a model chosen mid-detour forward, without substituting a differen
 });
 
 test("carries a sole model chosen automatically through an incomplete voice", async () => {
-  const soleModelOption: VoiceOption = {
-    provider: "gcp",
-    name: "Zephyr",
-    ssmlGender: "FEMALE",
-    models: [
-      {
-        id: "chirp-3-hd",
-        label: "Chirp 3 HD",
-        supportsPrompt: false,
-        languages: [
-          { code: "de-DE", label: "de-DE" },
-          { code: "fr-FR", label: "fr-FR" },
-        ],
-      },
-    ],
-  };
   const screen = await renderSettings({
     settings: { speakerMappings: { Narrator: { voice: flashVoice } } },
-    voiceOptions: [multiModelOption, soleModelOption, detourOption],
+    voiceOptions: [multiModelOption, soleChirpOption, flashlessOption],
   });
 
   await waitForMapping(screen);
@@ -1095,7 +1078,8 @@ test("carries a sole model chosen automatically through an incomplete voice", as
 });
 
 test("carries a sole language chosen automatically forward over the earlier one", async () => {
-  const flashModel = multiModelOption.models[1]!;
+  const findModel = (id: string) => multiModelOption.models.find((model) => model.id === id)!;
+  const flashModel = findModel("gemini-2.5-flash-tts");
   const germanOption: VoiceOption = {
     ...multiModelOption,
     name: "Fenrir",
@@ -1105,7 +1089,7 @@ test("carries a sole language chosen automatically forward over the earlier one"
     ...multiModelOption,
     name: "Leda",
     models: [
-      multiModelOption.models[0]!,
+      findModel("gemini-2.5-pro-tts"),
       { ...flashModel, languages: [...flashModel.languages, { code: "de-DE", label: "de-DE" }] },
     ],
   };
@@ -1120,5 +1104,72 @@ test("carries a sole language chosen automatically forward over the earlier one"
 
   await expect(saveAndGetMappings(screen)).resolves.toEqual({
     Narrator: { voice: { ...flashVoice, voiceId: "Leda", languageCode: "de-DE" } },
+  });
+});
+
+test("remembers an incomplete choice's model through a key preview", async () => {
+  const screen = await renderSettings({
+    settings: { speakerMappings: { Narrator: { voice: flashVoice } } },
+    voiceOptions: [multiModelOption, soleChirpOption, flashlessOption],
+    electronApi: {
+      selectGcpKey: () => Promise.resolve({ success: true, path: "/keys/new.json" }),
+    },
+  });
+
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", "Zephyr (FEMALE)");
+  await screen.getByRole("button", { name: "Select Key File..." }).click();
+  await expect
+    .element(screen.getByRole("combobox", { name: "Voice for Narrator" }))
+    .toHaveValue("Kore (FEMALE)");
+  await choose(screen, "Voice for Narrator", "Puck (FEMALE)");
+
+  await expect
+    .element(screen.getByRole("combobox", { name: "Model for Narrator" }))
+    .toHaveValue("Chirp 3 HD");
+});
+
+test("carries a manually chosen language into the next voice that offers it", async () => {
+  const screen = await renderSettings({
+    settings: { speakerMappings: { Narrator: { voice: flashVoice } } },
+    voiceOptions: [multiModelOption, otherProviderOption, { ...otherProviderOption, name: "Orus" }],
+  });
+
+  await waitForMapping(screen);
+  await choose(screen, "Voice for Narrator", "Charon (MALE)");
+  await choose(screen, "Language for Narrator", "fr-FR");
+  await choose(screen, "Voice for Narrator", "Orus (MALE)");
+
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: {
+      voice: { ...flashVoice, provider: "vertex", voiceId: "Orus", languageCode: "fr-FR" },
+    },
+  });
+});
+
+test("remembers each speaker's choices separately", async () => {
+  const screen = await renderSettings({
+    settings: {
+      speakerMappings: { Narrator: { voice: flashVoice }, Guest: { voice: flashVoice } },
+    },
+    voiceOptions: [multiModelOption, flashlessOption, otherProviderOption],
+  });
+
+  await waitForMapping(screen, "Guest");
+  await choose(screen, "Voice for Narrator", "Puck (FEMALE)");
+  await choose(screen, "Model for Narrator", "Chirp 3 HD");
+  await choose(screen, "Voice for Guest", "Charon (MALE)");
+
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: {
+      voice: {
+        provider: "gcp",
+        voiceId: "Puck",
+        model: "chirp-3-hd",
+        languageCode: "en-US",
+        supportsPrompt: false,
+      },
+    },
+    Guest: { voice: { ...flashVoice, provider: "vertex", voiceId: "Charon" } },
   });
 });

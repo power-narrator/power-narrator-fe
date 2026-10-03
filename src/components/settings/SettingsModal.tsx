@@ -54,12 +54,12 @@ function SpeakerMappingControls({
   return (
     <Stack>
       <VoiceSelector
-        key={voiceCatalogueVersion}
         speakerLabel={speakerLabel}
         value={mapping?.voice}
         onChange={(voice) => onChange({ voice })}
         onIncompleteChange={onVoiceIncompleteChange}
         options={voiceOptions}
+        catalogueVersion={voiceCatalogueVersion}
       />
       <SpeakerPrompt
         speakerLabel={speakerLabel}

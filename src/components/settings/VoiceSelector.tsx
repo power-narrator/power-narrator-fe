@@ -8,18 +8,15 @@ type VoiceSelectorProps = {
   onChange: (voice: Voice) => void;
   onIncompleteChange: (incomplete: boolean) => void;
   options: VoiceOption[] | null;
+  catalogueVersion: number;
 };
 
-type Draft = {
-  key: string;
+type Choices = {
   model: string | null;
   language: string | null;
 };
 
-type Preference = {
-  model: string | null;
-  language: string | null;
-};
+type Draft = Choices & { key: string };
 
 const SAVED_VOICE_KEY = "saved";
 
@@ -44,26 +41,31 @@ function findModel(option: VoiceOption, modelId: string | null): VoiceModel | un
   return option.models.find((candidate) => candidate.id === modelId);
 }
 
-function selectModel(option: VoiceOption, preferredModel: string | null): string | null {
-  if (findModel(option, preferredModel)) {
-    return preferredModel;
+function selectPreferredOrSole(available: string[], preferred: string | null): string | null {
+  if (preferred !== null && available.includes(preferred)) {
+    return preferred;
   }
 
-  return option.models.length === 1 ? option.models[0]!.id : null;
+  return available.length === 1 ? available[0]! : null;
+}
+
+function selectModel(option: VoiceOption, preferredModel: string | null): string | null {
+  return selectPreferredOrSole(
+    option.models.map((model) => model.id),
+    preferredModel,
+  );
 }
 
 function selectLanguage(
   model: VoiceModel | undefined,
   preferredLanguage: string | null,
 ): string | null {
-  if (!model) {
-    return null;
-  }
-  if (model.languages.some((candidate) => candidate.code === preferredLanguage)) {
-    return preferredLanguage;
-  }
-
-  return model.languages.length === 1 ? model.languages[0]!.code : null;
+  return model
+    ? selectPreferredOrSole(
+        model.languages.map((language) => language.code),
+        preferredLanguage,
+      )
+    : null;
 }
 
 function toVoice(option: VoiceOption, model: VoiceModel, languageCode: string): Voice {
@@ -82,9 +84,15 @@ export function VoiceSelector({
   onChange,
   onIncompleteChange,
   options,
+  catalogueVersion,
 }: VoiceSelectorProps) {
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [preference, setPreference] = useState<Preference>(() => ({
+  const [draftCatalogueVersion, setDraftCatalogueVersion] = useState(catalogueVersion);
+  if (catalogueVersion !== draftCatalogueVersion) {
+    setDraftCatalogueVersion(catalogueVersion);
+    setDraft(null);
+  }
+  const [preference, setPreference] = useState<Choices>(() => ({
     model: value?.model ?? null,
     language: value?.languageCode ?? null,
   }));
