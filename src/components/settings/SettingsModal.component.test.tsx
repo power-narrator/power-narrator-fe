@@ -142,6 +142,12 @@ async function choose(screen: SettingsScreen, controlName: string, optionName: s
   await screen.getByRole("option", { name: optionName }).click();
 }
 
+async function addMapping(screen: SettingsScreen, alias: string, voice: string | RegExp) {
+  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill(alias);
+  await choose(screen, "Voice for new speaker", voice);
+  await screen.getByRole("button", { name: "Add Mapping" }).click();
+}
+
 async function saveAndGetMappings(screen: SettingsScreen) {
   await screen.getByRole("button", { name: "Save" }).click();
   await waitForClosed(screen);
@@ -158,9 +164,7 @@ test("creates a mapping from the voices exposed by the provider registry", async
     voiceOptions: [registryOption],
   });
 
-  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
-  await screen.getByRole("button", { name: "Add Mapping" }).click();
-  await choose(screen, "Voice for Narrator", "future-voice (NEUTRAL)");
+  await addMapping(screen, "Narrator", "future-voice (NEUTRAL)");
 
   await expect(saveAndGetMappings(screen)).resolves.toEqual({
     Narrator: {
@@ -173,6 +177,85 @@ test("creates a mapping from the voices exposed by the provider registry", async
       },
     },
   });
+});
+
+test("adds a new speaker only once its voice is complete, keeping its prompt", async () => {
+  const screen = await renderSettings({
+    settings: { speakerMappings: {} },
+    voiceOptions: [multiModelOption],
+  });
+  const add = screen.getByRole("button", { name: "Add Mapping" });
+
+  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
+  await expect.element(add).toBeDisabled();
+  await choose(screen, "Voice for new speaker", "Kore (FEMALE)");
+  await expect.element(add).toBeDisabled();
+  await choose(screen, "Model for new speaker", "Gemini 2.5 Flash");
+  await screen.getByRole("button", { name: "Prompt for new speaker" }).click();
+  await screen.getByRole("textbox", { name: "Prompt for new speaker" }).fill("Whisper");
+  await add.click();
+
+  await waitForMapping(screen);
+  await expect.element(screen.getByPlaceholder("New alias (e.g. speaker 1)")).toHaveValue("");
+  await expect
+    .element(screen.getByRole("combobox", { name: "Voice for new speaker" }))
+    .toHaveValue("");
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({
+    Narrator: {
+      voice: {
+        provider: "gcp",
+        voiceId: "Kore",
+        model: "gemini-2.5-flash-tts",
+        languageCode: "en-US",
+        supportsPrompt: true,
+      },
+      prompt: "Whisper",
+    },
+  });
+});
+
+test("saves other edits while leaving an unfinished new speaker out", async () => {
+  const screen = await renderSettings({
+    settings: { speakerMappings: {} },
+    voiceOptions: [multiModelOption],
+  });
+
+  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
+  await choose(screen, "Voice for new speaker", "Kore (FEMALE)");
+  await screen.getByRole("switch", { name: "Enable XML CLI engine" }).click();
+
+  await expect(saveAndGetMappings(screen)).resolves.toEqual({});
+});
+
+test("refuses a new speaker whose alias is already mapped", async () => {
+  const screen = await renderSettings({ voiceOptions: [gcpOption] });
+
+  await waitForMapping(screen);
+  await addMapping(screen, " Narrator ", /Aoede/);
+
+  await expect.element(screen.getByText('"Narrator" already has a mapping')).toBeVisible();
+  expect(screen.getByText("[Narrator]").elements()).toHaveLength(1);
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+});
+
+test("clears an unfinished new speaker when a newly selected key replaces the voices", async () => {
+  const screen = await renderSettings({
+    settings: { speakerMappings: {} },
+    voiceOptions: [gcpOption],
+    electronApi: {
+      selectGcpKey: () => Promise.resolve({ success: true, path: "/keys/new.json" }),
+      previewVoices: () => Promise.resolve({ voices: [registryOption], failure: null }),
+    },
+  });
+
+  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
+  await choose(screen, "Voice for new speaker", /Aoede/);
+  await screen.getByRole("button", { name: "Select Key File..." }).click();
+
+  await expect
+    .element(screen.getByRole("combobox", { name: "Voice for new speaker" }))
+    .toHaveValue("");
+  await expect.element(screen.getByRole("button", { name: "Add Mapping" })).toBeDisabled();
 });
 
 const unavailableMapping: SpeakerMapping = {
@@ -582,8 +665,7 @@ test("refuses a mapping name the notes syntax cannot express", async () => {
   });
 
   await vi.waitFor(() => expect(screen.getByText("[prompt: legacy]").query()).not.toBeNull());
-  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("p:aside");
-  await screen.getByRole("button", { name: "Add Mapping" }).click();
+  await addMapping(screen, "p:aside", /Aoede/);
 
   await vi.waitFor(() =>
     expect(screen.getByText(/cannot start with p: or prompt:/).query()).not.toBeNull(),
@@ -603,6 +685,7 @@ test("submits an alias once with Enter", async () => {
     voiceOptions: [gcpOption],
   });
 
+  await choose(screen, "Voice for new speaker", /Aoede/);
   await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
   await userEvent.keyboard("{Enter}");
 
@@ -656,7 +739,10 @@ test("shows a failed load and offers nothing to save", async () => {
 });
 
 test("disables Save again once every edit is reversed", async () => {
-  const screen = await renderSettings({ voiceOptions: [gcpOption] });
+  const screen = await renderSettings({
+    settings: { speakerMappings: { Narrator: { voice: gcpVoice } } },
+    voiceOptions: [gcpOption],
+  });
   const save = screen.getByRole("button", { name: "Save" });
   const engine = screen.getByRole("switch", { name: "Enable XML CLI engine" });
 
@@ -666,8 +752,7 @@ test("disables Save again once every edit is reversed", async () => {
   await expect.element(save).toBeEnabled();
 
   await engine.click();
-  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
-  await screen.getByRole("button", { name: "Add Mapping" }).click();
+  await addMapping(screen, "Narrator", /Aoede/);
 
   await expect.element(save).toBeDisabled();
 });
@@ -687,8 +772,7 @@ test("saves a draft of every setting together, leaving the app on saved settings
   await screen.getByRole("button", { name: "Prompt for Narrator" }).click();
   await screen.getByRole("textbox", { name: "Prompt for Narrator" }).fill("Whisper");
   await screen.getByRole("button", { name: "Delete mapping for Guest" }).click();
-  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Host");
-  await screen.getByRole("button", { name: "Add Mapping" }).click();
+  await addMapping(screen, "Host", /Aoede/);
   await screen.getByRole("switch", { name: "Enable XML CLI engine" }).click();
 
   await expect.element(screen.getByText("/keys/new.json")).toBeVisible();
@@ -701,7 +785,11 @@ test("saves a draft of every setting together, leaving the app on saved settings
 
   const draft: Settings = {
     gcpKeyPath: "/keys/new.json",
-    speakerMappings: { Narrator: { prompt: "Whisper" }, _default_: { voice: gcpVoice }, Host: {} },
+    speakerMappings: {
+      Narrator: { prompt: "Whisper" },
+      _default_: { voice: gcpVoice },
+      Host: { voice: gcpVoice },
+    },
     xmlCliEnabled: true,
   };
   expect(window.electronAPI.saveSettings).toHaveBeenCalledExactlyOnceWith(draft);
@@ -830,9 +918,7 @@ test("lets a first-time user choose a voice from a newly selected key and save b
 
   await expect.element(screen.getByText("Not Configured")).toBeVisible();
   await screen.getByRole("button", { name: "Select Key File..." }).click();
-  await screen.getByPlaceholder("New alias (e.g. speaker 1)").fill("Narrator");
-  await screen.getByRole("button", { name: "Add Mapping" }).click();
-  await choose(screen, "Voice for Narrator", "Aoede (FEMALE)");
+  await addMapping(screen, "Narrator", "Aoede (FEMALE)");
   await screen.getByRole("combobox", { name: "Voice for Default" }).click();
   await expect
     .element(screen.getByRole("option", { name: "future-voice (NEUTRAL)" }))

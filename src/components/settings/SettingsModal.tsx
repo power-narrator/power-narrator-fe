@@ -5,7 +5,6 @@ import {
   Code,
   Divider,
   Fieldset,
-  Flex,
   Group,
   Loader,
   Modal,
@@ -13,63 +12,24 @@ import {
   Stack,
   Switch,
   Text,
-  TextInput,
   Title,
 } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { DEFAULT_SPEAKER_KEY, DEFAULT_SPEAKER_LABEL } from "../../../shared/narration/speaker";
 import { toSpeakerPrompt } from "../../../shared/narration/prompt";
-import { speakerNameProblem } from "../../../shared/narration/speakerName";
 import { useSettings } from "../../context/useSettings";
 import { getErrorMessage } from "../../utils/errors";
 import { isDeepEqual } from "../../utils/isDeepEqual";
 import type { Settings } from "../../../shared/types/settings";
 import type { SpeakerMapping, VoiceOption } from "../../../shared/types/tts";
-import { SpeakerPrompt } from "../SpeakerPrompt";
-import { VoiceSelector } from "./VoiceSelector";
+import { NewSpeakerMappingForm } from "./NewSpeakerMappingForm";
+import { SpeakerMappingControls } from "./SpeakerMappingControls";
 
 type SettingsModalProps = {
   opened: boolean;
   onClose: () => void;
 };
-
-type SpeakerMappingControlsProps = {
-  speakerLabel: string;
-  mapping: SpeakerMapping | undefined;
-  voiceOptions: VoiceOption[] | null;
-  voiceCatalogueVersion: number;
-  onChange: (change: Partial<SpeakerMapping>) => void;
-  onVoiceIncompleteChange: (incomplete: boolean) => void;
-};
-
-function SpeakerMappingControls({
-  speakerLabel,
-  mapping,
-  voiceOptions,
-  voiceCatalogueVersion,
-  onChange,
-  onVoiceIncompleteChange,
-}: SpeakerMappingControlsProps) {
-  return (
-    <Stack>
-      <VoiceSelector
-        key={voiceCatalogueVersion}
-        speakerLabel={speakerLabel}
-        value={mapping?.voice}
-        onChange={(voice) => onChange({ voice })}
-        onIncompleteChange={onVoiceIncompleteChange}
-        options={voiceOptions}
-      />
-      <SpeakerPrompt
-        speakerLabel={speakerLabel}
-        value={mapping?.prompt}
-        supportsPrompt={mapping?.voice?.supportsPrompt}
-        onChange={(prompt) => onChange({ prompt })}
-      />
-    </Stack>
-  );
-}
 
 type SectionHeadingProps = {
   title: string;
@@ -117,8 +77,6 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [keyError, setKeyError] = useState<string | null>(null);
-  const [newAlias, setNewAlias] = useState("");
-  const [aliasProblem, setAliasProblem] = useState<string | null>(null);
   const [voiceOptions, setVoiceOptions] = useState<VoiceOption[] | null>(null);
   const [voiceCatalogueVersion, setVoiceCatalogueVersion] = useState(0);
   const [previewFailure, setPreviewFailure] = useState<string | null>(null);
@@ -129,8 +87,6 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
   const mappedSpeakers = Object.entries(mappings).filter(([key]) => key !== DEFAULT_SPEAKER_KEY);
   const dirty = load.status === "loaded" && draft !== null && !isDeepEqual(draft, load.saved);
   const canSave = dirty && incompleteVoices.size === 0;
-  const trimmedAlias = newAlias.trim();
-  const canAddAlias = trimmedAlias !== "" && !!voiceOptions?.length;
 
   useEffect(() => {
     if (!opened) {
@@ -234,23 +190,6 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
       delete next[alias];
       return next;
     });
-  };
-
-  const addAlias = () => {
-    if (!canAddAlias) return;
-    const problem = speakerNameProblem(trimmedAlias);
-    if (problem) {
-      setAliasProblem(problem);
-      return;
-    }
-
-    setAliasProblem(null);
-    if (mappings[trimmedAlias]) {
-      return;
-    }
-
-    applyMappingChange((current) => ({ ...current, [trimmedAlias]: {} }));
-    setNewAlias("");
   };
 
   const handleSelectKey = async () => {
@@ -379,29 +318,12 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
                 </Paper>
               ))}
 
-              <Flex
-                component="form"
-                gap="xs"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  addAlias();
-                }}
-              >
-                <TextInput
-                  placeholder="New alias (e.g. speaker 1)"
-                  size="xs"
-                  value={newAlias}
-                  error={aliasProblem}
-                  onChange={(event) => {
-                    setNewAlias(event.currentTarget.value);
-                    setAliasProblem(null);
-                  }}
-                  flex={1}
-                />
-                <Button size="xs" type="submit" disabled={!canAddAlias}>
-                  Add Mapping
-                </Button>
-              </Flex>
+              <NewSpeakerMappingForm
+                voiceOptions={voiceOptions}
+                voiceCatalogueVersion={voiceCatalogueVersion}
+                mappedAliases={Object.keys(mappings)}
+                onAdd={updateMapping}
+              />
 
               <Divider my="sm" />
 
