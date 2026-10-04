@@ -1,3 +1,5 @@
+import { DEFAULT_SPEAKER_KEY } from "./speaker.js";
+
 /**
  * Shared with the parser so a speaker name can never be read back as a prompt
  * marker.
@@ -8,6 +10,9 @@ export function speakerNameProblem(name: string): string | null {
   const trimmed = name.trim();
   if (!trimmed) {
     return "Enter a speaker name.";
+  }
+  if (trimmed === DEFAULT_SPEAKER_KEY) {
+    return `"${trimmed}" is reserved for the default voice`;
   }
   if (trimmed.includes("]") || trimmed.includes("\n")) {
     return 'A speaker name cannot contain "]" or a line break.';

@@ -238,6 +238,19 @@ test("refuses a new speaker whose alias is already mapped", async () => {
   await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 });
 
+test("refuses the reserved default speaker key as a new alias", async () => {
+  const screen = await renderSettings({
+    settings: { speakerMappings: {} },
+    voiceOptions: [gcpOption],
+  });
+
+  await addMapping(screen, "_default_", /Aoede/);
+
+  await expect.element(screen.getByText('"_default_" is reserved for the default voice')).toBeVisible();
+  await expect.element(screen.getByRole("combobox", { name: "Voice for Default" })).toHaveValue("");
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+});
+
 test("clears an unfinished new speaker when a newly selected key replaces the voices", async () => {
   const screen = await renderSettings({
     settings: { speakerMappings: {} },
