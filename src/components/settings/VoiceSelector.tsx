@@ -11,12 +11,12 @@ type VoiceSelectorProps = {
 };
 
 type Selection = {
-  key: string | null;
-  model: string | null;
-  language: string | null;
+  voiceKey: string | null;
+  modelId: string | null;
+  languageCode: string | null;
 };
 
-const SAVED_VOICE_KEY = "saved";
+const UNAVAILABLE_VOICE_KEY = "unavailable";
 
 function getOptionKey(option: VoiceOption): string {
   return JSON.stringify([option.provider, option.name, option.ssmlGender]);
@@ -72,13 +72,17 @@ export function VoiceSelector({
   const catalogue = options ?? [];
   const committedOption = value ? findOption(catalogue, value) : undefined;
   const selection: Selection = draft ?? {
-    key: committedOption ? getOptionKey(committedOption) : value ? SAVED_VOICE_KEY : null,
-    model: value?.model ?? null,
-    language: value?.languageCode ?? null,
+    voiceKey: committedOption
+      ? getOptionKey(committedOption)
+      : value
+        ? UNAVAILABLE_VOICE_KEY
+        : null,
+    modelId: value?.model ?? null,
+    languageCode: value?.languageCode ?? null,
   };
-  const selectedOption = catalogue.find((option) => getOptionKey(option) === selection.key);
-  const selectedModel = selectedOption ? findModel(selectedOption, selection.model) : undefined;
-  const savedVoice = selection.key === SAVED_VOICE_KEY ? value : undefined;
+  const selectedOption = catalogue.find((option) => getOptionKey(option) === selection.voiceKey);
+  const selectedModel = selectedOption ? findModel(selectedOption, selection.modelId) : undefined;
+  const unavailableVoice = selection.voiceKey === UNAVAILABLE_VOICE_KEY ? value : undefined;
 
   const updateDraftAndCommitVoice = (
     option: VoiceOption,
@@ -87,7 +91,7 @@ export function VoiceSelector({
   ) => {
     const model = findModel(option, modelId);
     const languageCode = selectLanguageForModel(model, preferredLanguage);
-    setDraft({ key: getOptionKey(option), model: modelId, language: languageCode });
+    setDraft({ voiceKey: getOptionKey(option), modelId, languageCode });
 
     if (!model || !languageCode) {
       onIncompleteChange(true);
@@ -105,7 +109,7 @@ export function VoiceSelector({
     }
 
     const modelId = option.models.length === 1 ? option.models[0]!.id : null;
-    updateDraftAndCommitVoice(option, modelId, selection.language);
+    updateDraftAndCommitVoice(option, modelId, selection.languageCode);
   };
 
   const handleModelChange = (modelId: string | null) => {
@@ -113,7 +117,7 @@ export function VoiceSelector({
       return;
     }
 
-    updateDraftAndCommitVoice(selectedOption, modelId, selection.language);
+    updateDraftAndCommitVoice(selectedOption, modelId, selection.languageCode);
   };
 
   const handleLanguageChange = (languageCode: string | null) => {
@@ -128,11 +132,13 @@ export function VoiceSelector({
         aria-label={`Voice for ${speakerLabel}`}
         placeholder="Select Voice"
         data={[
-          ...(savedVoice
+          ...(unavailableVoice
             ? [
                 {
-                  value: SAVED_VOICE_KEY,
-                  label: options ? `${savedVoice.voiceId} (unavailable)` : savedVoice.voiceId,
+                  value: UNAVAILABLE_VOICE_KEY,
+                  label: options
+                    ? `${unavailableVoice.voiceId} (unavailable)`
+                    : unavailableVoice.voiceId,
                   disabled: true,
                 },
               ]
@@ -142,7 +148,7 @@ export function VoiceSelector({
             label: `${option.name} (${option.ssmlGender})`,
           })),
         ]}
-        value={selectedOption || savedVoice ? selection.key : null}
+        value={selectedOption || unavailableVoice ? selection.voiceKey : null}
         onChange={handleVoiceChange}
         searchable
         size="xs"
@@ -151,14 +157,14 @@ export function VoiceSelector({
         aria-label={`Model for ${speakerLabel}`}
         placeholder="Select Model"
         data={
-          savedVoice
-            ? [savedVoice.model]
+          unavailableVoice
+            ? [unavailableVoice.model]
             : (selectedOption?.models ?? []).map((model) => ({
                 value: model.id,
                 label: model.label,
               }))
         }
-        value={selection.model}
+        value={selection.modelId}
         onChange={handleModelChange}
         disabled={!selectedOption}
         size="xs"
@@ -167,14 +173,14 @@ export function VoiceSelector({
         aria-label={`Language for ${speakerLabel}`}
         placeholder="Select Language"
         data={
-          savedVoice
-            ? [savedVoice.languageCode]
+          unavailableVoice
+            ? [unavailableVoice.languageCode]
             : (selectedModel?.languages ?? []).map((language) => ({
                 value: language.code,
                 label: language.label,
               }))
         }
-        value={selection.language}
+        value={selection.languageCode}
         onChange={handleLanguageChange}
         disabled={!selectedModel}
         searchable
