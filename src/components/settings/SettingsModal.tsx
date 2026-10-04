@@ -17,7 +17,7 @@ import {
   Title,
 } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { DEFAULT_SPEAKER_KEY, DEFAULT_SPEAKER_LABEL } from "../../../shared/narration/speaker";
 import { toSpeakerPrompt } from "../../../shared/narration/prompt";
 import { speakerNameProblem } from "../../../shared/narration/speakerName";
@@ -71,6 +71,30 @@ function SpeakerMappingControls({
   );
 }
 
+type SectionHeadingProps = {
+  title: string;
+  children: ReactNode;
+};
+
+function SectionHeading({ title, children }: SectionHeadingProps) {
+  return (
+    <Box>
+      <Title order={4}>{title}</Title>
+      <Text size="sm" c="dimmed">
+        {children}
+      </Text>
+    </Box>
+  );
+}
+
+function ErrorText({ children }: { children: ReactNode }) {
+  return (
+    <Text c="red" size="sm">
+      {children}
+    </Text>
+  );
+}
+
 type SavedSettingsLoad =
   | { status: "loading" }
   | { status: "failed"; message: string }
@@ -104,6 +128,9 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
   const mappings = draft?.speakerMappings ?? {};
   const mappedSpeakers = Object.entries(mappings).filter(([key]) => key !== DEFAULT_SPEAKER_KEY);
   const dirty = load.status === "loaded" && draft !== null && !isDeepEqual(draft, load.saved);
+  const canSave = dirty && incompleteVoices.size === 0;
+  const trimmedAlias = newAlias.trim();
+  const canAddAlias = trimmedAlias !== "" && !!voiceOptions?.length;
 
   useEffect(() => {
     if (!opened) {
@@ -210,8 +237,7 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
   };
 
   const addAlias = () => {
-    if (!newAlias.trim() || !voiceOptions?.length) return;
-    const trimmedAlias = newAlias.trim();
+    if (!canAddAlias) return;
     const problem = speakerNameProblem(trimmedAlias);
     if (problem) {
       setAliasProblem(problem);
@@ -223,9 +249,7 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
       return;
     }
 
-    applyMappingChange((current) =>
-      trimmedAlias in current ? current : { ...current, [trimmedAlias]: {} },
-    );
+    applyMappingChange((current) => ({ ...current, [trimmedAlias]: {} }));
     setNewAlias("");
   };
 
@@ -246,7 +270,7 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
   };
 
   const handleSave = async () => {
-    if (!draft || !dirty || incompleteVoices.size > 0 || saving) return;
+    if (!canSave || saving) return;
     setSaving(true);
     setSaveError(null);
     try {
@@ -275,34 +299,20 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
             <Text size="sm">Loading settings…</Text>
           </Group>
         )}
-        {load.status === "failed" && (
-          <Text c="red" size="sm">
-            {load.message}
-          </Text>
-        )}
+        {load.status === "failed" && <ErrorText>{load.message}</ErrorText>}
         {draft && (
           <Fieldset variant="unstyled" disabled={saving}>
             <Stack gap="sm">
-              <Box>
-                <Title order={4}>Google Cloud TTS Configuration</Title>
-                <Text size="sm" c="dimmed">
-                  To use Google Cloud, you must provide a valid Google Cloud Service Account JSON
-                  key.
-                </Text>
-              </Box>
+              <SectionHeading title="Google Cloud TTS Configuration">
+                To use Google Cloud, you must provide a valid Google Cloud Service Account JSON key.
+              </SectionHeading>
 
               <Paper withBorder p="xs">
                 <Group justify="space-between">
                   <Text size="sm">Current Key:</Text>
-                  {draft.gcpKeyPath ? (
-                    <Code p="xs" bg="green" style={{ overflowWrap: "anywhere" }}>
-                      {draft.gcpKeyPath}
-                    </Code>
-                  ) : (
-                    <Text size="sm" c="red">
-                      Not Configured
-                    </Text>
-                  )}
+                  <Text size="sm" p="xs" c={draft.gcpKeyPath ? undefined : "red"}>
+                    {draft.gcpKeyPath ?? "Not Configured"}
+                  </Text>
                 </Group>
               </Paper>
 
@@ -310,27 +320,18 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
                 Select Key File...
               </Button>
 
-              {keyError && (
-                <Text c="red" size="sm">
-                  {keyError}
-                </Text>
-              )}
+              {keyError && <ErrorText>{keyError}</ErrorText>}
 
               {previewFailure && (
-                <Text c="red" size="sm">
-                  Failed to load voices for the selected key: {previewFailure}
-                </Text>
+                <ErrorText>Failed to load voices for the selected key: {previewFailure}</ErrorText>
               )}
 
               <Divider my="sm" />
 
-              <Box>
-                <Text fw={500}>Speaker Voices Mapping</Text>
-                <Text size="sm" c="dimmed">
-                  Assign voices to specific speaker aliases. Use tags like <Code>[speaker 1]</Code>{" "}
-                  in your notes.
-                </Text>
-              </Box>
+              <SectionHeading title="Speaker Voices Mapping">
+                Assign voices to specific speaker aliases. Use tags like <Code>[speaker 1]</Code> in
+                your notes.
+              </SectionHeading>
 
               <Paper p="xs" bg="dark.6">
                 <Group align="flex-start" wrap="nowrap">
@@ -397,24 +398,17 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
                   }}
                   flex={1}
                 />
-                <Button
-                  size="xs"
-                  type="submit"
-                  disabled={!newAlias.trim() || !voiceOptions?.length}
-                >
+                <Button size="xs" type="submit" disabled={!canAddAlias}>
                   Add Mapping
                 </Button>
               </Flex>
 
               <Divider my="sm" />
 
-              <Box>
-                <Text>XML CLI Engine (Experimental)</Text>
-                <Text size="sm" c="dimmed">
-                  Use the Python XML CLI for PPTX operations instead of AppleScript. Less features
-                  are supported but it does not require PowerPoint to be running.
-                </Text>
-              </Box>
+              <SectionHeading title="XML CLI Engine (Experimental)">
+                Use the Python XML CLI for PPTX operations instead of AppleScript. Less features are
+                supported but it does not require PowerPoint to be running.
+              </SectionHeading>
               <Switch
                 aria-label="Enable XML CLI engine"
                 checked={draft.xmlCliEnabled}
@@ -424,21 +418,13 @@ function SettingsDialog({ opened, onClose }: SettingsModalProps) {
           </Fieldset>
         )}
 
-        {saveError && (
-          <Text c="red" size="sm">
-            {saveError}
-          </Text>
-        )}
+        {saveError && <ErrorText>{saveError}</ErrorText>}
 
         <Group justify="flex-end">
           <Button variant="default" onClick={dismiss} disabled={saving}>
             Cancel
           </Button>
-          <Button
-            onClick={() => void handleSave()}
-            disabled={!dirty || incompleteVoices.size > 0}
-            loading={saving}
-          >
+          <Button onClick={() => void handleSave()} disabled={!canSave} loading={saving}>
             Save
           </Button>
         </Group>
