@@ -10,8 +10,8 @@ type VoiceSelectorProps = {
   options: VoiceOption[] | null;
 };
 
-type Draft = {
-  key: string;
+type Selection = {
+  key: string | null;
   model: string | null;
   language: string | null;
 };
@@ -67,31 +67,28 @@ export function VoiceSelector({
   onIncompleteChange,
   options,
 }: VoiceSelectorProps) {
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<Selection | null>(null);
 
   const catalogue = options ?? [];
   const committedOption = value ? findOption(catalogue, value) : undefined;
-  const selectedOption = draft
-    ? catalogue.find((option) => getOptionKey(option) === draft.key)
-    : committedOption;
-  const savedVoice = !draft && !committedOption ? value : undefined;
-  const selectedKey = selectedOption
-    ? getOptionKey(selectedOption)
-    : savedVoice
-      ? SAVED_VOICE_KEY
-      : null;
-  const selectedModelId = draft ? draft.model : (value?.model ?? null);
-  const selectedModel = selectedOption ? findModel(selectedOption, selectedModelId) : undefined;
-  const selectedLanguage = draft ? draft.language : (value?.languageCode ?? null);
+  const selection: Selection = draft ?? {
+    key: committedOption ? getOptionKey(committedOption) : value ? SAVED_VOICE_KEY : null,
+    model: value?.model ?? null,
+    language: value?.languageCode ?? null,
+  };
+  const selectedOption = catalogue.find((option) => getOptionKey(option) === selection.key);
+  const selectedModel = selectedOption ? findModel(selectedOption, selection.model) : undefined;
+  const savedVoice = selection.key === SAVED_VOICE_KEY ? value : undefined;
 
   const updateDraftAndCommitVoice = (
     option: VoiceOption,
     modelId: string | null,
-    languageCode: string | null,
+    preferredLanguage: string | null,
   ) => {
+    const model = findModel(option, modelId);
+    const languageCode = selectLanguageForModel(model, preferredLanguage);
     setDraft({ key: getOptionKey(option), model: modelId, language: languageCode });
 
-    const model = findModel(option, modelId);
     if (!model || !languageCode) {
       onIncompleteChange(true);
       return;
@@ -108,11 +105,7 @@ export function VoiceSelector({
     }
 
     const modelId = option.models.length === 1 ? option.models[0]!.id : null;
-    updateDraftAndCommitVoice(
-      option,
-      modelId,
-      selectLanguageForModel(findModel(option, modelId), selectedLanguage),
-    );
+    updateDraftAndCommitVoice(option, modelId, selection.language);
   };
 
   const handleModelChange = (modelId: string | null) => {
@@ -120,11 +113,7 @@ export function VoiceSelector({
       return;
     }
 
-    updateDraftAndCommitVoice(
-      selectedOption,
-      modelId,
-      selectLanguageForModel(findModel(selectedOption, modelId), selectedLanguage),
-    );
+    updateDraftAndCommitVoice(selectedOption, modelId, selection.language);
   };
 
   const handleLanguageChange = (languageCode: string | null) => {
@@ -153,7 +142,7 @@ export function VoiceSelector({
             label: `${option.name} (${option.ssmlGender})`,
           })),
         ]}
-        value={selectedKey}
+        value={selectedOption || savedVoice ? selection.key : null}
         onChange={handleVoiceChange}
         searchable
         size="xs"
@@ -169,7 +158,7 @@ export function VoiceSelector({
                 label: model.label,
               }))
         }
-        value={selectedModelId}
+        value={selection.model}
         onChange={handleModelChange}
         disabled={!selectedOption}
         size="xs"
@@ -185,7 +174,7 @@ export function VoiceSelector({
                 label: language.label,
               }))
         }
-        value={selectedLanguage}
+        value={selection.language}
         onChange={handleLanguageChange}
         disabled={!selectedModel}
         searchable
