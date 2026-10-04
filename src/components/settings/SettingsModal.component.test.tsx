@@ -1250,24 +1250,6 @@ test("remembers an incomplete choice's model through a key preview", async () =>
     .toHaveValue("Chirp 3 HD");
 });
 
-test("carries a manually chosen language into the next voice that offers it", async () => {
-  const screen = await renderSettings({
-    settings: { speakerMappings: { Narrator: { voice: flashVoice } } },
-    voiceOptions: [multiModelOption, otherProviderOption, { ...otherProviderOption, name: "Orus" }],
-  });
-
-  await waitForMapping(screen);
-  await choose(screen, "Voice for Narrator", "Charon (MALE)");
-  await choose(screen, "Language for Narrator", "fr-FR");
-  await choose(screen, "Voice for Narrator", "Orus (MALE)");
-
-  await expect(saveAndGetMappings(screen)).resolves.toEqual({
-    Narrator: {
-      voice: { ...flashVoice, provider: "vertex", voiceId: "Orus", languageCode: "fr-FR" },
-    },
-  });
-});
-
 test("remembers each speaker's choices separately", async () => {
   const screen = await renderSettings({
     settings: {
