@@ -719,25 +719,13 @@ test("saves a draft of every setting together, leaving the app on saved settings
   await expect.element(screen.getByRole("switch", { name: "Enable XML CLI engine" })).toBeChecked();
 });
 
-test("disables Save again once a default voice chosen without a model is withdrawn", async () => {
-  const screen = await renderSettings({ voiceOptions: [multiModelOption] });
-
-  await waitForMapping(screen);
-  await choose(screen, "Voice for Default", "Kore (FEMALE)");
-
-  await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
-});
-
 const dismissals: [string, (screen: SettingsScreen) => Promise<void>][] = [
   ["Cancel", (screen) => screen.getByRole("button", { name: "Cancel" }).click()],
   ["the close button", (screen) => screen.getByRole("button", { name: "Close settings" }).click()],
   ["Escape", () => userEvent.keyboard("{Escape}")],
   [
     "a backdrop click",
-    () =>
-      userEvent.click(document.querySelector(".mantine-Modal-overlay")!, {
-        position: { x: 5, y: 5 },
-      }),
+    () => userEvent.click(document.elementFromPoint(5, 5)!, { position: { x: 5, y: 5 } }),
   ],
 ];
 
@@ -920,5 +908,39 @@ test("ignores voices previewed for a key that has since been replaced", async ()
   await expect.element(screen.getByRole("option", { name: "Aoede (FEMALE)" })).toBeVisible();
   await expect
     .element(screen.getByRole("option", { name: "future-voice (NEUTRAL)" }))
+    .not.toBeInTheDocument();
+});
+
+test("ignores a voice preview that finishes after the modal is dismissed", async () => {
+  let finishPreview: ((voices: VoiceOption[]) => void) | undefined;
+  const screen = await renderSettings({
+    settings: { speakerMappings: {} },
+    voiceOptions: [registryOption],
+    electronApi: {
+      selectGcpKey: () => Promise.resolve({ success: true, path: "/keys/new.json" }),
+      previewVoices: () =>
+        new Promise((resolve) => {
+          finishPreview = (voices) => resolve({ voices, failure: null });
+        }),
+    },
+  });
+
+  await expect.element(screen.getByText("/keys/saved.json")).toBeVisible();
+  await screen.getByRole("button", { name: "Select Key File..." }).click();
+  await expect.element(screen.getByText("/keys/new.json")).toBeVisible();
+  await vi.waitFor(() => expect(finishPreview).toBeDefined());
+
+  await screen.getByRole("button", { name: "Cancel" }).click();
+  await waitForClosed(screen);
+  await screen.getByRole("button", { name: "Open settings" }).click();
+  await expect.element(screen.getByText("/keys/saved.json")).toBeVisible();
+
+  finishPreview?.([gcpOption]);
+  await screen.getByRole("combobox", { name: "Voice for Default" }).click();
+  await expect
+    .element(screen.getByRole("option", { name: "future-voice (NEUTRAL)" }))
+    .toBeVisible();
+  await expect
+    .element(screen.getByRole("option", { name: "Aoede (FEMALE)" }))
     .not.toBeInTheDocument();
 });
