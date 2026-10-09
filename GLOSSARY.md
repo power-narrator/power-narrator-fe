@@ -72,3 +72,7 @@ The narration audio associated with one note section on a slide.
 
 **Play Across Slides**:
 A section audio playback setting that is either enabled or disabled. When enabled, the audio can continue as the presentation advances to subsequent slides.
+
+**Save-all run**:
+A presentation-wide operation that generates narration and saves it with slide notes sequentially, one complete slide at a time. Cancelling a run stops further work while retaining items already saved to the presentation.
+_Avoid_: All-or-nothing save
