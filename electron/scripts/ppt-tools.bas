@@ -328,6 +328,53 @@ Sub ApplySectionAudioPlayback(sld As Slide, shp As Shape, playAcrossSlides As Bo
     End If
 End Sub
 
+Function EffectShapeName(eff As Effect) As String
+    If Not eff.Shape Is Nothing Then EffectShapeName = eff.Shape.Name
+End Function
+
+' Writing any shape's PlaySettings resets the trigger and delay of play effects across the
+' whole slide, so the slide's timing is captured before all playback writes and restored after.
+Function SaveSlideTiming(sld As Slide, shapeNames() As String, triggerTypes() As Long, delays() As Single) As Long
+    Dim i As Long
+    Dim effectCount As Long
+
+    effectCount = sld.TimeLine.MainSequence.Count
+    SaveSlideTiming = effectCount
+    If effectCount = 0 Then Exit Function
+    ReDim shapeNames(1 To effectCount)
+    ReDim triggerTypes(1 To effectCount)
+    ReDim delays(1 To effectCount)
+    For i = 1 To effectCount
+        shapeNames(i) = EffectShapeName(sld.TimeLine.MainSequence(i))
+        triggerTypes(i) = sld.TimeLine.MainSequence(i).Timing.TriggerType
+        delays(i) = sld.TimeLine.MainSequence(i).Timing.TriggerDelayTime
+    Next i
+End Function
+
+Sub RestoreSlideTiming(sld As Slide, shapeNames() As String, triggerTypes() As Long, delays() As Single, effectCount As Long)
+    Dim i As Long
+
+    If sld.TimeLine.MainSequence.Count <> effectCount Then
+        Err.Raise vbObjectError + 519, , "Setting section audio playback on slide " & sld.SlideIndex & " changed its animations."
+    End If
+    For i = 1 To effectCount
+        If EffectShapeName(sld.TimeLine.MainSequence(i)) <> shapeNames(i) Then
+            Err.Raise vbObjectError + 519, , "Setting section audio playback on slide " & sld.SlideIndex & " changed its animation order."
+        End If
+        With sld.TimeLine.MainSequence(i).Timing
+            If .TriggerType <> triggerTypes(i) Then .TriggerType = triggerTypes(i)
+            If Abs(.TriggerDelayTime - delays(i)) > 0.001 Then .TriggerDelayTime = delays(i)
+        End With
+    Next i
+    For i = 1 To effectCount
+        With sld.TimeLine.MainSequence(i).Timing
+            If .TriggerType <> triggerTypes(i) Or Abs(.TriggerDelayTime - delays(i)) > 0.001 Then
+                Err.Raise vbObjectError + 519, , "Setting section audio playback on slide " & sld.SlideIndex & " changed the start or delay of its animations."
+            End If
+        End With
+    Next i
+End Sub
+
 ' Reads a media shape's playback span (0 means current slide only).
 ' Keep this in a separate function: on Mac, the inline export read returned 2
 ' for disabled audio after reopening, while this helper returned 0.
@@ -370,7 +417,12 @@ Sub InsertAudio()
     Dim fileName As String
     Dim currentSlideNumber As Integer
     Dim newAudioInsertIndex As Integer
+    Dim effectCount As Long
+    Dim effectShapeNames() As String
+    Dim triggerTypes() As Long
+    Dim delays() As Single
     Dim i As Integer
+    Dim j As Integer
 
     paramsPath = GetOfficeFilePath("insert_audio_params.txt")
     If Dir(paramsPath) = "" Then Exit Sub
@@ -439,9 +491,24 @@ Sub InsertAudio()
             newAudioInsertIndex = 1
         End If
 
-        Set sld = pres.Slides(slideNumbers(i))
-        Set shp = ReplaceSectionAudio(pres, sld, audioPaths(i), shapeNames(i), newAudioInsertIndex)
-        ApplySectionAudioPlayback sld, shp, playAcross(i)
+        Set shp = ReplaceSectionAudio(pres, pres.Slides(slideNumbers(i)), audioPaths(i), shapeNames(i), newAudioInsertIndex)
+    Next i
+
+    For i = 1 To entryCount
+        If IsFirstEntryForSlide(slideNumbers, i) Then
+            Set sld = pres.Slides(slideNumbers(i))
+            effectCount = SaveSlideTiming(sld, effectShapeNames, triggerTypes, delays)
+            For j = i To entryCount
+                If slideNumbers(j) = slideNumbers(i) Then
+                    ApplySectionAudioPlayback sld, sld.Shapes(shapeNames(j)), playAcross(j)
+                End If
+            Next j
+            RestoreSlideTiming sld, effectShapeNames, triggerTypes, delays, effectCount
+        End If
+    Next i
+
+    For i = 1 To entryCount
+        Set shp = pres.Slides(slideNumbers(i)).Shapes(shapeNames(i))
         Print #resultNum, "inserted|" & slideNumbers(i) & "|" & shp.Name & "|" & SectionAudioPlaybackReport(shp)
     Next i
 
