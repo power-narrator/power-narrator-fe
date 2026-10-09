@@ -501,12 +501,56 @@ test("shows whether each section's audio plays across slides, whatever its promp
     loadedWithPlayback("First narration\n---\nSecond narration", [true, false]),
   ]);
 
-  const first = screen.getByRole("checkbox", { name: playAcrossSlidesLabel(1) });
-  await expect.element(first).toBeChecked();
-  await expect.element(first).toBeDisabled();
+  await expect
+    .element(screen.getByRole("checkbox", { name: playAcrossSlidesLabel(1) }))
+    .toBeChecked();
   await expect
     .element(screen.getByRole("checkbox", { name: playAcrossSlidesLabel(2) }))
     .not.toBeChecked();
+});
+
+const submittedPlayback = (request: { sections: readonly { playAcrossSlides?: boolean }[] }) =>
+  request.sections.map((section) => section.playAcrossSlides ?? false);
+
+test("saves the playback chosen for each section with Save Slide", async () => {
+  const saveNarratedSlide = vi.fn<typeof window.electronAPI.saveNarratedSlide>(() =>
+    Promise.resolve({ success: true }),
+  );
+  installElectronApi({ saveNarratedSlide });
+  const { screen } = await renderViewer(vi.fn(), [
+    loadedWithPlayback("First narration\n---\nSecond narration\n---\nThird narration", [
+      true,
+      false,
+      true,
+    ]),
+  ]);
+
+  await screen.getByRole("checkbox", { name: playAcrossSlidesLabel(1) }).click();
+  await screen.getByRole("checkbox", { name: playAcrossSlidesLabel(2) }).click();
+  await screen.getByRole("button", { name: "Save Slide", exact: true }).click();
+
+  await vi.waitFor(() => expect(saveNarratedSlide).toHaveBeenCalledOnce());
+  expect(submittedPlayback(saveNarratedSlide.mock.calls[0]![0])).toEqual([false, true, true]);
+});
+
+test("saves every slide's shown playback with Save All Slides, including untouched choices", async () => {
+  const saveNarratedPresentation = vi.fn<typeof window.electronAPI.saveNarratedPresentation>(() =>
+    Promise.resolve({ success: true }),
+  );
+  installElectronApi({ saveNarratedPresentation });
+  const { screen } = await renderViewer(vi.fn(), [
+    loadedWithPlayback("First narration\n---\nSecond narration", [true, false]),
+    { ...loadedWithPlayback("Other narration", [false]), slideIndex: at(1) },
+  ]);
+
+  await screen.getByRole("checkbox", { name: playAcrossSlidesLabel(2) }).click();
+  await screen.getByRole("button", { name: "Save All Slides", exact: true }).click();
+
+  await vi.waitFor(() => expect(saveNarratedPresentation).toHaveBeenCalledOnce());
+  expect(saveNarratedPresentation.mock.calls[0]![0].slides.map(submittedPlayback)).toEqual([
+    [true, true],
+    [false],
+  ]);
 });
 
 test("imports the playback PowerPoint reports when the slide is reloaded", async () => {

@@ -79,6 +79,8 @@ export function useSlideNoteEditor(
       command((current) => current.setSectionText(id, text)),
     setSectionPrompt: (id: SectionId, prompt: string | undefined) =>
       command((current) => current.setSectionPrompt(id, prompt)),
+    setSectionPlayAcrossSlides: (id: SectionId, playAcrossSlides: boolean) =>
+      command((current) => current.setSectionPlayAcrossSlides(id, playAcrossSlides)),
     setSectionSpeaker: (id: SectionId, speaker: string | null) =>
       command((current) => current.setSectionSpeaker(id, speaker)),
     addSection: () => command((current) => current.addSection()),

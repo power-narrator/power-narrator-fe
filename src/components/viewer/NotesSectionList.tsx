@@ -32,6 +32,7 @@ type NotesSectionListProps = {
   onSpeakerChange: (id: SectionId, speaker: string | null) => void;
   onSectionTextChange: (id: SectionId, value: string) => void;
   onSectionPromptChange: (id: SectionId, prompt: string | undefined) => void;
+  onSectionPlayAcrossSlidesChange: (id: SectionId, playAcrossSlides: boolean) => void;
   onDeleteSection: (id: SectionId) => void;
   onAddSection: () => void;
   textareas: SectionTextareas;
@@ -70,6 +71,7 @@ export function NotesSectionList({
   onSpeakerChange,
   onSectionTextChange,
   onSectionPromptChange,
+  onSectionPlayAcrossSlidesChange,
   onDeleteSection,
   onAddSection,
   textareas,
@@ -128,7 +130,9 @@ export function NotesSectionList({
                           aria-label={`Play across slides for ${sectionLabel}`}
                           label="Play Across Slides"
                           checked={section.playAcrossSlides ?? false}
-                          disabled
+                          onChange={(event) =>
+                            onSectionPlayAcrossSlidesChange(section.id, event.currentTarget.checked)
+                          }
                           size="xs"
                         />
                       ),
