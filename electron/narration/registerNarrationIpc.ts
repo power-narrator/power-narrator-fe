@@ -20,11 +20,19 @@ export type NarrationAdapters = {
 
 type NarrationIpc = Pick<IpcMain, "handle" | "removeHandler">;
 
+export type SaveAllRunLifecycle = {
+  holdWindowOpen<T>(webContentsId: number, run: () => Promise<T>): Promise<T>;
+};
+
 /**
  * Registering again replaces the previous handlers, which is the supported way
  * to run the app against fake TTS and PowerPoint adapters.
  */
-export function registerNarrationIpc(ipc: NarrationIpc, adapters: NarrationAdapters): void {
+export function registerNarrationIpc(
+  ipc: NarrationIpc,
+  adapters: NarrationAdapters,
+  lifecycle: SaveAllRunLifecycle,
+): void {
   const preparation = new NarrationPreparation(adapters.mappingSource, adapters.synthesizer);
   const saver = new NarratedPresentationSaver(preparation, adapters.getPowerPoint);
 
@@ -35,5 +43,5 @@ export function registerNarrationIpc(ipc: NarrationIpc, adapters: NarrationAdapt
   registerNarratedSlideSaveIpc(ipc, saver);
 
   ipc.removeHandler("save-narrated-presentation");
-  registerNarratedPresentationSaveIpc(ipc, saver);
+  registerNarratedPresentationSaveIpc(ipc, saver, lifecycle);
 }

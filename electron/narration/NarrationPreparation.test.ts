@@ -43,6 +43,15 @@ const FIRST_SECOND: NarrationSection[] = [
   { speaker: "", text: "Second", playAcrossSlides: false },
 ];
 
+async function prepareBatch(
+  preparation: NarrationPreparation,
+  slides: Parameters<NarrationPreparation["planSlides"]>[0],
+) {
+  const planned = await preparation.planSlides(slides);
+  const audio = await Promise.all(planned.map((slide) => slide.synthesize()));
+  return audio.flat();
+}
+
 function createPreparation(mappings: Record<string, SpeakerMapping> = defaultMappings) {
   const generateSpeech = vi
     .fn<(text: string, voice: Voice, prompt?: string) => Promise<SynthesizedSpeech>>()
@@ -106,7 +115,7 @@ describe("NarrationPreparation", () => {
       { supportsProvider: () => true, generateSpeech },
     );
 
-    const batch = preparation.prepareBatch([
+    const batch = prepareBatch(preparation, [
       {
         slideIndex: toSlideIndex(4),
         sections: [
@@ -317,7 +326,7 @@ describe("NarrationPreparation prompts", () => {
       Narrator: { voice: promptableVoice, prompt: "conspiratorial, almost whispering" },
     });
 
-    await preparation.prepareBatch([{ slideIndex: toSlideIndex(0), sections: FIRST_SECOND }]);
+    await prepareBatch(preparation, [{ slideIndex: toSlideIndex(0), sections: FIRST_SECOND }]);
 
     expect(generateSpeech.mock.calls).toEqual([
       ["First", promptableVoice, "conspiratorial, almost whispering"],
@@ -331,7 +340,7 @@ describe("NarrationPreparation prompts", () => {
       Guest: { voice: promptableVoice, prompt: "shout" },
     });
 
-    await preparation.prepareBatch([
+    await prepareBatch(preparation, [
       {
         slideIndex: toSlideIndex(0),
         sections: [
@@ -374,7 +383,7 @@ describe("NarrationPreparation inline prompts", () => {
       Narrator: { voice: promptableVoice, prompt: "conspiratorial" },
     });
 
-    await preparation.prepareBatch([
+    await prepareBatch(preparation, [
       {
         slideIndex: toSlideIndex(0),
         sections: [
@@ -396,7 +405,7 @@ describe("NarrationPreparation inline prompts", () => {
       Narrator: { voice: promptableVoice },
     });
 
-    await preparation.prepareBatch([
+    await prepareBatch(preparation, [
       {
         slideIndex: toSlideIndex(0),
         sections: [
@@ -413,7 +422,7 @@ describe("NarrationPreparation inline prompts", () => {
       Narrator: { voice: promptableVoice, prompt: "conspiratorial" },
     });
 
-    await preparation.prepareBatch([
+    await prepareBatch(preparation, [
       {
         slideIndex: toSlideIndex(0),
         sections: [
@@ -462,7 +471,7 @@ describe("NarrationPreparation inline prompts", () => {
       Narrator: { voice: narratorVoice },
     });
 
-    await preparation.prepareBatch([
+    await prepareBatch(preparation, [
       {
         slideIndex: toSlideIndex(0),
         sections: [
@@ -506,7 +515,7 @@ describe("NarrationPreparation inline prompts", () => {
     const { preparation, generateSpeech } = createPreparation();
 
     await expect(
-      preparation.prepareBatch([
+      prepareBatch(preparation, [
         {
           slideIndex: toSlideIndex(2),
           sections: [

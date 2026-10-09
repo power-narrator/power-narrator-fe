@@ -1,6 +1,7 @@
 import { Stack } from "@mantine/core";
 import { useCallback, useLayoutEffect, useMemo } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { SaveAllRunProgress } from "../../../shared/types/narration";
 import type { ActionButtonState } from "../../types/viewer";
 import type { Slide, SlideElectronResult } from "../../types/electron";
 import { useSettings } from "../../context/useSettings";
@@ -15,6 +16,8 @@ import { SsmlToolbar } from "./SsmlToolbar";
 import { ViewerHeader, type ViewerHeaderActionKey } from "./ViewerHeader";
 import { Split } from "@gfazioli/mantine-split-pane";
 import { useSectionTextareas } from "./useSectionTextareas";
+import { SaveAllRunModal } from "./SaveAllRunModal";
+import { useSaveAllRun } from "./useSaveAllRun";
 import { useSlideNoteEditor } from "./useSlideNoteEditor";
 import { useViewerOperation } from "./useViewerOperation";
 
@@ -61,6 +64,7 @@ export function ViewerPage({
   const editor = useSlideNoteEditor(initialSlides, speakerNames, reportUnsavedChanges);
   const textareas = useSectionTextareas();
   const operation = useViewerOperation();
+  const saveAllRun = useSaveAllRun();
 
   const busy = operation.busy;
   const slides = editor.slides;
@@ -110,7 +114,7 @@ export function ViewerPage({
   }
 
   const handleHistoryKeyDown = (event: ReactKeyboardEvent) => {
-    if (!event.ctrlKey && !event.metaKey) {
+    if (saveAllRun.active || (!event.ctrlKey && !event.metaKey)) {
       return;
     }
 
@@ -126,10 +130,10 @@ export function ViewerPage({
   };
 
   /**
-   * Commits the whole presentation through the narrated save path, so notes and
-   * narration audio are validated, synthesized, and committed together.
+   * Commits the whole presentation through the narrated save path, one complete
+   * slide at a time, and reconciles only the notes PowerPoint confirmed written.
    */
-  async function commitNarratedPresentation(setStatus: (status: string) => void) {
+  async function commitNarratedPresentation(onProgress: (progress: SaveAllRunProgress) => void) {
     const snapshot = editor.submitSave();
     const result = await electronAPI.saveNarratedPresentation(
       {
@@ -139,14 +143,14 @@ export function ViewerPage({
           sections: slide.sections,
         })),
       },
-      ({ completed, total }) => setStatus(`Preparing narration ${completed}/${total}...`),
+      onProgress,
     );
-    if (!result.success) {
-      reportNarratedSaveFailure(result);
+    editor.saveSucceeded(snapshot, result.savedNoteSlides);
+    if (!result.outcome.success) {
+      reportNarratedSaveFailure(result.outcome);
       return false;
     }
 
-    editor.saveSucceeded(snapshot);
     return true;
   }
 
@@ -155,7 +159,10 @@ export function ViewerPage({
       "generateVideo",
       "Preparing narration...",
       async (command) => {
-        if (!(await commitNarratedPresentation(command.setStatus))) {
+        const saved = await commitNarratedPresentation(({ completedSlides, totalSlides }) =>
+          command.setStatus(`Preparing slide ${completedSlides + 1}/${totalSlides}...`),
+        );
+        if (!saved) {
           command.clearStatus();
           return;
         }
@@ -183,9 +190,14 @@ export function ViewerPage({
   const handleSaveAllSlides = () =>
     operation.run(
       "saveAllSlides",
-      "Preparing narration...",
+      "Saving all slides...",
       async (command) => {
-        if (!(await commitNarratedPresentation(command.setStatus))) {
+        if (!(await saveAllRun.confirm())) {
+          command.clearStatus();
+          return;
+        }
+
+        if (!(await saveAllRun.track(commitNarratedPresentation))) {
           command.clearStatus();
           return;
         }
@@ -321,7 +333,12 @@ export function ViewerPage({
     );
 
   return (
-    <Stack gap="0" h="100%" mih={0} onKeyDown={handleHistoryKeyDown}>
+    <Stack gap="0" h="100%" mih={0} inert={saveAllRun.active} onKeyDown={handleHistoryKeyDown}>
+      <SaveAllRunModal
+        state={saveAllRun.state}
+        onConfirm={saveAllRun.onConfirm}
+        onDecline={saveAllRun.onDecline}
+      />
       <ViewerHeader
         onBack={() => {
           editor.finalizePendingTyping();

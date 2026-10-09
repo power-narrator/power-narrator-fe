@@ -7,9 +7,12 @@ import {
   expect,
   getDiscardConfirmationCalls,
   getGeneratedSpeechCalls,
+  getHeldNarrationWork,
   getInsertAudioCalls,
   getPlaybackActivity,
   getSaveNotesCalls,
+  holdNarrationWork,
+  releaseHeldNarrationWork,
   resetProbes,
   test,
 } from "./fixtures/app.js";
@@ -21,6 +24,35 @@ async function loadViewer(win: Page) {
 
 function notesEditor(win: Page): Locator {
   return win.getByRole("textbox", { name: "Slide 1 section 1 notes" });
+}
+
+function saveAllButton(win: Page): Locator {
+  return win.getByRole("button", { name: "Save All Slides", exact: true });
+}
+
+function saveAllProgress(win: Page): Locator {
+  return win.getByRole("dialog", { name: "Saving all slides" });
+}
+
+async function startSaveAll(win: Page) {
+  await saveAllButton(win).click();
+  await win
+    .getByRole("dialog", { name: "Save all slides?" })
+    .getByRole("button", { name: "Save All", exact: true })
+    .click();
+}
+
+type CloseAttemptGlobals = typeof globalThis & { __closeAttempts: number };
+
+async function observeCloseAttempts(app: ElectronApplication) {
+  await app.evaluate(({ BrowserWindow }) => {
+    const globals = globalThis as CloseAttemptGlobals;
+    globals.__closeAttempts = 0;
+    BrowserWindow.getAllWindows()[0]!.once("close", () => {
+      globals.__closeAttempts += 1;
+    });
+  });
+  return () => app.evaluate(() => (globalThis as CloseAttemptGlobals).__closeAttempts);
 }
 
 function narratorPreview(win: Page): Locator {
@@ -50,39 +82,103 @@ test.describe("PPT Viewer UI Workflows", () => {
       });
   });
 
-  test("saves the full presentation through Electron narration preparation", async ({
+  test("asks before Save All and starts no work when the author declines", async ({ app, win }) => {
+    await notesEditor(win).fill("Kept after declining");
+    await saveAllButton(win).click();
+
+    const confirmation = win.getByRole("dialog", { name: "Save all slides?" });
+    await expect(confirmation).toContainText("may take some time");
+    await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+
+    await expect(confirmation).toBeHidden();
+    await expect(notesEditor(win)).toHaveValue("Kept after declining");
+    await expect(saveAllButton(win)).toBeEnabled();
+    expect(await getGeneratedSpeechCalls(app)).toEqual([]);
+    expect(await getSaveNotesCalls(app)).toEqual([]);
+  });
+
+  test("saves one complete slide at a time while showing the run's progress", async ({
     app,
     win,
   }) => {
-    const saveAll = win.getByRole("button", { name: "Save All Slides", exact: true });
+    await holdNarrationWork(app, ["speech", "saveNotes"]);
+    await startSaveAll(win);
 
-    await saveAll.click();
+    const progress = saveAllProgress(win);
+    await expect(progress).toContainText("Slide 1 of 2");
+    await expect(progress).toContainText("Generating narration...");
+    const progressBar = progress.getByRole("progressbar");
+    await expect(progressBar).toHaveAttribute("aria-valuenow", "0");
+    await expect
+      .poll(() => getHeldNarrationWork(app))
+      .toEqual([{ kind: "speech", label: MOCK_SLIDES[0]!.notes }]);
 
-    await expect(saveAll).toBeEnabled();
+    await releaseHeldNarrationWork(app);
+    await expect(progress).toContainText("Saving to PowerPoint...");
+    await expect.poll(() => getHeldNarrationWork(app)).toEqual([{ kind: "saveNotes", label: "0" }]);
+    expect(await getGeneratedSpeechCalls(app)).toHaveLength(1);
+
+    await releaseHeldNarrationWork(app);
+    await expect(progress).toContainText("Slide 2 of 2");
+    await expect(progressBar).toHaveAttribute("aria-valuenow", "50");
     await expect
-      .poll(() => getSaveNotesCalls(app))
-      .toEqual([
-        {
-          filePath: FIXTURE_TEST,
-          slides: MOCK_SLIDES.map((slide) => ({
-            slideIndex: slide.slideIndex,
-            notes: slide.notes,
-          })),
-        },
-      ]);
-    await expect
-      .poll(() => getInsertAudioCalls(app))
-      .toEqual([
-        {
-          filePath: FIXTURE_TEST,
-          slidesAudio: MOCK_SLIDES.map((slide) => ({
-            slideIndex: slide.slideIndex,
+      .poll(() => getHeldNarrationWork(app))
+      .toEqual([{ kind: "speech", label: MOCK_SLIDES[1]!.notes }]);
+    expect(await getInsertAudioCalls(app)).toEqual([
+      {
+        filePath: FIXTURE_TEST,
+        slidesAudio: [
+          {
+            slideIndex: 0,
             sectionIndex: 0,
             audioData: new Uint8Array(DETERMINISTIC_MP3_BYTES),
             playAcrossSlides: false,
-          })),
-        },
-      ]);
+          },
+        ],
+      },
+    ]);
+    await expect(progress).not.toContainText(/saved/i);
+
+    await releaseHeldNarrationWork(app);
+    await expect.poll(() => getHeldNarrationWork(app)).toEqual([{ kind: "saveNotes", label: "1" }]);
+    await releaseHeldNarrationWork(app);
+
+    await expect(progress).toBeHidden();
+    expect(await getSaveNotesCalls(app)).toEqual(
+      MOCK_SLIDES.map((slide) => ({
+        filePath: FIXTURE_TEST,
+        slides: [{ slideIndex: slide.slideIndex, notes: slide.notes }],
+      })),
+    );
+    expect(await getInsertAudioCalls(app)).toHaveLength(2);
+  });
+
+  test("locks the viewer until the save-all run settles", async ({ app, win }) => {
+    await notesEditor(win).fill("Submitted narration");
+    const secondThumbnail = await win
+      .getByRole("button", { name: "Slide 2", exact: true })
+      .boundingBox();
+    await holdNarrationWork(app, ["speech"]);
+    await startSaveAll(win);
+    const progress = saveAllProgress(win);
+    await expect.poll(() => getHeldNarrationWork(app)).toHaveLength(1);
+
+    await win.keyboard.press("Escape");
+    await win.mouse.click(
+      secondThumbnail!.x + secondThumbnail!.width / 2,
+      secondThumbnail!.y + secondThumbnail!.height / 2,
+    );
+    await win.keyboard.press("ControlOrMeta+z");
+    await win.keyboard.type("typed while saving");
+    await expect(progress).toBeVisible();
+
+    await holdNarrationWork(app, []);
+    await releaseHeldNarrationWork(app);
+    await expect(progress).toBeHidden();
+
+    await expect(notesEditor(win)).toHaveValue("Submitted narration");
+    await notesEditor(win).fill("Editable again");
+    await expect(notesEditor(win)).toHaveValue("Editable again");
   });
 
   for (const closeCase of [
@@ -101,6 +197,33 @@ test.describe("PPT Viewer UI Workflows", () => {
         }),
     },
   ]) {
+    test(`keeps the ${closeCase.name} open while a save-all run is active`, async ({
+      app,
+      win,
+    }) => {
+      await holdNarrationWork(app, ["speech"]);
+      await startSaveAll(win);
+      await expect.poll(() => getHeldNarrationWork(app)).toHaveLength(1);
+
+      const closeAttempts = await observeCloseAttempts(app);
+      await closeCase.attempt(app);
+      await expect.poll(closeAttempts).toBe(1);
+      await holdNarrationWork(app, []);
+      await releaseHeldNarrationWork(app);
+      await expect(saveAllProgress(win)).toBeHidden();
+
+      expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(
+        1,
+      );
+      expect(await getDiscardConfirmationCalls(app)).toEqual([]);
+
+      await notesEditor(win).fill("Dirty after the run");
+      await closeCase.attempt(app);
+      await expect
+        .poll(() => getDiscardConfirmationCalls(app))
+        .toEqual([expect.objectContaining({ message: "Discard unsaved narration changes?" })]);
+    });
+
     test(`warns when the ${closeCase.name} closes while narration edits are dirty`, async ({
       app,
       win,

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { toSlideIndex } from "../../shared/slides/slideCoordinates.js";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,12 +34,15 @@ function registerHandlers() {
   const saver = {
     saveSlide: vi.fn<NarratedPresentationSaver["saveSlide"]>().mockResolvedValue({ success: true }),
     savePresentation: vi.fn<NarratedPresentationSaver["savePresentation"]>().mockResolvedValue({
-      success: true,
+      outcome: { success: true },
+      savedNoteSlides: [],
     }),
   } as unknown as NarratedPresentationSaver;
 
   registerNarratedSlideSaveIpc(ipc, saver);
-  registerNarratedPresentationSaveIpc(ipc, saver);
+  registerNarratedPresentationSaveIpc(ipc, saver, {
+    holdWindowOpen: (_webContentsId, run) => run(),
+  });
   return { handlers, saver };
 }
 
@@ -46,12 +50,20 @@ const event = {
   sender: { send: vi.fn<(channel: string, ...args: unknown[]) => void>() },
 } as unknown as IpcMainInvokeEvent;
 
-it("forwards preparation progress to the requested progress channel", async () => {
+const firstProgress = {
+  slideIndex: toSlideIndex(1),
+  completedSlides: 0,
+  totalSlides: 1,
+  phase: "generating",
+} as const;
+const secondProgress = { ...firstProgress, phase: "saving" } as const;
+
+it("forwards save-all run progress to the requested progress channel", async () => {
   const { handlers, saver } = registerHandlers();
   vi.mocked(saver).savePresentation.mockImplementation((_request, onProgress) => {
-    onProgress?.({ completed: 1, total: 2 });
-    onProgress?.({ completed: 2, total: 2 });
-    return Promise.resolve({ success: true });
+    onProgress?.(firstProgress);
+    onProgress?.(secondProgress);
+    return Promise.resolve({ outcome: { success: true }, savedNoteSlides: [] });
   });
   const send = vi.fn<(channel: string, ...args: unknown[]) => void>();
   const progressEvent = { sender: { send } } as unknown as IpcMainInvokeEvent;
@@ -68,8 +80,8 @@ it("forwards preparation progress to the requested progress channel", async () =
   } as never);
 
   expect(send.mock.calls).toEqual([
-    ["narrated-presentation-save-progress:7", { completed: 1, total: 2 }],
-    ["narrated-presentation-save-progress:7", { completed: 2, total: 2 }],
+    ["narrated-presentation-save-progress:7", firstProgress],
+    ["narrated-presentation-save-progress:7", secondProgress],
   ]);
 });
 
@@ -83,6 +95,7 @@ describe.each([
     }),
     "saveSlide" as const,
     0,
+    (outcome: unknown) => outcome,
   ],
   [
     "save-narrated-presentation",
@@ -98,20 +111,23 @@ describe.each([
     }),
     "savePresentation" as const,
     1,
+    (outcome: unknown) => ({ outcome, savedNoteSlides: [] }),
   ],
-])("%s", (channel, createRequest, saverMethod, progressArgumentCount) => {
+])("%s", (channel, createRequest, saverMethod, progressArgumentCount, asResult) => {
   it("fails before preparation when the presentation is missing", async () => {
     const { handlers, saver } = registerHandlers();
     const missingPath = path.join(temporaryDirectory, "missing.pptx");
 
     await expect(
       handlers.get(channel)!(event, createRequest(missingPath) as never),
-    ).resolves.toEqual({
-      success: false,
-      stage: "validation",
-      partial: false,
-      message: `File not found: ${missingPath}`,
-    });
+    ).resolves.toEqual(
+      asResult({
+        success: false,
+        stage: "validation",
+        partial: false,
+        message: `File not found: ${missingPath}`,
+      }),
+    );
     expect(saver[saverMethod]).not.toHaveBeenCalled();
   });
 
@@ -121,7 +137,7 @@ describe.each([
 
     await expect(
       handlers.get(channel)!(event, createRequest(relativePath) as never),
-    ).resolves.toEqual({ success: true });
+    ).resolves.toEqual(asResult({ success: true }));
     const expectedProgressArguments: unknown[] = Array.from(
       { length: progressArgumentCount },
       (): unknown => expect.any(Function),

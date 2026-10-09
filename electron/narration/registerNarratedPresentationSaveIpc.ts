@@ -1,6 +1,10 @@
 import type { IpcMain } from "electron";
-import type { NarratedPresentationSaveRequest } from "../../shared/types/narration.js";
+import type {
+  NarratedPresentationSaveRequest,
+  SaveAllRunResult,
+} from "../../shared/types/narration.js";
 import type { NarratedPresentationSaver } from "./NarratedPresentationSaver.js";
+import type { SaveAllRunLifecycle } from "./registerNarrationIpc.js";
 import { resolvePresentationSaveTarget } from "./resolvePresentationSaveTarget.js";
 
 type NarratedPresentationSaveIpcRequest = NarratedPresentationSaveRequest & {
@@ -10,18 +14,21 @@ type NarratedPresentationSaveIpcRequest = NarratedPresentationSaveRequest & {
 export function registerNarratedPresentationSaveIpc(
   ipc: Pick<IpcMain, "handle">,
   saver: NarratedPresentationSaver,
+  lifecycle: SaveAllRunLifecycle,
 ) {
   ipc.handle(
     "save-narrated-presentation",
-    async (event, request: NarratedPresentationSaveIpcRequest) => {
+    async (event, request: NarratedPresentationSaveIpcRequest): Promise<SaveAllRunResult> => {
       const target = resolvePresentationSaveTarget(request);
       if (!target.resolved) {
-        return target.failure;
+        return { outcome: target.failure, savedNoteSlides: [] };
       }
 
-      return saver.savePresentation(target.request, (progress) => {
-        event.sender.send(request.progressChannel, progress);
-      });
+      return lifecycle.holdWindowOpen(event.sender.id, () =>
+        saver.savePresentation(target.request, (progress) => {
+          event.sender.send(request.progressChannel, progress);
+        }),
+      );
     },
   );
 }

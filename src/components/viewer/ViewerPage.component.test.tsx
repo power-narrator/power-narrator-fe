@@ -5,7 +5,11 @@ import {
   formatNarrationSections,
   parseNarrationSections,
 } from "../../../shared/narration/NarrationSections";
-import type { NarratedSaveResult, PreviewNarrationRequest } from "../../../shared/types/narration";
+import type {
+  NarratedSaveResult,
+  PreviewNarrationRequest,
+  SaveAllRunResult,
+} from "../../../shared/types/narration";
 import { AudioProvider } from "../../context/AudioContext";
 import { toSlideIndex, type SlideIndex } from "../../../shared/slides/slideCoordinates";
 import type { Slide } from "../../types/electron";
@@ -59,7 +63,11 @@ function installElectronApi(overrides: ViewerElectronOverrides = {}) {
       (): Promise<NarratedSaveResult> => Promise.resolve({ success: true }),
     ),
     saveNarratedPresentation: vi.fn<typeof window.electronAPI.saveNarratedPresentation>(
-      (): Promise<NarratedSaveResult> => Promise.resolve({ success: true }),
+      (request): Promise<SaveAllRunResult> =>
+        Promise.resolve({
+          outcome: { success: true },
+          savedNoteSlides: request.slides.map((slide) => slide.slideIndex),
+        }),
     ),
     getVideoSavePath: vi.fn<typeof window.electronAPI.getVideoSavePath>(() =>
       Promise.resolve("video.mp4"),
@@ -276,10 +284,13 @@ test("disables conflicting Viewer operations while a save is active", async () =
 test("does not generate video when the narrated save fails", async () => {
   const saveNarratedPresentation = vi.fn<typeof window.electronAPI.saveNarratedPresentation>(() =>
     Promise.resolve({
-      success: false,
-      stage: "synthesis",
-      partial: false,
-      message: "Synthesis failed",
+      outcome: {
+        success: false,
+        stage: "synthesis",
+        partial: false,
+        message: "Synthesis failed",
+      },
+      savedNoteSlides: [],
     }),
   );
   const generateVideo = vi.fn<typeof window.electronAPI.generateVideo>(() =>
@@ -537,8 +548,12 @@ test("saves the playback chosen for each section with Save Slide", async () => {
 });
 
 test("saves every slide's shown playback with Save All Slides, including untouched choices", async () => {
-  const saveNarratedPresentation = vi.fn<typeof window.electronAPI.saveNarratedPresentation>(() =>
-    Promise.resolve({ success: true }),
+  const saveNarratedPresentation = vi.fn<typeof window.electronAPI.saveNarratedPresentation>(
+    (request) =>
+      Promise.resolve({
+        outcome: { success: true },
+        savedNoteSlides: request.slides.map((slide) => slide.slideIndex),
+      }),
   );
   installElectronApi({ saveNarratedPresentation });
   const { screen } = await renderViewer(vi.fn(), [
@@ -548,6 +563,7 @@ test("saves every slide's shown playback with Save All Slides, including untouch
 
   await screen.getByRole("checkbox", { name: playAcrossSlidesLabel(2) }).click();
   await screen.getByRole("button", { name: "Save All Slides", exact: true }).click();
+  await screen.getByRole("button", { name: "Save All", exact: true }).click();
 
   await vi.waitFor(() => expect(saveNarratedPresentation).toHaveBeenCalledOnce());
   expect(saveNarratedPresentation.mock.calls[0]![0].slides.map(submittedPlayback)).toEqual([

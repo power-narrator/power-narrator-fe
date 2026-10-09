@@ -36,6 +36,7 @@ function registerNarrationHandlers() {
         throw new Error("Preview never reaches PowerPoint");
       },
     },
+    { holdWindowOpen: (_webContentsId, run) => run() },
   );
 
   return { handlers, generateSpeech };

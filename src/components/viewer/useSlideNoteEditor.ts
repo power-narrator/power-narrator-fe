@@ -103,8 +103,8 @@ export function useSlideNoteEditor(
       command(() => submission.editor);
       return submission.snapshot;
     },
-    saveSucceeded: (snapshot: SaveSnapshot) =>
-      command((current) => current.saveSucceeded(snapshot)),
+    saveSucceeded: (snapshot: SaveSnapshot, savedSlides?: readonly SlideIndex[]) =>
+      command((current) => current.saveSucceeded(snapshot, savedSlides)),
     reloadSlide: (reloaded: Slide) => command((current) => current.reloadSlide(reloaded)),
     reloadPresentation: (reloaded: readonly Slide[]) =>
       command((current) => current.reloadPresentation(reloaded)),

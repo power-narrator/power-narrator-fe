@@ -22,7 +22,8 @@ declare global {
 /** Called by the bootstrap only, and only when launched with `NODE_ENV=test`. */
 export function installTestHarness(unsavedNarrationChanges: UnsavedNarrationChanges): void {
   globalThis.powerNarratorTestHarness = {
-    useNarrationAdapters: (adapters) => registerNarrationIpc(ipcMain, adapters),
+    useNarrationAdapters: (adapters) =>
+      registerNarrationIpc(ipcMain, adapters, unsavedNarrationChanges),
     useDiscardConfirmation: (confirmDiscard) =>
       unsavedNarrationChanges.useConfirmation(confirmDiscard),
   };

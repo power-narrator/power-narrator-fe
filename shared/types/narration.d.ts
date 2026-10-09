@@ -35,9 +35,17 @@ export type NarratedPresentationSaveRequest = {
   slides: readonly NarratedSlideInput[];
 };
 
-export type NarrationPreparationProgress = {
-  completed: number;
-  total: number;
+export type SaveAllRunPhase = "generating" | "saving";
+
+/**
+ * Where a save-all run stands. `completedSlides` and `totalSlides` count the
+ * run's slides and are never a slide's identity, which `slideIndex` carries.
+ */
+export type SaveAllRunProgress = {
+  slideIndex: SlideIndex;
+  completedSlides: number;
+  totalSlides: number;
+  phase: SaveAllRunPhase;
 };
 
 export type NarratedSaveFailureStage = "validation" | "synthesis" | "powerpoint";
@@ -50,3 +58,9 @@ export type NarratedSaveResult =
       partial: boolean;
       message: string;
     };
+
+export type SaveAllRunResult = {
+  outcome: NarratedSaveResult;
+  /** Submitted slides whose notes PowerPoint confirmed written, in run order. */
+  savedNoteSlides: readonly SlideIndex[];
+};

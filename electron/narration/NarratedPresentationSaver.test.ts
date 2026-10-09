@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BasicPptResult, SlideAudioEntry, SlideNotesEntry } from "../platform/types.js";
 import { TtsManager } from "../tts/TtsManager.js";
 import type { SpeakerMapping, SynthesizedSpeech, TtsProvider, Voice } from "../tts/TtsProvider.js";
-import type { NarrationPreparationProgress } from "../../shared/types/narration.js";
 import { parseNarrationSections } from "../../shared/narration/NarrationSections.js";
 import { NarrationPreparation } from "./NarrationPreparation.js";
 import { NarratedPresentationSaver } from "./NarratedPresentationSaver.js";
@@ -151,9 +150,10 @@ describe("NarratedPresentationSaver", () => {
     const { generateSpeech, powerpoint, saver } = createSaver();
 
     await expect(
-      saver.savePresentation({
+      saver.saveSlide({
         filePath: "/slides/talk.pptx",
-        slides: [{ slideIndex: toSlideIndex(3), sections: sections("[Narrator]\n  \n---\n\t") }],
+        slideIndex: toSlideIndex(3),
+        sections: sections("[Narrator]\n  \n---\n\t"),
       }),
     ).resolves.toEqual({ success: true });
 
@@ -171,9 +171,10 @@ describe("NarratedPresentationSaver", () => {
     powerpoint.removeResult = { success: false, message: "remove failed" };
 
     await expect(
-      saver.savePresentation({
+      saver.saveSlide({
         filePath: "/slides/talk.pptx",
-        slides: [{ slideIndex: toSlideIndex(3), sections: sections("  ") }],
+        slideIndex: toSlideIndex(3),
+        sections: sections("  "),
       }),
     ).resolves.toEqual({
       success: false,
@@ -187,95 +188,16 @@ describe("NarratedPresentationSaver", () => {
     expect(powerpoint.insertedAudio).toEqual(new Map());
   });
 
-  it("preflights every requested slide before synthesis or PowerPoint mutation", async () => {
-    const { generateSpeech, powerpoint, saver } = createSaver();
-
-    await expect(
-      saver.savePresentation({
-        filePath: "/slides/talk.pptx",
-        slides: [
-          { slideIndex: toSlideIndex(1), sections: sections("[Narrator]\nValid") },
-          {
-            slideIndex: toSlideIndex(7),
-            sections: sections("[Missing]\nInvalid", ["Narrator", "Missing"]),
-          },
-        ],
-      }),
-    ).resolves.toMatchObject({
-      success: false,
-      stage: "validation",
-      partial: false,
-    });
-    expect(generateSpeech).not.toHaveBeenCalled();
-    expectNoPowerPointMutation(powerpoint);
-  });
-
-  it("reports eligible completion while preserving request order after parallel synthesis", async () => {
-    const pending = new Map<string, (audio: Uint8Array) => void>();
-    const generateSpeech = vi.fn<(text: string, voice: Voice) => Promise<SynthesizedSpeech>>(
-      (text) =>
-        new Promise<{ audio: Uint8Array; mediaType: string }>((resolve) => {
-          pending.set(text, (audio) => resolve({ audio, mediaType: "audio/mpeg" }));
-        }),
-    );
-    const { powerpoint, saver } = createSaver(generateSpeech);
-    const onProgress = vi.fn<(progress: NarrationPreparationProgress) => void>();
-    const nineNotes = "[Narrator]\nNine first\n---\n[Narrator]\n  \n---\n[Narrator]\nNine third";
-    const threeNotes = "[Narrator]\nThree first";
-    const request = {
-      filePath: "/slides/talk.pptx",
-      slides: [
-        { slideIndex: toSlideIndex(8), sections: sections(nineNotes) },
-        { slideIndex: toSlideIndex(2), sections: sections(threeNotes) },
-      ],
-    };
-
-    const saving = saver.savePresentation(request, onProgress);
-    await vi.waitFor(() => expect(pending.size).toBe(3));
-    expect(generateSpeech).toHaveBeenCalledTimes(3);
-    expectNoPowerPointMutation(powerpoint);
-
-    pending.get("Three first")?.(new Uint8Array([3]));
-    await vi.waitFor(() => expect(onProgress).toHaveBeenLastCalledWith({ completed: 1, total: 3 }));
-    pending.get("Nine third")?.(new Uint8Array([2]));
-    await vi.waitFor(() => expect(onProgress).toHaveBeenLastCalledWith({ completed: 2, total: 3 }));
-    pending.get("Nine first")?.(new Uint8Array([1]));
-
-    await expect(saving).resolves.toEqual({ success: true });
-    expect(onProgress.mock.calls).toEqual([
-      [{ completed: 1, total: 3 }],
-      [{ completed: 2, total: 3 }],
-      [{ completed: 3, total: 3 }],
-    ]);
-    expect(powerpoint.committedNotes).toEqual(
-      new Map([
-        [8, nineNotes],
-        [2, threeNotes],
-      ]),
-    );
-    expect(powerpoint.insertedAudio).toEqual(
-      new Map([
-        [
-          8,
-          new Map([
-            [0, new Uint8Array([1])],
-            [2, new Uint8Array([2])],
-          ]),
-        ],
-        [2, new Map([[0, new Uint8Array([3])]])],
-      ]),
-    );
-  });
-
   it("reports a structured synthesis failure without mutating PowerPoint", async () => {
     const { powerpoint, saver } = createSaver(
       vi.fn().mockRejectedValue(new Error("provider unavailable")),
     );
 
     await expect(
-      saver.savePresentation({
+      saver.saveSlide({
         filePath: "/slides/talk.pptx",
-        slides: [{ slideIndex: toSlideIndex(4), sections: sections("[Narrator]\nHello") }],
+        slideIndex: toSlideIndex(4),
+        sections: sections("[Narrator]\nHello"),
       }),
     ).resolves.toMatchObject({ success: false, stage: "synthesis", partial: false });
     expectNoPowerPointMutation(powerpoint);
@@ -297,9 +219,10 @@ describe("NarratedPresentationSaver", () => {
     const saver = new NarratedPresentationSaver(preparation, () => powerpoint);
 
     await expect(
-      saver.savePresentation({
+      saver.saveSlide({
         filePath: "/slides/talk.pptx",
-        slides: [{ slideIndex: toSlideIndex(4), sections: sections("[Narrator]\nHello") }],
+        slideIndex: toSlideIndex(4),
+        sections: sections("[Narrator]\nHello"),
       }),
     ).resolves.toEqual({
       success: false,
@@ -321,9 +244,10 @@ describe("NarratedPresentationSaver", () => {
       powerpoint.audioResults = [audioResult];
 
       await expect(
-        saver.savePresentation({
+        saver.saveSlide({
           filePath: "/slides/talk.pptx",
-          slides: [{ slideIndex: toSlideIndex(1), sections: sections("[Narrator]\nHello") }],
+          slideIndex: toSlideIndex(1),
+          sections: sections("[Narrator]\nHello"),
         }),
       ).resolves.toEqual({
         success: false,
@@ -343,16 +267,17 @@ describe("NarratedPresentationSaver", () => {
     const { powerpoint, saver, synthesize } = createCachedRetrySaver();
     const request = {
       filePath: "/slides/talk.pptx",
-      slides: [{ slideIndex: toSlideIndex(1), sections: sections("[Narrator]\nRetry me") }],
+      slideIndex: toSlideIndex(1),
+      sections: sections("[Narrator]\nRetry me"),
     };
 
-    await expect(saver.savePresentation(request)).resolves.toEqual({
+    await expect(saver.saveSlide(request)).resolves.toEqual({
       success: false,
       stage: "powerpoint",
       partial: true,
       message: "audio automation failed",
     });
-    await expect(saver.savePresentation(request)).resolves.toEqual({ success: true });
+    await expect(saver.saveSlide(request)).resolves.toEqual({ success: true });
 
     expect(synthesize).toHaveBeenCalledTimes(1);
     expect(powerpoint.saveNotes).toHaveBeenCalledTimes(2);
@@ -374,7 +299,10 @@ describe("NarratedPresentationSaver", () => {
       });
 
     await saveWithPlayback(false);
-    await expect(saveWithPlayback(true)).resolves.toEqual({ success: true });
+    await expect(saveWithPlayback(true)).resolves.toEqual({
+      outcome: { success: true },
+      savedNoteSlides: [1],
+    });
 
     expect(synthesize).toHaveBeenCalledTimes(1);
     expect(powerpoint.insertAudio.mock.lastCall?.[1]).toEqual([
@@ -385,13 +313,15 @@ describe("NarratedPresentationSaver", () => {
   it("synthesizes a new cache identity when edited notes are retried", async () => {
     const { saver, synthesize } = createCachedRetrySaver();
 
-    await saver.savePresentation({
+    await saver.saveSlide({
       filePath: "/slides/talk.pptx",
-      slides: [{ slideIndex: toSlideIndex(1), sections: sections("[Narrator]\nBefore edit") }],
+      slideIndex: toSlideIndex(1),
+      sections: sections("[Narrator]\nBefore edit"),
     });
-    await saver.savePresentation({
+    await saver.saveSlide({
       filePath: "/slides/talk.pptx",
-      slides: [{ slideIndex: toSlideIndex(1), sections: sections("[Narrator]\nAfter edit") }],
+      slideIndex: toSlideIndex(1),
+      sections: sections("[Narrator]\nAfter edit"),
     });
 
     expect(synthesize).toHaveBeenCalledTimes(2);
@@ -404,12 +334,13 @@ describe("NarratedPresentationSaver", () => {
     }));
     const request = {
       filePath: "/slides/talk.pptx",
-      slides: [{ slideIndex: toSlideIndex(1), sections: sections("[Narrator]\nSame notes") }],
+      slideIndex: toSlideIndex(1),
+      sections: sections("[Narrator]\nSame notes"),
     };
 
-    await saver.savePresentation(request);
+    await saver.saveSlide(request);
     mappedVoice = alternateNarratorVoice;
-    await saver.savePresentation(request);
+    await saver.saveSlide(request);
 
     expect(synthesize).toHaveBeenCalledTimes(2);
   });
@@ -434,9 +365,10 @@ describe("NarratedPresentationSaver", () => {
     const notes = "  [ Narrator ]  \n[p: almost whispering]\nFirst\n\n-----\nSecond\n";
 
     await expect(
-      saver.savePresentation({
+      saver.saveSlide({
         filePath: "/slides/talk.pptx",
-        slides: [{ slideIndex: toSlideIndex(1), sections: sections(notes) }],
+        slideIndex: toSlideIndex(1),
+        sections: sections(notes),
       }),
     ).resolves.toEqual({ success: true });
 

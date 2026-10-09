@@ -4,7 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IpcMainInvokeEvent } from "electron";
-import type { NarratedSaveResult } from "../../shared/types/narration.js";
+import type { NarrationSection } from "../../shared/narration/NarrationSections.js";
+import type { SaveAllRunResult } from "../../shared/types/narration.js";
 import type { BasicPptResult, SlideAudioEntry, SlideNotesEntry } from "../platform/types.js";
 import type { SpeakerMapping, SynthesizedSpeech, Voice } from "../tts/TtsProvider.js";
 import { registerNarrationIpc, type NarrationPowerPoint } from "./registerNarrationIpc.js";
@@ -71,22 +72,55 @@ class FakeDeck implements NarrationPowerPoint {
   }
 }
 
+type HeldSpeech = {
+  resolve: (audio: Uint8Array) => void;
+  reject: (error: Error) => void;
+};
+
 function registerNarrationHandlers(deck?: FakeDeck) {
   const handlers = new Map<string, IpcHandler>();
+  const externalWork: string[] = [];
   const generateSpeech = vi
     .fn<(text: string, voice: Voice, prompt?: string) => Promise<SynthesizedSpeech>>()
-    .mockResolvedValue({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
+    .mockImplementation((text) => {
+      externalWork.push(`synthesize ${text}`);
+      return Promise.resolve({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
+    });
   const powerpoint = {
     saveNotes: vi
       .fn<(filePath: string, slides: SlideNotesEntry[]) => Promise<BasicPptResult>>()
-      .mockResolvedValue({ success: true }),
+      .mockImplementation((_filePath, slides) => {
+        externalWork.push(`save notes ${slides.map((slide) => slide.slideIndex).join()}`);
+        return Promise.resolve({ success: true });
+      }),
     insertAudio: vi
       .fn<(filePath: string, slidesAudio: SlideAudioEntry[]) => Promise<BasicPptResult>>()
-      .mockResolvedValue({ success: true }),
+      .mockImplementation((_filePath, slidesAudio) => {
+        externalWork.push(
+          `insert audio ${[...new Set(slidesAudio.map((audio) => audio.slideIndex))].join()}`,
+        );
+        return Promise.resolve({ success: true });
+      }),
     removeAudio: vi
       .fn<(filePath: string, slideIndices: number[]) => Promise<BasicPptResult>>()
-      .mockResolvedValue({ success: true }),
+      .mockImplementation((_filePath, slideIndices) => {
+        externalWork.push(`remove audio ${slideIndices.join()}`);
+        return Promise.resolve({ success: true });
+      }),
   } satisfies NarrationPowerPoint;
+
+  const heldSpeech = new Map<string, HeldSpeech>();
+  const holdSpeech = () =>
+    generateSpeech.mockImplementation(
+      (text) =>
+        new Promise<SynthesizedSpeech>((resolve, reject) => {
+          externalWork.push(`synthesize ${text}`);
+          heldSpeech.set(text, {
+            resolve: (audio) => resolve({ audio, mediaType: "audio/mpeg" }),
+            reject,
+          });
+        }),
+    );
 
   registerNarrationIpc(
     {
@@ -100,9 +134,28 @@ function registerNarrationHandlers(deck?: FakeDeck) {
       synthesizer: { supportsProvider: () => true, generateSpeech },
       getPowerPoint: () => deck ?? powerpoint,
     },
+    { holdWindowOpen: (_webContentsId, run) => run() },
   );
 
-  return { handlers, generateSpeech, powerpoint };
+  return { handlers, generateSpeech, powerpoint, externalWork, heldSpeech, holdSpeech };
+}
+
+const narrator = (text: string): NarrationSection => ({
+  speaker: "Narrator",
+  text,
+  playAcrossSlides: false,
+});
+
+function saveAll(
+  handlers: Map<string, IpcHandler>,
+  slides: Array<{ slideIndex: number; sections: NarrationSection[] }>,
+  progressEvent = event,
+) {
+  return handlers.get("save-narrated-presentation")!(progressEvent, {
+    filePath: presentationPath,
+    slides: slides.map((slide) => ({ ...slide, slideIndex: toSlideIndex(slide.slideIndex) })),
+    progressChannel: "narrated-presentation-save-progress:1",
+  } as never) as Promise<SaveAllRunResult>;
 }
 
 const event = {
@@ -139,9 +192,9 @@ it("formats the submitted structured sections only as PowerPoint takes them", as
       },
     ],
     progressChannel: "narrated-presentation-save-progress:1",
-  } as never)) as NarratedSaveResult;
+  } as never)) as SaveAllRunResult;
 
-  expect(result).toEqual({ success: true });
+  expect(result).toEqual({ outcome: { success: true }, savedNoteSlides: [1] });
   expect(generateSpeech.mock.calls).toEqual([
     ["First\n---\nstill the first section", narratorVoice, "wearily"],
     ["Second", narratorVoice, undefined],
@@ -273,4 +326,139 @@ describe("saving removes obsolete section audio", () => {
     expect(deck.media.get(1)!.toSorted()).toEqual(after);
     expect(deck.media.get(2)).toEqual(["ppt_audio_1", "ppt_audio_2"]);
   });
+});
+
+it("generates the active slide's sections in parallel and saves that slide before the next starts", async () => {
+  const { handlers, powerpoint, externalWork, heldSpeech, holdSpeech } =
+    registerNarrationHandlers();
+  holdSpeech();
+
+  const saving = saveAll(handlers, [
+    { slideIndex: 4, sections: [narrator("Four first"), narrator("Four second")] },
+    { slideIndex: 9, sections: [narrator("Nine only")] },
+  ]);
+
+  await vi.waitFor(() => expect(heldSpeech.size).toBe(2));
+  expect(externalWork).toEqual(["synthesize Four first", "synthesize Four second"]);
+
+  heldSpeech.get("Four second")!.resolve(new Uint8Array([2]));
+  heldSpeech.get("Four first")!.resolve(new Uint8Array([1]));
+  await vi.waitFor(() => expect(heldSpeech.size).toBe(3));
+
+  expect(externalWork).toEqual([
+    "synthesize Four first",
+    "synthesize Four second",
+    "save notes 4",
+    "insert audio 4",
+    "synthesize Nine only",
+  ]);
+  expect(powerpoint.saveNotes).toHaveBeenCalledWith(presentationPath, [
+    { slideIndex: 4, notes: "[Narrator]\nFour first\n---\n[Narrator]\nFour second" },
+  ]);
+  expect(powerpoint.insertAudio).toHaveBeenCalledWith(presentationPath, [
+    { slideIndex: 4, sectionIndex: 0, audioData: new Uint8Array([1]), playAcrossSlides: false },
+    { slideIndex: 4, sectionIndex: 1, audioData: new Uint8Array([2]), playAcrossSlides: false },
+  ]);
+
+  heldSpeech.get("Nine only")!.resolve(new Uint8Array([9]));
+
+  await expect(saving).resolves.toEqual({ outcome: { success: true }, savedNoteSlides: [4, 9] });
+  expect(externalWork.slice(5)).toEqual(["save notes 9", "insert audio 9"]);
+});
+
+it("reports each slide's position in the run and its generating and saving phases", async () => {
+  const { handlers } = registerNarrationHandlers();
+  const send = vi.fn<(channel: string, ...args: unknown[]) => void>();
+
+  await saveAll(
+    handlers,
+    [
+      { slideIndex: 6, sections: [narrator("Six")] },
+      { slideIndex: 2, sections: [narrator("Two")] },
+    ],
+    { sender: { send } } as unknown as IpcMainInvokeEvent,
+  );
+
+  expect(send.mock.calls).toEqual([
+    [
+      "narrated-presentation-save-progress:1",
+      { slideIndex: 6, completedSlides: 0, totalSlides: 2, phase: "generating" },
+    ],
+    [
+      "narrated-presentation-save-progress:1",
+      { slideIndex: 6, completedSlides: 0, totalSlides: 2, phase: "saving" },
+    ],
+    [
+      "narrated-presentation-save-progress:1",
+      { slideIndex: 2, completedSlides: 1, totalSlides: 2, phase: "generating" },
+    ],
+    [
+      "narrated-presentation-save-progress:1",
+      { slideIndex: 2, completedSlides: 1, totalSlides: 2, phase: "saving" },
+    ],
+  ]);
+});
+
+it("rejects an unmapped speaker on a later slide before any synthesis or PowerPoint write", async () => {
+  const { handlers, externalWork } = registerNarrationHandlers();
+
+  const result = await saveAll(handlers, [
+    { slideIndex: 0, sections: [narrator("Valid")] },
+    { slideIndex: 1, sections: [{ speaker: "Missing", text: "Invalid", playAcrossSlides: false }] },
+  ]);
+
+  expect(result).toMatchObject({
+    outcome: { success: false, stage: "validation", partial: false },
+    savedNoteSlides: [],
+  });
+  expect(externalWork).toEqual([]);
+});
+
+it("saves the notes of a slide without narration and removes its stale audio", async () => {
+  const { handlers, externalWork, powerpoint } = registerNarrationHandlers();
+
+  const result = await saveAll(handlers, [
+    { slideIndex: 3, sections: [{ speaker: "Narrator", text: "  ", playAcrossSlides: false }] },
+    { slideIndex: 5, sections: [narrator("Five")] },
+  ]);
+
+  expect(result).toEqual({ outcome: { success: true }, savedNoteSlides: [3, 5] });
+  expect(externalWork).toEqual([
+    "save notes 3",
+    "remove audio 3",
+    "synthesize Five",
+    "save notes 5",
+    "insert audio 5",
+  ]);
+  expect(powerpoint.saveNotes).toHaveBeenNthCalledWith(1, presentationPath, [
+    { slideIndex: 3, notes: "[Narrator]\n  " },
+  ]);
+});
+
+it("keeps earlier saved slides and leaves later slides untouched when a slide fails to generate", async () => {
+  const { handlers, externalWork, generateSpeech } = registerNarrationHandlers();
+  generateSpeech.mockImplementation((text) => {
+    externalWork.push(`synthesize ${text}`);
+    return text === "Two"
+      ? Promise.reject(new Error("quota exhausted"))
+      : Promise.resolve({ audio: new Uint8Array([1]), mediaType: "audio/mpeg" });
+  });
+
+  const result = await saveAll(handlers, [
+    { slideIndex: 0, sections: [narrator("One")] },
+    { slideIndex: 1, sections: [narrator("Two")] },
+    { slideIndex: 2, sections: [narrator("Three")] },
+  ]);
+
+  expect(result).toMatchObject({
+    outcome: { success: false, stage: "synthesis" },
+    savedNoteSlides: [0],
+  });
+  expect(result.outcome).toHaveProperty("message", expect.stringContaining("slide 2, section 1"));
+  expect(externalWork).toEqual([
+    "synthesize One",
+    "save notes 0",
+    "insert audio 0",
+    "synthesize Two",
+  ]);
 });

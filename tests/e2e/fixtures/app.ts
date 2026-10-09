@@ -89,16 +89,29 @@ export type InsertAudioCall = {
   }>;
 };
 
+export type RemoveAudioCall = { filePath: string; slideIndices: number[] };
+
 type MainProbes = {
   discardConfirmations: unknown[];
   generatedSpeech: GeneratedSpeechCall[];
   saveNotes: SaveNotesCall[];
   insertAudio: InsertAudioCall[];
+  removeAudio: RemoveAudioCall[];
+};
+
+/** External narration work the fake adapters can hold until a test releases it. */
+export type HeldWorkKind = "speech" | "saveNotes" | "insertAudio" | "removeAudio";
+export type HeldWork = { kind: HeldWorkKind; label: string };
+
+type HeldWorkControl = {
+  holding: HeldWorkKind[];
+  pending: Array<HeldWork & { release: () => void }>;
 };
 
 type MainGlobals = typeof globalThis & {
   __probes: MainProbes;
   __shouldDiscardNarrationChanges: boolean;
+  __heldWork: HeldWorkControl;
 };
 
 type RendererGlobals = typeof globalThis & {
@@ -132,13 +145,26 @@ async function installMockIpcHandlers(app: ElectronApplication) {
         generatedSpeech: [],
         saveNotes: [],
         insertAudio: [],
+        removeAudio: [],
       });
 
       globals.__probes = emptyProbes();
       globals.__shouldDiscardNarrationChanges = false;
+      globals.__heldWork = { holding: [], pending: [] };
       (globals as MainGlobals & { __resetProbes: () => void }).__resetProbes = () => {
         globals.__probes = emptyProbes();
+        globals.__heldWork.holding = [];
+        for (const work of globals.__heldWork.pending.splice(0)) {
+          work.release();
+        }
       };
+
+      const settle = <T>(kind: HeldWorkKind, label: string, value: T): Promise<T> =>
+        globals.__heldWork.holding.includes(kind)
+          ? new Promise<T>((resolve) => {
+              globals.__heldWork.pending.push({ kind, label, release: () => resolve(value) });
+            })
+          : Promise.resolve(value);
 
       globalThis.powerNarratorTestHarness!.useDiscardConfirmation((options) => {
         globals.__probes.discardConfirmations.push(options);
@@ -159,7 +185,7 @@ async function installMockIpcHandlers(app: ElectronApplication) {
         generateSpeech: (text: string, voiceOption: Voice) => {
           globals.__probes.generatedSpeech.push({ text, voiceOption });
 
-          return Promise.resolve({
+          return settle("speech", text, {
             audio: new Uint8Array(deterministicMp3Bytes),
             mediaType: "audio/mpeg",
           });
@@ -169,13 +195,22 @@ async function installMockIpcHandlers(app: ElectronApplication) {
       const powerPoint = {
         saveNotes: (filePath: string, slides: SaveNotesCall["slides"]) => {
           globals.__probes.saveNotes.push({ filePath, slides });
-          return Promise.resolve({ success: true as const });
+          return settle("saveNotes", slides.map((slide) => slide.slideIndex).join(), {
+            success: true as const,
+          });
         },
         insertAudio: (filePath: string, slidesAudio: InsertAudioCall["slidesAudio"]) => {
           globals.__probes.insertAudio.push({ filePath, slidesAudio });
-          return Promise.resolve({ success: true as const });
+          return settle(
+            "insertAudio",
+            [...new Set(slidesAudio.map((audio) => audio.slideIndex))].join(),
+            { success: true as const },
+          );
         },
-        removeAudio: () => Promise.resolve({ success: true as const }),
+        removeAudio: (filePath: string, slideIndices: number[]) => {
+          globals.__probes.removeAudio.push({ filePath, slideIndices });
+          return settle("removeAudio", slideIndices.join(), { success: true as const });
+        },
       };
 
       globalThis.powerNarratorTestHarness!.useNarrationAdapters({
@@ -225,10 +260,14 @@ async function installRendererProbes(page: Page) {
   });
 }
 
-export async function resetProbes(app: ElectronApplication, page: Page) {
-  await app.evaluate(() => {
+function stopHoldingNarrationWork(app: ElectronApplication) {
+  return app.evaluate(() => {
     (globalThis as MainGlobals & { __resetProbes: () => void }).__resetProbes();
   });
+}
+
+export async function resetProbes(app: ElectronApplication, page: Page) {
+  await stopHoldingNarrationWork(app);
   await page.evaluate(() => {
     const globals = globalThis as RendererGlobals;
     globals.__audioPlayUrls = [];
@@ -250,6 +289,28 @@ export const getGeneratedSpeechCalls = (app: ElectronApplication) =>
   readProbe(app, "generatedSpeech");
 export const getSaveNotesCalls = (app: ElectronApplication) => readProbe(app, "saveNotes");
 export const getInsertAudioCalls = (app: ElectronApplication) => readProbe(app, "insertAudio");
+export const getRemoveAudioCalls = (app: ElectronApplication) => readProbe(app, "removeAudio");
+
+export function holdNarrationWork(app: ElectronApplication, kinds: HeldWorkKind[]) {
+  return app.evaluate((_, heldKinds) => {
+    (globalThis as MainGlobals).__heldWork.holding = heldKinds;
+  }, kinds);
+}
+
+export function getHeldNarrationWork(app: ElectronApplication): Promise<HeldWork[]> {
+  return app.evaluate(() =>
+    (globalThis as MainGlobals).__heldWork.pending.map(({ kind, label }) => ({ kind, label })),
+  );
+}
+
+/** Lets every currently held request finish; later requests are still held. */
+export function releaseHeldNarrationWork(app: ElectronApplication) {
+  return app.evaluate(() => {
+    for (const work of (globalThis as MainGlobals).__heldWork.pending.splice(0)) {
+      work.release();
+    }
+  });
+}
 
 function allowDiscardingNarrationChanges(app: ElectronApplication) {
   return app.evaluate(() => {
@@ -285,6 +346,7 @@ export const test = base.extend<object, WorkerFixtures>({
 
       await use(app);
 
+      await stopHoldingNarrationWork(app);
       await allowDiscardingNarrationChanges(app);
       await app.close();
       fs.rmSync(FIXTURE_TEST, { force: true });
