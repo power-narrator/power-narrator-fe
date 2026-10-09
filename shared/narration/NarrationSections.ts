@@ -11,8 +11,8 @@ export type NarrationSection = {
   speaker: string;
   prompt?: string;
   text: string;
-  /** Whether the section's audio continues across slides; absent means it stops with its slide. */
-  playAcrossSlides?: boolean;
+  /** Whether the section's audio continues across slides. */
+  playAcrossSlides: boolean;
   format?: {
     separatorBefore?: string;
     speakerPrefix?: string;
@@ -151,6 +151,7 @@ function parseSection(
     speaker,
     ...(prompt ? { prompt } : {}),
     text: remaining,
+    playAcrossSlides: false,
     ...(format && Object.keys(format).length > 0 ? { format } : {}),
   };
 }

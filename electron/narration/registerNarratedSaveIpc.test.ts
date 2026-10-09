@@ -58,7 +58,12 @@ it("forwards preparation progress to the requested progress channel", async () =
 
   await handlers.get("save-narrated-presentation")!(progressEvent, {
     filePath: presentationPath,
-    slides: [{ slideIndex: 1, sections: [{ speaker: "Narrator", text: "Hello" }] }],
+    slides: [
+      {
+        slideIndex: 1,
+        sections: [{ speaker: "Narrator", text: "Hello", playAcrossSlides: false }],
+      },
+    ],
     progressChannel: "narrated-presentation-save-progress:7",
   } as never);
 
@@ -74,7 +79,7 @@ describe.each([
     (filePath: string) => ({
       filePath,
       slideIndex: 1,
-      sections: [{ speaker: "Narrator", text: "Hello" }],
+      sections: [{ speaker: "Narrator", text: "Hello", playAcrossSlides: false }],
     }),
     "saveSlide" as const,
     0,
@@ -83,7 +88,12 @@ describe.each([
     "save-narrated-presentation",
     (filePath: string) => ({
       filePath,
-      slides: [{ slideIndex: 1, sections: [{ speaker: "Narrator", text: "Hello" }] }],
+      slides: [
+        {
+          slideIndex: 1,
+          sections: [{ speaker: "Narrator", text: "Hello", playAcrossSlides: false }],
+        },
+      ],
       progressChannel: "narrated-presentation-save-progress:1",
     }),
     "savePresentation" as const,

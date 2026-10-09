@@ -487,7 +487,7 @@ function loadedWithPlayback(notes: string, playAcrossSlides: readonly boolean[])
     ...slide,
     sections: slide.sections.map((section, index) => ({
       ...section,
-      playAcrossSlides: playAcrossSlides[index],
+      playAcrossSlides: playAcrossSlides[index] ?? false,
     })),
   };
 }
@@ -680,8 +680,13 @@ test("previews the section with plain sections and its position in their order",
   const [request] = requests;
   expect(request?.sectionIndex).toBe(1);
   expect(request?.sections).toEqual([
-    { speaker: "", text: "First narration" },
-    { speaker: "", text: "Second section", format: { separatorBefore: "\n---\n" } },
+    { speaker: "", text: "First narration", playAcrossSlides: false },
+    {
+      speaker: "",
+      text: "Second section",
+      playAcrossSlides: false,
+      format: { separatorBefore: "\n---\n" },
+    },
   ]);
   expect(request?.sections.some((section) => "id" in section)).toBe(false);
 });

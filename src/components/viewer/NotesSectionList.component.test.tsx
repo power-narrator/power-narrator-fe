@@ -25,8 +25,18 @@ const mappings: Record<string, SpeakerMapping> = {
 };
 
 const sections: EditorSection[] = [
-  { id: sectionIdentity("section-0"), speaker: "Alice", text: "First narration" },
-  { id: sectionIdentity("section-1"), speaker: "", text: "Second section" },
+  {
+    id: sectionIdentity("section-0"),
+    speaker: "Alice",
+    text: "First narration",
+    playAcrossSlides: false,
+  },
+  {
+    id: sectionIdentity("section-1"),
+    speaker: "",
+    text: "Second section",
+    playAcrossSlides: false,
+  },
 ];
 
 type SectionHandlers = ReturnType<typeof sectionHandlers>;
@@ -148,11 +158,9 @@ test("keeps section-local state with its own section when an earlier one is dele
     id: sectionIdentity("section-1"),
     speaker: "Bob",
     text: "Second section",
+    playAcrossSlides: false,
   };
-  const { screen, rerenderSections } = await renderSections([
-    { id: sectionIdentity("section-0"), speaker: "Alice", text: "First narration" },
-    survivingSection,
-  ]);
+  const { screen, rerenderSections } = await renderSections([sections[0]!, survivingSection]);
 
   await screen.getByRole("button", { name: "Prompt for slide 3 section 1" }).click();
   await expect
@@ -183,6 +191,7 @@ test("keeps section-local state with its own section when one is inserted above 
       id: sectionIdentity("section-2"),
       speaker: "",
       text: "Inserted section",
+      playAcrossSlides: false,
     },
     sections[1]!,
   ]);

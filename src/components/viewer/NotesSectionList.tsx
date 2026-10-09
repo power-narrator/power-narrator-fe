@@ -129,7 +129,7 @@ export function NotesSectionList({
                         <Checkbox
                           aria-label={`Play across slides for ${sectionLabel}`}
                           label="Play Across Slides"
-                          checked={section.playAcrossSlides ?? false}
+                          checked={section.playAcrossSlides}
                           onChange={(event) =>
                             onSectionPlayAcrossSlidesChange(section.id, event.currentTarget.checked)
                           }

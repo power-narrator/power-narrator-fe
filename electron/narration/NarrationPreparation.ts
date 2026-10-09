@@ -106,7 +106,7 @@ export class NarrationPreparation {
               speaker,
               section.prompt,
             ),
-            playAcrossSlides: section.playAcrossSlides ?? false,
+            playAcrossSlides: section.playAcrossSlides,
           },
         ];
       }),

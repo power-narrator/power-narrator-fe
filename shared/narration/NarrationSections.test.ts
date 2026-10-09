@@ -68,8 +68,8 @@ describe("narration section formatting", () => {
   it("uses canonical formatting for sections without format metadata", () => {
     expect(
       formatNarrationSections([
-        { speaker: "", text: "Opening" },
-        { speaker: "Narrator", text: "Second section" },
+        { speaker: "", text: "Opening", playAcrossSlides: false },
+        { speaker: "Narrator", text: "Second section", playAcrossSlides: false },
       ]),
     ).toBe("Opening\n---\n[Narrator]\nSecond section");
   });
@@ -195,7 +195,9 @@ describe("inline prompts in slide notes", () => {
 
   it("uses canonical formatting for a prompt without format metadata", () => {
     expect(
-      formatNarrationSections([{ speaker: "Narrator", prompt: "whisper", text: "Hello" }]),
+      formatNarrationSections([
+        { speaker: "Narrator", prompt: "whisper", text: "Hello", playAcrossSlides: false },
+      ]),
     ).toBe("[Narrator]\n[prompt: whisper]\nHello");
   });
 });

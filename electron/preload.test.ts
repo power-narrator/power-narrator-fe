@@ -103,7 +103,12 @@ it("stops delivering progress after a narrated presentation save settles", async
   const saving = electron.state.exposedApi!.saveNarratedPresentation(
     {
       filePath: "/slides/talk.pptx",
-      slides: [{ slideIndex: toSlideIndex(0), sections: [{ speaker: "", text: "Narrate this" }] }],
+      slides: [
+        {
+          slideIndex: toSlideIndex(0),
+          sections: [{ speaker: "", text: "Narrate this", playAcrossSlides: false }],
+        },
+      ],
     },
     (progress) => observedProgress.push(progress),
   );
