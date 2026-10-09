@@ -215,8 +215,18 @@ describe("XmlPptProvider.insertAudio", () => {
     respondWithSuccess();
 
     await provider.insertAudio("/presentations/deck.pptx", [
-      { slideIndex: toSlideIndex(0), sectionIndex: 0, audioData: new Uint8Array([1]) },
-      { slideIndex: toSlideIndex(2), sectionIndex: 1, audioData: new Uint8Array([2]) },
+      {
+        slideIndex: toSlideIndex(0),
+        sectionIndex: 0,
+        audioData: new Uint8Array([1]),
+        playAcrossSlides: false,
+      },
+      {
+        slideIndex: toSlideIndex(2),
+        sectionIndex: 1,
+        audioData: new Uint8Array([2]),
+        playAcrossSlides: false,
+      },
     ]);
 
     const ops = xmlCliCalls[1]?.ops ?? [];

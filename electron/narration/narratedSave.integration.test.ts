@@ -145,12 +145,57 @@ it("formats the submitted structured sections only as PowerPoint takes them", as
     },
   ]);
   expect(powerpoint.insertAudio).toHaveBeenCalledWith(presentationPath, [
-    { slideIndex: 1, sectionIndex: 0, audioData: new Uint8Array([1, 2, 3]) },
-    { slideIndex: 1, sectionIndex: 1, audioData: new Uint8Array([1, 2, 3]) },
+    {
+      slideIndex: 1,
+      sectionIndex: 0,
+      audioData: new Uint8Array([1, 2, 3]),
+      playAcrossSlides: false,
+    },
+    {
+      slideIndex: 1,
+      sectionIndex: 1,
+      audioData: new Uint8Array([1, 2, 3]),
+      playAcrossSlides: false,
+    },
   ]);
   expect(powerpoint.saveNotes.mock.invocationCallOrder[0]).toBeLessThan(
     powerpoint.insertAudio.mock.invocationCallOrder[0]!,
   );
+});
+
+it("asks PowerPoint for each section's submitted playback, which speech never sees", async () => {
+  const { handlers, generateSpeech, powerpoint } = registerNarrationHandlers();
+
+  const result = await handlers.get("save-narrated-slide")!(event, {
+    filePath: presentationPath,
+    slideIndex: toSlideIndex(1),
+    sections: [
+      { speaker: "Narrator", text: "First", playAcrossSlides: true },
+      { speaker: "", text: " ", playAcrossSlides: true },
+      { speaker: "", text: "Third", playAcrossSlides: false },
+      { speaker: "", text: "Fourth" },
+      { speaker: "", text: "Fifth", playAcrossSlides: true },
+    ],
+  } as never);
+
+  expect(result).toEqual({ success: true });
+  expect(
+    powerpoint.insertAudio.mock.calls[0]![1].map(({ sectionIndex, playAcrossSlides }) => ({
+      sectionIndex,
+      playAcrossSlides,
+    })),
+  ).toEqual([
+    { sectionIndex: 0, playAcrossSlides: true },
+    { sectionIndex: 2, playAcrossSlides: false },
+    { sectionIndex: 3, playAcrossSlides: false },
+    { sectionIndex: 4, playAcrossSlides: true },
+  ]);
+  expect(generateSpeech.mock.calls).toEqual([
+    ["First", narratorVoice, undefined],
+    ["Third", narratorVoice, undefined],
+    ["Fourth", narratorVoice, undefined],
+    ["Fifth", narratorVoice, undefined],
+  ]);
 });
 
 describe("saving removes obsolete section audio", () => {
