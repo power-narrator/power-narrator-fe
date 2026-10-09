@@ -407,6 +407,7 @@ export function ViewerPage({
                     onSpeakerChange={editor.setSectionSpeaker}
                     onSectionTextChange={editor.setSectionText}
                     onSectionPromptChange={editor.setSectionPrompt}
+                    onSectionPlayAcrossSlidesChange={editor.setSectionPlayAcrossSlides}
                     onDeleteSection={editor.deleteSection}
                     onAddSection={editor.addSection}
                     textareas={textareas}

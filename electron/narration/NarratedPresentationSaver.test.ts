@@ -356,6 +356,29 @@ describe("NarratedPresentationSaver", () => {
     expect(powerpoint.insertAudio).toHaveBeenCalledTimes(2);
   });
 
+  it("reuses cached narration when only the playback choice changes", async () => {
+    const { powerpoint, saver, synthesize } = createCachedRetrySaver();
+    powerpoint.audioResults = [];
+    const saveWithPlayback = (playAcrossSlides: boolean) =>
+      saver.savePresentation({
+        filePath: "/slides/talk.pptx",
+        slides: [
+          {
+            slideIndex: toSlideIndex(1),
+            sections: [{ speaker: "Narrator", text: "Same notes", playAcrossSlides }],
+          },
+        ],
+      });
+
+    await saveWithPlayback(false);
+    await expect(saveWithPlayback(true)).resolves.toEqual({ success: true });
+
+    expect(synthesize).toHaveBeenCalledTimes(1);
+    expect(powerpoint.insertAudio.mock.lastCall?.[1]).toEqual([
+      expect.objectContaining({ sectionIndex: 0, playAcrossSlides: true }),
+    ]);
+  });
+
   it("synthesizes a new cache identity when edited notes are retried", async () => {
     const { saver, synthesize } = createCachedRetrySaver();
 

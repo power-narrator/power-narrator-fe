@@ -47,6 +47,7 @@ export type SlideAudioEntry = {
   slideIndex: SlideIndex;
   sectionIndex: number;
   audioData: Uint8Array;
+  playAcrossSlides: boolean;
 };
 
 export type SlidesPptResult = Result<{ slides: SlideWithSrc[] }>;

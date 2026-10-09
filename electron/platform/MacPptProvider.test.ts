@@ -396,9 +396,21 @@ describe("MacPptProvider.convertPptx", () => {
 describe("MacPptProvider.insertAudio", () => {
   const deck = "/presentations/deck.pptx";
   const firstAndThirdSlideAudio = [
-    { slideIndex: toSlideIndex(0), sectionIndex: 0, audioData: new Uint8Array([1]) },
-    { slideIndex: toSlideIndex(2), sectionIndex: 1, audioData: new Uint8Array([2]) },
+    {
+      slideIndex: toSlideIndex(0),
+      sectionIndex: 0,
+      audioData: new Uint8Array([1]),
+      playAcrossSlides: true,
+    },
+    {
+      slideIndex: toSlideIndex(2),
+      sectionIndex: 1,
+      audioData: new Uint8Array([2]),
+      playAcrossSlides: false,
+    },
   ];
+  const confirmedFirst = "inserted|1|ppt_audio_1|999|1|0";
+  const confirmedThird = "inserted|3|ppt_audio_2|1|1|0";
 
   /**
    * Stands in for the InsertAudio macro: the provider learns the outcome only
@@ -416,16 +428,12 @@ describe("MacPptProvider.insertAudio", () => {
     return () => params;
   }
 
-  it("succeeds once the macro confirms each section audio and the narration left on each slide", async () => {
+  it("succeeds once the macro confirms each section audio, its playback, and the narration left on each slide", async () => {
     const provider = new MacPptProvider();
     const params = insertAudioMacroReports(
-      [
-        "inserted|1|ppt_audio_1",
-        "inserted|3|ppt_audio_2",
-        "slide|1|ppt_audio_1",
-        "slide|3|ppt_audio_2",
-        "done",
-      ].join("\r"),
+      [confirmedFirst, confirmedThird, "slide|1|ppt_audio_1", "slide|3|ppt_audio_2", "done"].join(
+        "\r",
+      ),
     );
 
     const result = await provider.insertAudio(deck, firstAndThirdSlideAudio);
@@ -436,8 +444,14 @@ describe("MacPptProvider.insertAudio", () => {
         .trimEnd()
         .split("\n")
         .slice(1)
-        .map((line) => line.split("|")[0]),
-    ).toEqual(["1", "3"]);
+        .map((line) => {
+          const [slideNumber, , playAcrossSlides] = line.split("|");
+          return [slideNumber, playAcrossSlides];
+        }),
+    ).toEqual([
+      ["1", "1"],
+      ["3", "0"],
+    ]);
   });
 
   it.each([
@@ -448,7 +462,7 @@ describe("MacPptProvider.insertAudio", () => {
     },
     {
       problem: "stops before finishing",
-      report: "inserted|1|ppt_audio_1\n",
+      report: `${confirmedFirst}\n`,
       message: /did not finish/,
     },
     {
@@ -458,14 +472,58 @@ describe("MacPptProvider.insertAudio", () => {
     },
     {
       problem: "does not confirm a section audio",
-      report: "inserted|1|ppt_audio_1\nslide|1|ppt_audio_1\nslide|3|ppt_audio_2\ndone\n",
+      report: `${confirmedFirst}\nslide|1|ppt_audio_1\nslide|3|ppt_audio_2\ndone\n`,
       message: /ppt_audio_2 on slide 3/,
+    },
+    {
+      problem: "leaves an enabled section on a custom span",
+      report: [
+        "inserted|1|ppt_audio_1|2|1|0",
+        confirmedThird,
+        "slide|1|ppt_audio_1",
+        "slide|3|ppt_audio_2",
+        "done",
+      ].join("\n"),
+      message: /playback of ppt_audio_1 on slide 1/,
+    },
+    {
+      problem: "leaves an enabled section waiting for its audio",
+      report: [
+        "inserted|1|ppt_audio_1|999|1|1",
+        confirmedThird,
+        "slide|1|ppt_audio_1",
+        "slide|3|ppt_audio_2",
+        "done",
+      ].join("\n"),
+      message: /playback of ppt_audio_1 on slide 1/,
+    },
+    {
+      problem: "leaves a disabled section playing across slides",
+      report: [
+        confirmedFirst,
+        "inserted|3|ppt_audio_2|999|1|0",
+        "slide|1|ppt_audio_1",
+        "slide|3|ppt_audio_2",
+        "done",
+      ].join("\n"),
+      message: /playback of ppt_audio_2 on slide 3/,
+    },
+    {
+      problem: "does not report a section's playback",
+      report: [
+        confirmedFirst,
+        "inserted|3|ppt_audio_2",
+        "slide|1|ppt_audio_1",
+        "slide|3|ppt_audio_2",
+        "done",
+      ].join("\n"),
+      message: /playback of ppt_audio_2 on slide 3/,
     },
     {
       problem: "leaves obsolete section audio on a saved slide",
       report: [
-        "inserted|1|ppt_audio_1",
-        "inserted|3|ppt_audio_2",
+        confirmedFirst,
+        confirmedThird,
         "slide|1|ppt_audio_1,ppt_audio_2",
         "slide|3|ppt_audio_2",
         "done",
@@ -475,8 +533,8 @@ describe("MacPptProvider.insertAudio", () => {
     {
       problem: "leaves duplicate section audio on a saved slide",
       report: [
-        "inserted|1|ppt_audio_1",
-        "inserted|3|ppt_audio_2",
+        confirmedFirst,
+        confirmedThird,
         "slide|1|ppt_audio_1",
         "slide|3|ppt_audio_2,ppt_audio_2",
         "done",

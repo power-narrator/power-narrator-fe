@@ -11,14 +11,17 @@ import {
 } from "../../shared/slides/slideCoordinates.js";
 import { getErrorMessage } from "./errors.js";
 import {
+  buildSlidesWithPaths,
   buildPptAudioFileName,
   cleanupPaths,
   isManagedPptAudioName,
   normalizeNotes,
   resolveScriptPath,
 } from "./helpers.js";
+import { completeSlideReload } from "./slideReload.js";
 import type {
   BasicPptResult,
+  SectionsPlayingAcrossSlides,
   QuerySlidesResult,
   ReadAllSlideNotesResult,
   ReadSlideNotesResult,
@@ -34,10 +37,8 @@ import type {
   XmlSlideData,
 } from "./types.js";
 
-const PLAYBACK_UNSUPPORTED = {
-  success: false,
-  message: "Reading section audio playback is not supported by the XML PowerPoint integration.",
-} as const;
+/** This integration does not read section audio playback yet, so every section loads unchecked. */
+const NO_SECTIONS_PLAYING_ACROSS_SLIDES: SectionsPlayingAcrossSlides = new Set();
 
 export class XmlPptProvider implements PptProvider {
   constructor(private nativeProvider?: NativePlatformProvider) {}
@@ -336,16 +337,68 @@ export class XmlPptProvider implements PptProvider {
     return await this.runXmlCli(filePath, filePath, ops);
   }
 
-  /** Loading needs section audio playback, which this integration does not read yet. */
-  convertPptx(_filePath: string, _outputDir: string): Promise<SlidesPptResult> {
-    return Promise.resolve(PLAYBACK_UNSUPPORTED);
+  async convertPptx(filePath: string, outputDir: string): Promise<SlidesPptResult> {
+    if (!this.nativeProvider) {
+      return { success: false, message: "Slide image export is not supported on this platform" };
+    }
+
+    const imageResult = await this.nativeProvider.exportSlideImages(filePath, outputDir);
+    if (!imageResult.success) {
+      return imageResult;
+    }
+
+    const queryResult = await this.querySlides(filePath);
+    if (!queryResult.success) {
+      return queryResult;
+    }
+
+    const slides = queryResult.slideData.map((slide, position) => {
+      const slideIndex = toSlideIndex(position);
+
+      return {
+        slideIndex,
+        image: imageResult.images.get(slideIndex)?.image || "",
+        notes: slide?.notes || "",
+        sectionsPlayingAcrossSlides: NO_SECTIONS_PLAYING_ACROSS_SLIDES,
+      };
+    });
+
+    return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
   }
 
-  reloadSlide(
-    _filePath: string,
-    _slideIndex: SlideIndex,
-    _outputDir: string,
+  async reloadSlide(
+    filePath: string,
+    slideIndex: SlideIndex,
+    outputDir: string,
   ): Promise<SlidePptResult> {
-    return Promise.resolve(PLAYBACK_UNSUPPORTED);
+    if (!this.nativeProvider) {
+      return { success: false, message: "Slide image export is not supported on this platform" };
+    }
+
+    const imageResult = await this.nativeProvider.reloadSlideImage(filePath, slideIndex, outputDir);
+    if (!imageResult.success) {
+      return imageResult;
+    }
+
+    return completeSlideReload(outputDir, slideIndex, imageResult.image, async () => {
+      const queryResult = await this.querySlides(filePath);
+      if (!queryResult.success) {
+        return queryResult;
+      }
+
+      const slide = queryResult.slideData?.[slideIndex];
+      if (!slide) {
+        return {
+          success: false,
+          message: `Could not find slide data for slide ${slideNumberOf(slideIndex)}`,
+        };
+      }
+
+      return {
+        success: true,
+        notes: slide.notes || "",
+        sectionsPlayingAcrossSlides: NO_SECTIONS_PLAYING_ACROSS_SLIDES,
+      };
+    });
   }
 }

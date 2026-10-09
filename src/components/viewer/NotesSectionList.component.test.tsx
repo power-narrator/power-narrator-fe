@@ -37,6 +37,7 @@ function sectionHandlers() {
     onSpeakerChange: vi.fn<(id: SectionId, speaker: string | null) => void>(),
     onSectionTextChange: vi.fn<(id: SectionId, value: string) => void>(),
     onSectionPromptChange: vi.fn<(id: SectionId, prompt: string | undefined) => void>(),
+    onSectionPlayAcrossSlidesChange: vi.fn<(id: SectionId, playAcrossSlides: boolean) => void>(),
     onDeleteSection: vi.fn<(id: SectionId) => void>(),
     onAddSection: vi.fn<() => void>(),
   };
