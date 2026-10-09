@@ -286,6 +286,11 @@ async function startSaveAll(screen: Awaited<ReturnType<typeof renderViewer>>["sc
   await screen.getByRole("button", { name: "Save All", exact: true }).click();
 }
 
+async function startGenerateVideo(screen: Awaited<ReturnType<typeof renderViewer>>["screen"]) {
+  await screen.getByRole("button", { name: "Generate Video", exact: true }).click();
+  await screen.getByRole("button", { name: "Save and Generate", exact: true }).click();
+}
+
 test("shows Cancelling... after Cancel and keeps unsaved edits once the run stops", async () => {
   let finishRun: ((result: SaveAllRunResult) => void) | undefined;
   const cancel = vi.fn<() => void>();
@@ -368,7 +373,7 @@ test("does not generate video when the narrated save fails", async () => {
   const { screen } = await renderViewer();
 
   await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Edited narration");
-  await screen.getByRole("button", { name: "Generate Video", exact: true }).click();
+  await startGenerateVideo(screen);
   await vi.waitFor(() => expect(saveNarratedPresentation).toHaveBeenCalledOnce());
 
   expect(generateVideo).not.toHaveBeenCalled();
@@ -383,7 +388,7 @@ test("generates video after a successful narrated save", async () => {
   const { screen } = await renderViewer();
 
   await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Edited narration");
-  await screen.getByRole("button", { name: "Generate Video", exact: true }).click();
+  await startGenerateVideo(screen);
 
   await vi.waitFor(() => expect(generateVideo).toHaveBeenCalledOnce());
 });

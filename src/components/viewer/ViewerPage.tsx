@@ -161,7 +161,7 @@ export function ViewerPage({
    */
   async function commitNarratedPresentation(
     onProgress: (progress: SaveAllRunProgress) => void,
-    onCancellable?: (cancel: () => void) => void,
+    onCancellable: (cancel: () => void) => void,
   ) {
     const snapshot = editor.submitSave();
     const result = await electronAPI.saveNarratedPresentation(
@@ -189,10 +189,10 @@ export function ViewerPage({
       "generateVideo",
       "Preparing narration...",
       async (command) => {
-        const saved = await commitNarratedPresentation(({ completedSlides, totalSlides }) =>
-          command.setStatus(`Preparing slide ${completedSlides + 1}/${totalSlides}...`),
-        );
-        if (!saved) {
+        if (
+          !(await saveAllRun.confirm("generateVideo")) ||
+          !(await saveAllRun.track(commitNarratedPresentation))
+        ) {
           command.clearStatus();
           return;
         }
@@ -222,7 +222,7 @@ export function ViewerPage({
       "saveAllSlides",
       "Saving all slides...",
       async (command) => {
-        if (!(await saveAllRun.confirm())) {
+        if (!(await saveAllRun.confirm("saveAll"))) {
           command.clearStatus();
           return;
         }

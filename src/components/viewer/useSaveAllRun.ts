@@ -1,9 +1,12 @@
 import { useCallback, useRef, useState } from "react";
 import type { SaveAllRunProgress } from "../../../shared/types/narration";
 
+/** What the author is asked to confirm a save-all run for. */
+export type SaveAllRunPurpose = "saveAll" | "generateVideo";
+
 export type SaveAllRunState =
   | { stage: "idle" }
-  | { stage: "confirming" }
+  | { stage: "confirming"; purpose: SaveAllRunPurpose }
   | { stage: "running"; progress: SaveAllRunProgress | null; cancelling: boolean };
 
 export type SaveAllRunWork<T> = (
@@ -24,10 +27,10 @@ export function useSaveAllRun() {
   const activeRun = useRef<ActiveRun | null>(null);
 
   const confirm = useCallback(
-    () =>
+    (purpose: SaveAllRunPurpose) =>
       new Promise<boolean>((resolve) => {
         answerConfirmation.current = resolve;
-        setState({ stage: "confirming" });
+        setState({ stage: "confirming", purpose });
       }),
     [],
   );

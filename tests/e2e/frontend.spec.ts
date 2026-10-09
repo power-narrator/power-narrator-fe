@@ -5,14 +5,18 @@ import {
   MOCK_MAPPINGS,
   MOCK_SLIDES,
   expect,
+  VIDEO_OUTPUT_PATH,
+  declineVideoDestination,
   failHeldNarrationWork,
   getAlerts,
   getDiscardConfirmationCalls,
   getGeneratedSpeechCalls,
+  getGeneratedVideoCalls,
   getHeldNarrationWork,
   getInsertAudioCalls,
   getPlaybackActivity,
   getSaveNotesCalls,
+  getVideoDestinationRequests,
   holdNarrationWork,
   releaseHeldNarrationWork,
   resetProbes,
@@ -42,6 +46,19 @@ async function startSaveAll(win: Page) {
     .getByRole("dialog", { name: "Save all slides?" })
     .getByRole("button", { name: "Save All", exact: true })
     .click();
+}
+
+function generateVideoButton(win: Page): Locator {
+  return win.getByRole("button", { name: "Generate Video", exact: true });
+}
+
+function videoConfirmation(win: Page): Locator {
+  return win.getByRole("dialog", { name: "Generate video?" });
+}
+
+async function startGenerateVideo(win: Page) {
+  await generateVideoButton(win).click();
+  await videoConfirmation(win).getByRole("button", { name: "Save and Generate" }).click();
 }
 
 type CloseAttemptGlobals = typeof globalThis & { __closeAttempts: number };
@@ -247,6 +264,168 @@ test.describe("PPT Viewer UI Workflows", () => {
       { filePath: FIXTURE_TEST, slides: [{ slideIndex: 0, notes: MOCK_SLIDES[0]!.notes }] },
     ]);
     await expect(saveAllButton(win)).toBeEnabled();
+  });
+
+  test("asks before preparing a video and renders nothing when the author declines", async ({
+    app,
+    win,
+  }) => {
+    await notesEditor(win).fill("Kept after declining video");
+    await generateVideoButton(win).click();
+
+    const confirmation = videoConfirmation(win);
+    await expect(confirmation).toContainText("may take some time");
+    await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+
+    await expect(confirmation).toBeHidden();
+    await expect(notesEditor(win)).toHaveValue("Kept after declining video");
+    await expect(generateVideoButton(win)).toBeEnabled();
+    expect(await getGeneratedSpeechCalls(app)).toEqual([]);
+    expect(await getSaveNotesCalls(app)).toEqual([]);
+    expect(await getVideoDestinationRequests(app)).toBe(0);
+    expect(await getGeneratedVideoCalls(app)).toEqual([]);
+  });
+
+  test("renders the video only after every slide saves through the save-all run", async ({
+    app,
+    win,
+  }) => {
+    await holdNarrationWork(app, ["saveNotes"]);
+    await startGenerateVideo(win);
+    const progress = saveAllProgress(win);
+    await expect.poll(() => getHeldNarrationWork(app)).toEqual([{ kind: "saveNotes", label: "0" }]);
+    await expect(progress).toContainText("Slide 1 of 2");
+    await expect(progress).toContainText("Saving to PowerPoint...");
+    await releaseHeldNarrationWork(app);
+    await expect.poll(() => getHeldNarrationWork(app)).toEqual([{ kind: "saveNotes", label: "1" }]);
+    await expect(progress).toContainText("Slide 2 of 2");
+    expect(await getVideoDestinationRequests(app)).toBe(0);
+
+    await releaseHeldNarrationWork(app);
+
+    await expect(progress).toBeHidden();
+    await expect
+      .poll(() => getGeneratedVideoCalls(app))
+      .toEqual([{ filePath: FIXTURE_TEST, videoOutputPath: VIDEO_OUTPUT_PATH }]);
+    expect(await getSaveNotesCalls(app)).toHaveLength(2);
+    await expect
+      .poll(() => getAlerts(win))
+      .toEqual([`Video generated successfully at: ${VIDEO_OUTPUT_PATH}`]);
+  });
+
+  test("keeps the saved slides and renders nothing when no video destination is chosen", async ({
+    app,
+    win,
+  }) => {
+    await declineVideoDestination(app);
+    await notesEditor(win).fill("Saved before declining a destination");
+    await startGenerateVideo(win);
+
+    await expect.poll(() => getVideoDestinationRequests(app)).toBe(1);
+    await expect(generateVideoButton(win)).toBeEnabled();
+    expect(await getGeneratedVideoCalls(app)).toEqual([]);
+    expect(await getSaveNotesCalls(app)).toEqual([
+      {
+        filePath: FIXTURE_TEST,
+        slides: [{ slideIndex: 0, notes: "Saved before declining a destination" }],
+      },
+      { filePath: FIXTURE_TEST, slides: [{ slideIndex: 1, notes: MOCK_SLIDES[1]!.notes }] },
+    ]);
+    expect(await getAlerts(win)).toEqual([]);
+  });
+
+  test("renders nothing when video preparation is cancelled while a slide generates", async ({
+    app,
+    win,
+  }) => {
+    await notesEditor(win).fill("Kept after cancelling video");
+    await holdNarrationWork(app, ["speech"]);
+    await startGenerateVideo(win);
+    const progress = saveAllProgress(win);
+    await expect.poll(() => getHeldNarrationWork(app)).toHaveLength(1);
+
+    await progress.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(progress).toContainText("Cancelling...");
+    await releaseHeldNarrationWork(app);
+
+    await expect(progress).toBeHidden();
+    await expect(generateVideoButton(win)).toBeEnabled();
+    expect(await getSaveNotesCalls(app)).toEqual([]);
+    expect(await getVideoDestinationRequests(app)).toBe(0);
+    expect(await getGeneratedVideoCalls(app)).toEqual([]);
+    expect(await getAlerts(win)).toEqual([]);
+    await expect(notesEditor(win)).toHaveValue("Kept after cancelling video");
+  });
+
+  test("finishes the saving slide but renders nothing when cancelled while saving", async ({
+    app,
+    win,
+  }) => {
+    await holdNarrationWork(app, ["insertAudio"]);
+    await startGenerateVideo(win);
+    const progress = saveAllProgress(win);
+    await expect
+      .poll(() => getHeldNarrationWork(app))
+      .toEqual([{ kind: "insertAudio", label: "0" }]);
+
+    await progress.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(progress).toContainText("Cancelling...");
+    await releaseHeldNarrationWork(app);
+
+    await expect(progress).toBeHidden();
+    await expect(generateVideoButton(win)).toBeEnabled();
+    expect(await getSaveNotesCalls(app)).toEqual([
+      { filePath: FIXTURE_TEST, slides: [{ slideIndex: 0, notes: MOCK_SLIDES[0]!.notes }] },
+    ]);
+    expect(await getInsertAudioCalls(app)).toHaveLength(1);
+    expect(await getGeneratedVideoCalls(app)).toEqual([]);
+  });
+
+  test("renders nothing when a slide fails to generate during video preparation", async ({
+    app,
+    win,
+  }) => {
+    await holdNarrationWork(app, ["speech"]);
+    await startGenerateVideo(win);
+    await expect.poll(() => getHeldNarrationWork(app)).toHaveLength(1);
+
+    await failHeldNarrationWork(
+      app,
+      { kind: "speech", label: MOCK_SLIDES[0]!.notes },
+      "quota exhausted",
+    );
+
+    await expect(saveAllProgress(win)).toBeHidden();
+    await expect(generateVideoButton(win)).toBeEnabled();
+    expect(await getAlerts(win)).toEqual([
+      'Save error: Narration synthesis failed for slide 1, section 1, speaker "Default": quota exhausted.',
+    ]);
+    expect(await getSaveNotesCalls(app)).toEqual([]);
+    expect(await getGeneratedVideoCalls(app)).toEqual([]);
+  });
+
+  test("renders nothing when a slide's audio fails to save during video preparation", async ({
+    app,
+    win,
+  }) => {
+    await notesEditor(win).fill("Saved without its audio");
+    await holdNarrationWork(app, ["insertAudio"]);
+    await startGenerateVideo(win);
+    await expect
+      .poll(() => getHeldNarrationWork(app))
+      .toEqual([{ kind: "insertAudio", label: "0" }]);
+
+    await failHeldNarrationWork(app, { kind: "insertAudio", label: "0" }, "media rejected");
+
+    await expect(saveAllProgress(win)).toBeHidden();
+    await expect(generateVideoButton(win)).toBeEnabled();
+    expect(await getAlerts(win)).toEqual([
+      expect.stringMatching(
+        /^Save error on slide 1: its notes were saved, but its narration audio was not fully saved.*media rejected.* Later slides were not changed\.$/,
+      ),
+    ]);
+    expect(await getSaveNotesCalls(app)).toHaveLength(1);
+    expect(await getGeneratedVideoCalls(app)).toEqual([]);
   });
 
   for (const closeCase of [

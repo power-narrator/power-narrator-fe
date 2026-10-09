@@ -90,6 +90,9 @@ export type InsertAudioCall = {
 };
 
 export type RemoveAudioCall = { filePath: string; slideIndices: number[] };
+export type GenerateVideoCall = { filePath: string; videoOutputPath: string };
+
+export const VIDEO_OUTPUT_PATH = path.join(__dirname, "../../fixtures/test-presentation-run.mp4");
 
 type MainProbes = {
   discardConfirmations: unknown[];
@@ -97,6 +100,8 @@ type MainProbes = {
   saveNotes: SaveNotesCall[];
   insertAudio: InsertAudioCall[];
   removeAudio: RemoveAudioCall[];
+  videoDestinationRequests: number;
+  generatedVideos: GenerateVideoCall[];
 };
 
 /** External narration work the fake adapters can hold until a test releases it. */
@@ -112,6 +117,7 @@ type MainGlobals = typeof globalThis & {
   __probes: MainProbes;
   __shouldDiscardNarrationChanges: boolean;
   __heldWork: HeldWorkControl;
+  __videoDestination: string | null;
 };
 
 type RendererGlobals = typeof globalThis & {
@@ -139,7 +145,10 @@ function launchTestApp(): Promise<ElectronApplication> {
 
 async function installMockIpcHandlers(app: ElectronApplication) {
   await app.evaluate(
-    ({ ipcMain }, { testFilePath, mockSlides, mockMappings, deterministicMp3Bytes }) => {
+    (
+      { ipcMain },
+      { testFilePath, mockSlides, mockMappings, deterministicMp3Bytes, videoOutputPath },
+    ) => {
       const globals = globalThis as MainGlobals;
       const emptyProbes = (): MainProbes => ({
         discardConfirmations: [],
@@ -147,13 +156,17 @@ async function installMockIpcHandlers(app: ElectronApplication) {
         saveNotes: [],
         insertAudio: [],
         removeAudio: [],
+        videoDestinationRequests: 0,
+        generatedVideos: [],
       });
 
       globals.__probes = emptyProbes();
       globals.__shouldDiscardNarrationChanges = false;
       globals.__heldWork = { holding: [], pending: [] };
+      globals.__videoDestination = videoOutputPath;
       (globals as MainGlobals & { __resetProbes: () => void }).__resetProbes = () => {
         globals.__probes = emptyProbes();
+        globals.__videoDestination = videoOutputPath;
         globals.__heldWork.holding = [];
         for (const work of globals.__heldWork.pending.splice(0)) {
           work.release();
@@ -185,6 +198,18 @@ async function installMockIpcHandlers(app: ElectronApplication) {
 
       ipcMain.removeHandler("convert-pptx");
       ipcMain.handle("convert-pptx", () => ({ success: true, slides: mockSlides }));
+
+      ipcMain.removeHandler("get-video-save-path");
+      ipcMain.handle("get-video-save-path", () => {
+        globals.__probes.videoDestinationRequests += 1;
+        return globals.__videoDestination;
+      });
+
+      ipcMain.removeHandler("generate-video");
+      ipcMain.handle("generate-video", (_, request: GenerateVideoCall) => {
+        globals.__probes.generatedVideos.push(request);
+        return { success: true, outputPath: request.videoOutputPath };
+      });
 
       ipcMain.removeHandler("get-speaker-mappings");
       ipcMain.handle("get-speaker-mappings", () => mockMappings);
@@ -233,6 +258,7 @@ async function installMockIpcHandlers(app: ElectronApplication) {
       mockSlides: MOCK_STRUCTURED_SLIDES,
       mockMappings: MOCK_MAPPINGS,
       deterministicMp3Bytes: DETERMINISTIC_MP3_BYTES,
+      videoOutputPath: VIDEO_OUTPUT_PATH,
     },
   );
 }
@@ -310,6 +336,17 @@ export const getGeneratedSpeechCalls = (app: ElectronApplication) =>
 export const getSaveNotesCalls = (app: ElectronApplication) => readProbe(app, "saveNotes");
 export const getInsertAudioCalls = (app: ElectronApplication) => readProbe(app, "insertAudio");
 export const getRemoveAudioCalls = (app: ElectronApplication) => readProbe(app, "removeAudio");
+export const getVideoDestinationRequests = (app: ElectronApplication) =>
+  readProbe(app, "videoDestinationRequests");
+export const getGeneratedVideoCalls = (app: ElectronApplication) =>
+  readProbe(app, "generatedVideos");
+
+/** Makes the video destination dialog report that the author declined to choose one. */
+export function declineVideoDestination(app: ElectronApplication) {
+  return app.evaluate(() => {
+    (globalThis as MainGlobals).__videoDestination = null;
+  });
+}
 
 export function holdNarrationWork(app: ElectronApplication, kinds: HeldWorkKind[]) {
   return app.evaluate((_, heldKinds) => {

@@ -250,8 +250,10 @@ slide's notes commit but its audio mutation fails, the result is reported as a p
 failure; an ordinary retry can reuse the synthesized cache entries. There is no automated
 PowerPoint rollback. Save Slide uses the same path for its single slide.
 
-**Generate Video** first runs the same narrated save. Video export starts only after every slide's
-notes and audio commit successfully.
+**Generate Video** first runs the same save-all run, with its own confirmation, progress modal, and
+safe cancellation. The video destination is requested and export starts only after every slide's
+notes and audio commit successfully; cancellation or any failure skips rendering. Rendering itself
+cannot be cancelled.
 
 ### Synthesis cache
 
