@@ -22,12 +22,14 @@ export const MOCK_SLIDES: Slide[] = [
     image: "slide-1.png",
     src: TRANSPARENT_SLIDE_IMAGE,
     notes: "Initial notes for slide 1",
+    sectionsPlayingAcrossSlides: new Set(),
   },
   {
     slideIndex: toSlideIndex(1),
     image: "slide-2.png",
     src: TRANSPARENT_SLIDE_IMAGE,
     notes: "Initial notes for slide 2\nLine 2",
+    sectionsPlayingAcrossSlides: new Set(),
   },
 ];
 
@@ -60,10 +62,12 @@ export const DETERMINISTIC_MP3_BYTES = [
 ];
 
 /** What the PowerPoint load seam hands the renderer, in place of raw note text. */
-const MOCK_STRUCTURED_SLIDES: StructuredSlide[] = MOCK_SLIDES.map(({ notes, ...slide }) => ({
-  ...slide,
-  sections: parseNarrationSections(notes, Object.keys(MOCK_MAPPINGS)),
-}));
+const MOCK_STRUCTURED_SLIDES: StructuredSlide[] = MOCK_SLIDES.map(
+  ({ notes, sectionsPlayingAcrossSlides: _playback, ...slide }) => ({
+    ...slide,
+    sections: parseNarrationSections(notes, Object.keys(MOCK_MAPPINGS)),
+  }),
+);
 
 export type GeneratedSpeechCall = { text: string; voiceOption: Voice };
 export type SaveNotesCall = {

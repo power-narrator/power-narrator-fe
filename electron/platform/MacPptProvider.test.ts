@@ -214,9 +214,157 @@ describe("MacPptProvider.exportSlideImages", () => {
   });
 });
 
+/**
+ * Plays the inspection macro: it reads the slides it was asked about and
+ * writes its report to the output path named in its parameters.
+ */
+function reportSectionAudioPlayback(report: string | null) {
+  const request = { slideNumbers: "" };
+  succeedAppleScript(() => {
+    const [, slideNumbers, outputPath] = fs
+      .readFileSync(officeContainerPath("export_audio_playback_params.txt"), "utf8")
+      .split("|");
+    request.slideNumbers = slideNumbers!;
+    if (report !== null) {
+      fs.writeFileSync(outputPath!, report);
+    }
+  });
+  return request;
+}
+
+function stubSlideExport(provider: MacPptProvider, slideIndices: number[]) {
+  vi.spyOn(provider, "exportSlideImages").mockResolvedValue({
+    success: true,
+    images: new Map(
+      slideIndices.map((index) => [
+        toSlideIndex(index),
+        { image: `slides/Slide_${index + 1}_uuid.png` },
+      ]),
+    ),
+  });
+  vi.spyOn(provider, "readAllSlideNotes").mockResolvedValue({
+    success: true,
+    notes: new Map(slideIndices.map((index) => [toSlideIndex(index), `Slide ${index + 1}`])),
+  });
+}
+
+describe("MacPptProvider section audio playback", () => {
+  it("reads which sections' audio plays across slides by slide number and section ordinal", async () => {
+    const provider = new MacPptProvider();
+    stubSlideExport(provider, [0, 3]);
+    const request = reportSectionAudioPlayback(
+      [
+        "###SLIDE_START### 1",
+        "###SLIDE_END###",
+        "###SLIDE_START### 4",
+        "ppt_audio_1\tsound\t0",
+        "ppt_audio_2\tsound\t999",
+        "ppt_audio_3\tsound\t2",
+        "ppt_audio_4\tsound\t1",
+        "###SLIDE_END###",
+        "###EXPORT_COMPLETE###",
+        "",
+      ].join("\n"),
+    );
+
+    const result = await provider.convertPptx("/presentations/deck.pptx", "/tmp/deck");
+
+    expect(request.slideNumbers).toBe("1,4");
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      throw new Error(result.message);
+    }
+    expect(
+      result.slides.map(({ slideIndex, sectionsPlayingAcrossSlides }) => ({
+        slideIndex,
+        sectionsPlayingAcrossSlides,
+      })),
+    ).toEqual([
+      { slideIndex: 0, sectionsPlayingAcrossSlides: new Set() },
+      { slideIndex: 3, sectionsPlayingAcrossSlides: new Set([1, 2]) },
+    ]);
+  });
+
+  it.each([
+    [
+      "two audio shapes share a section's name",
+      "###SLIDE_START### 1\nppt_audio_1\tsound\t999\nppt_audio_1\tsound\t0\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "Slide 1 has more than one shape named ppt_audio_1.",
+    ],
+    [
+      "the named shape is not audio",
+      "###SLIDE_START### 1\nppt_audio_1\tother\t\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "Shape ppt_audio_1 on slide 1 is not audio.",
+    ],
+    [
+      "PowerPoint reports an inspection error",
+      "###ERROR### Could not read the playback of ppt_audio_1 on slide 1: Type mismatch\n",
+      "Could not read the playback of ppt_audio_1 on slide 1: Type mismatch",
+    ],
+    [
+      "the playback value is unreadable",
+      "###SLIDE_START### 1\nppt_audio_1\tsound\tlots\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported an unreadable playback for ppt_audio_1 on slide 1.",
+    ],
+    [
+      "the report stops before completing",
+      "###SLIDE_START### 1\n###SLIDE_END###\n",
+      "PowerPoint did not finish reporting section audio playback.",
+    ],
+    [
+      "a requested slide is missing from the report",
+      "###EXPORT_COMPLETE###\n",
+      "PowerPoint did not report section audio playback for slide 1.",
+    ],
+    ["no report is written", null, "PowerPoint did not report section audio playback."],
+  ])("fails the load when %s", async (_, report, message) => {
+    const provider = new MacPptProvider();
+    stubSlideExport(provider, [0]);
+    reportSectionAudioPlayback(report);
+
+    await expect(provider.convertPptx("/presentations/deck.pptx", "/tmp/deck")).resolves.toEqual({
+      success: false,
+      message,
+    });
+  });
+
+  it("reads the playback of the reloaded slide only", async () => {
+    if (!tempDir) {
+      throw new Error("Expected a temporary test directory");
+    }
+    const outputDir = path.join(tempDir, "deck");
+    fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });
+    fs.writeFileSync(path.join(outputDir, "slides/Slide_2_staged.png"), "fixture");
+    const provider = new MacPptProvider();
+    vi.spyOn(provider, "reloadSlideImage").mockResolvedValue({
+      success: true,
+      image: "slides/Slide_2_staged.png",
+    });
+    vi.spyOn(provider, "readSlideNotes").mockResolvedValue({ success: true, notes: "Second" });
+    const request = reportSectionAudioPlayback(
+      "###SLIDE_START### 2\nppt_audio_1\tsound\t999\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+
+    const result = await provider.reloadSlide(
+      "/presentations/deck.pptx",
+      toSlideIndex(1),
+      outputDir,
+    );
+
+    expect(request.slideNumbers).toBe("2");
+    expect(result).toMatchObject({
+      success: true,
+      slide: { slideIndex: 1, notes: "Second", sectionsPlayingAcrossSlides: new Set([0]) },
+    });
+  });
+});
+
 describe("MacPptProvider.convertPptx", () => {
   it("keeps each slide's own index when only some slides exported", async () => {
     const provider = new MacPptProvider();
+    reportSectionAudioPlayback(
+      "###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 4\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
     vi.spyOn(provider, "exportSlideImages").mockResolvedValue({
       success: true,
       images: new Map([
