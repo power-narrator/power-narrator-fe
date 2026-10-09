@@ -21,7 +21,7 @@ const SECTION_AUDIO_NAME = new RegExp(`^${PPT_AUDIO_PREFIX}_([1-9]\\d*)$`);
  * PowerPoint's span counts the slides the audio plays over, so anything beyond
  * the current slide is what its Play Across Slides checkbox shows as enabled.
  */
-const playsAcrossSlides = (stopAfterSlides: number): boolean => stopAfterSlides > 1;
+export const playsAcrossSlides = (stopAfterSlides: number): boolean => stopAfterSlides > 1;
 
 /**
  * Reads the inspection macro's report. Each slide block lists the canonically
