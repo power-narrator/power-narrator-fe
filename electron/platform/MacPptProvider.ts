@@ -19,6 +19,7 @@ import {
   resolveScriptPath,
 } from "./helpers.js";
 import { completeSlideReload } from "./slideReload.js";
+import { checkInsertAudioReport, formatInsertAudioParams } from "./macInsertAudio.js";
 import type {
   BasicPptResult,
   ExportSlideImagesResult,
@@ -379,22 +380,24 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       return { success: false, message: "Could not create audio directory in Office container." };
     }
 
+    const paramsPath = path.join(officeContainer, "insert_audio_params.txt");
+    const resultPath = path.join(officeContainer, "insert_audio_result.txt");
+
     try {
-      let batchParams = "";
-      for (const slide of slidesAudio) {
-        const buffer = Buffer.from(slide.audioData);
-        const slideNumber = slideNumberOf(slide.slideIndex);
-        const slideDir = path.join(audioSessionDir, `slide_${slideNumber}`);
+      const stagedAudio = slidesAudio.map((entry) => {
+        const slideDir = path.join(audioSessionDir, `slide_${slideNumberOf(entry.slideIndex)}`);
         fs.mkdirSync(slideDir, { recursive: true });
-        const audioFileName = buildPptAudioFileName(slide.sectionIndex);
-        const audioFilePath = path.join(slideDir, audioFileName);
+        const audioPath = path.join(slideDir, buildPptAudioFileName(entry.sectionIndex));
+        fs.writeFileSync(audioPath, Buffer.from(entry.audioData));
+        return { entry, audioPath };
+      });
 
-        fs.writeFileSync(audioFilePath, buffer);
-        batchParams += `${filePath}|${slideNumber}|${audioFilePath}\n`;
-      }
-
-      const paramsPath = path.join(officeContainer, "insert_audio_params.txt");
-      fs.writeFileSync(paramsPath, batchParams, "utf8");
+      cleanupPaths(resultPath);
+      fs.writeFileSync(
+        paramsPath,
+        formatInsertAudioParams(filePath, resultPath, stagedAudio),
+        "utf8",
+      );
 
       const scriptResult = await this.runAppleScriptJson("trigger-macro.applescript", [
         "InsertAudio",
@@ -404,13 +407,16 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
         return { success: false, message: scriptResult.message || "Failed to insert audio." };
       }
 
-      this.focusApp();
-
-      return { success: true };
+      const report = fs.existsSync(resultPath) ? fs.readFileSync(resultPath, "utf8") : undefined;
+      const result = checkInsertAudioReport(report, slidesAudio);
+      if (result.success) {
+        this.focusApp();
+      }
+      return result;
     } catch (e: unknown) {
       return { success: false, message: getErrorMessage(e) };
     } finally {
-      cleanupPaths(path.join(officeContainer, "insert_audio_params.txt"), audioSessionDir);
+      cleanupPaths(paramsPath, resultPath, audioSessionDir);
     }
   }
 

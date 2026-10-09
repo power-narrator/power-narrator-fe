@@ -14,6 +14,11 @@ import type {
 
 export type PptProvider = {
   convertPptx(filePath: string, outputDir: string): Promise<SlidesPptResult>;
+  /**
+   * The entries for a slide are its complete section audio: any other section
+   * audio on that slide is obsolete and removed, while other media and slides
+   * not named in the entries are left alone.
+   */
   insertAudio(filePath: string, slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult>;
   removeAudio(filePath: string, slideIndices: SlideIndex[]): Promise<BasicPptResult>;
   readAllSlideNotes(filePath: string): Promise<ReadAllSlideNotesResult>;

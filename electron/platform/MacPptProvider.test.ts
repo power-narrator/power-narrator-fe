@@ -246,23 +246,101 @@ describe("MacPptProvider.convertPptx", () => {
 });
 
 describe("MacPptProvider.insertAudio", () => {
-  it("names the 1-based slide number in the batch the macro reads", async () => {
-    const provider = new MacPptProvider();
+  const deck = "/presentations/deck.pptx";
+  const firstAndThirdSlideAudio = [
+    { slideIndex: toSlideIndex(0), sectionIndex: 0, audioData: new Uint8Array([1]) },
+    { slideIndex: toSlideIndex(2), sectionIndex: 1, audioData: new Uint8Array([2]) },
+  ];
+
+  /**
+   * Stands in for the InsertAudio macro: the provider learns the outcome only
+   * from the report the macro writes to the result path named in its params.
+   */
+  function insertAudioMacroReports(report: string | undefined) {
     let params = "";
     succeedAppleScript(() => {
       params = fs.readFileSync(officeContainerPath("insert_audio_params.txt"), "utf8");
+      const [, resultPath] = params.split(/\r?\n/)[0]!.split("|");
+      if (report !== undefined) {
+        fs.writeFileSync(resultPath!, report);
+      }
     });
+    return () => params;
+  }
 
-    await provider.insertAudio("/presentations/deck.pptx", [
-      { slideIndex: toSlideIndex(0), sectionIndex: 0, audioData: new Uint8Array([1]) },
-      { slideIndex: toSlideIndex(2), sectionIndex: 1, audioData: new Uint8Array([2]) },
-    ]);
+  it("succeeds once the macro confirms each section audio and the narration left on each slide", async () => {
+    const provider = new MacPptProvider();
+    const params = insertAudioMacroReports(
+      [
+        "inserted|1|ppt_audio_1",
+        "inserted|3|ppt_audio_2",
+        "slide|1|ppt_audio_1",
+        "slide|3|ppt_audio_2",
+        "done",
+      ].join("\r"),
+    );
 
+    const result = await provider.insertAudio(deck, firstAndThirdSlideAudio);
+
+    expect(result).toEqual({ success: true });
     expect(
-      params
+      params()
         .trimEnd()
         .split("\n")
-        .map((line) => line.split("|")[1]),
+        .slice(1)
+        .map((line) => line.split("|")[0]),
     ).toEqual(["1", "3"]);
+  });
+
+  it.each([
+    {
+      problem: "writes no report",
+      report: undefined,
+      message: /did not report/,
+    },
+    {
+      problem: "stops before finishing",
+      report: "inserted|1|ppt_audio_1\n",
+      message: /did not finish/,
+    },
+    {
+      problem: "reports an error",
+      report: "error|Presentation not found: /presentations/deck.pptx\n",
+      message: /Presentation not found/,
+    },
+    {
+      problem: "does not confirm a section audio",
+      report: "inserted|1|ppt_audio_1\nslide|1|ppt_audio_1\nslide|3|ppt_audio_2\ndone\n",
+      message: /ppt_audio_2 on slide 3/,
+    },
+    {
+      problem: "leaves obsolete section audio on a saved slide",
+      report: [
+        "inserted|1|ppt_audio_1",
+        "inserted|3|ppt_audio_2",
+        "slide|1|ppt_audio_1,ppt_audio_2",
+        "slide|3|ppt_audio_2",
+        "done",
+      ].join("\n"),
+      message: /slide 1.*ppt_audio_1,ppt_audio_2/,
+    },
+    {
+      problem: "leaves duplicate section audio on a saved slide",
+      report: [
+        "inserted|1|ppt_audio_1",
+        "inserted|3|ppt_audio_2",
+        "slide|1|ppt_audio_1",
+        "slide|3|ppt_audio_2,ppt_audio_2",
+        "done",
+      ].join("\n"),
+      message: /slide 3/,
+    },
+  ])("fails when the macro $problem", async ({ report, message }) => {
+    const provider = new MacPptProvider();
+    insertAudioMacroReports(report);
+
+    const result = await provider.insertAudio(deck, firstAndThirdSlideAudio);
+
+    expect(result).toEqual({ success: false, message: expect.stringMatching(message) as unknown });
   });
 });
