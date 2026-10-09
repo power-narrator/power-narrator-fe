@@ -105,7 +105,7 @@ export type HeldWork = { kind: HeldWorkKind; label: string };
 
 type HeldWorkControl = {
   holding: HeldWorkKind[];
-  pending: Array<HeldWork & { release: () => void }>;
+  pending: Array<HeldWork & { release: () => void; fail: (message: string) => void }>;
 };
 
 type MainGlobals = typeof globalThis & {
@@ -115,6 +115,7 @@ type MainGlobals = typeof globalThis & {
 };
 
 type RendererGlobals = typeof globalThis & {
+  __alerts: string[];
   __audioPlayUrls: string[];
   __createdBlobUrls: string[];
   __revokedBlobUrls: string[];
@@ -161,8 +162,16 @@ async function installMockIpcHandlers(app: ElectronApplication) {
 
       const settle = <T>(kind: HeldWorkKind, label: string, value: T): Promise<T> =>
         globals.__heldWork.holding.includes(kind)
-          ? new Promise<T>((resolve) => {
-              globals.__heldWork.pending.push({ kind, label, release: () => resolve(value) });
+          ? new Promise<T>((resolve, reject) => {
+              globals.__heldWork.pending.push({
+                kind,
+                label,
+                release: () => resolve(value),
+                fail: (message) =>
+                  kind === "speech"
+                    ? reject(new Error(message))
+                    : resolve({ success: false, message } as T),
+              });
             })
           : Promise.resolve(value);
 
@@ -231,9 +240,15 @@ async function installMockIpcHandlers(app: ElectronApplication) {
 async function installRendererProbes(page: Page) {
   await page.addInitScript(() => {
     const globals = globalThis as RendererGlobals;
+    globals.__alerts = [];
     globals.__audioPlayUrls = [];
     globals.__createdBlobUrls = [];
     globals.__revokedBlobUrls = [];
+    (globalThis as typeof globalThis & { alert: (message?: unknown) => void }).alert = (
+      message?: unknown,
+    ) => {
+      globals.__alerts.push(String(message));
+    };
 
     const originalCreateObjectUrl = URL.createObjectURL.bind(URL);
     const originalRevokeObjectUrl = URL.revokeObjectURL.bind(URL);
@@ -270,10 +285,15 @@ export async function resetProbes(app: ElectronApplication, page: Page) {
   await stopHoldingNarrationWork(app);
   await page.evaluate(() => {
     const globals = globalThis as RendererGlobals;
+    globals.__alerts = [];
     globals.__audioPlayUrls = [];
     globals.__createdBlobUrls = [];
     globals.__revokedBlobUrls = [];
   });
+}
+
+export function getAlerts(page: Page): Promise<string[]> {
+  return page.evaluate(() => (globalThis as RendererGlobals).__alerts);
 }
 
 function readProbe<Key extends keyof MainProbes>(app: ElectronApplication, key: Key) {
@@ -310,6 +330,21 @@ export function releaseHeldNarrationWork(app: ElectronApplication) {
       work.release();
     }
   });
+}
+
+/**
+ * Fails one held request: speech rejects, a PowerPoint write reports failure.
+ * Other held requests stay held.
+ */
+export function failHeldNarrationWork(app: ElectronApplication, work: HeldWork, message: string) {
+  return app.evaluate(
+    (_, { kind, label, failure }) => {
+      const pending = (globalThis as MainGlobals).__heldWork.pending;
+      const index = pending.findIndex((held) => held.kind === kind && held.label === label);
+      pending.splice(index, 1)[0]!.fail(failure);
+    },
+    { ...work, failure: message },
+  );
 }
 
 function allowDiscardingNarrationChanges(app: ElectronApplication) {

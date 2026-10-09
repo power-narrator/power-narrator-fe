@@ -6,6 +6,7 @@ type SaveAllRunModalProps = {
   state: SaveAllRunState;
   onConfirm: () => void;
   onDecline: () => void;
+  onCancel: () => void;
 };
 
 const PHASE_LABEL: Record<SaveAllRunPhase, string> = {
@@ -15,8 +16,10 @@ const PHASE_LABEL: Record<SaveAllRunPhase, string> = {
 
 const ignoreDismissal = () => {};
 
-export function SaveAllRunModal({ state, onConfirm, onDecline }: SaveAllRunModalProps) {
+export function SaveAllRunModal({ state, onConfirm, onDecline, onCancel }: SaveAllRunModalProps) {
   const progress = state.stage === "running" ? state.progress : null;
+  const cancelling = state.stage === "running" && state.cancelling;
+  const phaseLabel = cancelling ? "Cancelling..." : progress && PHASE_LABEL[progress.phase];
 
   return (
     <>
@@ -56,12 +59,17 @@ export function SaveAllRunModal({ state, onConfirm, onDecline }: SaveAllRunModal
                 ? `Slide ${progress.completedSlides + 1} of ${progress.totalSlides}`
                 : "Checking narration..."}
             </Text>
-            {progress && <Text c="dimmed">{PHASE_LABEL[progress.phase]}</Text>}
+            {phaseLabel && <Text c="dimmed">{phaseLabel}</Text>}
           </Group>
           <Progress
             aria-label="Save all progress"
             value={progress ? (progress.completedSlides / progress.totalSlides) * 100 : 0}
           />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={onCancel} disabled={cancelling}>
+              Cancel
+            </Button>
+          </Group>
         </Stack>
       </Modal>
     </>

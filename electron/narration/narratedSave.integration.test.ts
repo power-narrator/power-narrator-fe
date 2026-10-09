@@ -77,6 +77,11 @@ type HeldSpeech = {
   reject: (error: Error) => void;
 };
 
+type HeldWrite = {
+  resolve: (result: BasicPptResult) => void;
+  reject: (error: Error) => void;
+};
+
 function registerNarrationHandlers(deck?: FakeDeck) {
   const handlers = new Map<string, IpcHandler>();
   const externalWork: string[] = [];
@@ -86,41 +91,49 @@ function registerNarrationHandlers(deck?: FakeDeck) {
       externalWork.push(`synthesize ${text}`);
       return Promise.resolve({ audio: new Uint8Array([1, 2, 3]), mediaType: "audio/mpeg" });
     });
+  const writesToHold = new Set<string>();
+  const heldWrites = new Map<string, HeldWrite>();
+  const scriptedWrites = new Map<string, BasicPptResult | Error>();
+  const write = (label: string): Promise<BasicPptResult> => {
+    externalWork.push(label);
+    if (writesToHold.has(label)) {
+      return new Promise((resolve, reject) => heldWrites.set(label, { resolve, reject }));
+    }
+    const scripted = scriptedWrites.get(label) ?? { success: true };
+    return scripted instanceof Error ? Promise.reject(scripted) : Promise.resolve(scripted);
+  };
   const powerpoint = {
     saveNotes: vi
       .fn<(filePath: string, slides: SlideNotesEntry[]) => Promise<BasicPptResult>>()
-      .mockImplementation((_filePath, slides) => {
-        externalWork.push(`save notes ${slides.map((slide) => slide.slideIndex).join()}`);
-        return Promise.resolve({ success: true });
-      }),
+      .mockImplementation((_filePath, slides) =>
+        write(`save notes ${slides.map((slide) => slide.slideIndex).join()}`),
+      ),
     insertAudio: vi
       .fn<(filePath: string, slidesAudio: SlideAudioEntry[]) => Promise<BasicPptResult>>()
-      .mockImplementation((_filePath, slidesAudio) => {
-        externalWork.push(
-          `insert audio ${[...new Set(slidesAudio.map((audio) => audio.slideIndex))].join()}`,
-        );
-        return Promise.resolve({ success: true });
-      }),
+      .mockImplementation((_filePath, slidesAudio) =>
+        write(`insert audio ${[...new Set(slidesAudio.map((audio) => audio.slideIndex))].join()}`),
+      ),
     removeAudio: vi
       .fn<(filePath: string, slideIndices: number[]) => Promise<BasicPptResult>>()
-      .mockImplementation((_filePath, slideIndices) => {
-        externalWork.push(`remove audio ${slideIndices.join()}`);
-        return Promise.resolve({ success: true });
-      }),
+      .mockImplementation((_filePath, slideIndices) =>
+        write(`remove audio ${slideIndices.join()}`),
+      ),
   } satisfies NarrationPowerPoint;
 
   const heldSpeech = new Map<string, HeldSpeech>();
-  const holdSpeech = () =>
-    generateSpeech.mockImplementation(
-      (text) =>
-        new Promise<SynthesizedSpeech>((resolve, reject) => {
-          externalWork.push(`synthesize ${text}`);
-          heldSpeech.set(text, {
-            resolve: (audio) => resolve({ audio, mediaType: "audio/mpeg" }),
-            reject,
-          });
-        }),
-    );
+  const holdSpeech = (shouldHold: (text: string) => boolean = () => true) =>
+    generateSpeech.mockImplementation((text) => {
+      externalWork.push(`synthesize ${text}`);
+      if (!shouldHold(text)) {
+        return Promise.resolve({ audio: new Uint8Array([1]), mediaType: "audio/mpeg" });
+      }
+      return new Promise<SynthesizedSpeech>((resolve, reject) => {
+        heldSpeech.set(text, {
+          resolve: (audio) => resolve({ audio, mediaType: "audio/mpeg" }),
+          reject,
+        });
+      });
+    });
 
   registerNarrationIpc(
     {
@@ -137,7 +150,18 @@ function registerNarrationHandlers(deck?: FakeDeck) {
     { holdWindowOpen: (_webContentsId, run) => run() },
   );
 
-  return { handlers, generateSpeech, powerpoint, externalWork, heldSpeech, holdSpeech };
+  return {
+    handlers,
+    generateSpeech,
+    powerpoint,
+    externalWork,
+    heldSpeech,
+    holdSpeech,
+    heldWrites,
+    holdWrite: (label: string) => writesToHold.add(label),
+    scriptWrite: (label: string, outcome: BasicPptResult | Error) =>
+      scriptedWrites.set(label, outcome),
+  };
 }
 
 const narrator = (text: string): NarrationSection => ({
@@ -150,16 +174,24 @@ function saveAll(
   handlers: Map<string, IpcHandler>,
   slides: Array<{ slideIndex: number; sections: NarrationSection[] }>,
   progressEvent = event,
+  runId = 1,
 ) {
   return handlers.get("save-narrated-presentation")!(progressEvent, {
     filePath: presentationPath,
     slides: slides.map((slide) => ({ ...slide, slideIndex: toSlideIndex(slide.slideIndex) })),
-    progressChannel: "narrated-presentation-save-progress:1",
+    runId,
+    progressChannel: `narrated-presentation-save-progress:${runId}`,
   } as never) as Promise<SaveAllRunResult>;
 }
 
+function cancelRun(handlers: Map<string, IpcHandler>, runId = 1, cancelEvent = event) {
+  return handlers.get("cancel-narrated-presentation-save")!(cancelEvent, runId as never);
+}
+
+const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 const event = {
-  sender: { send: vi.fn<(channel: string, ...args: unknown[]) => void>() },
+  sender: { id: 1, send: vi.fn<(channel: string, ...args: unknown[]) => void>() },
 } as unknown as IpcMainInvokeEvent;
 
 it("formats the submitted structured sections only as PowerPoint takes them", async () => {
@@ -461,4 +493,223 @@ it("keeps earlier saved slides and leaves later slides untouched when a slide fa
     "insert audio 0",
     "synthesize Two",
   ]);
+});
+
+it("waits for every active section request after cancellation and leaves the generating slide unchanged", async () => {
+  const { handlers, externalWork, heldSpeech, holdSpeech } = registerNarrationHandlers();
+  holdSpeech((text) => text !== "Zero");
+
+  let settled = false;
+  const saving = saveAll(handlers, [
+    { slideIndex: 0, sections: [narrator("Zero")] },
+    { slideIndex: 1, sections: [narrator("One first"), narrator("One second")] },
+    { slideIndex: 2, sections: [narrator("Two")] },
+  ]).finally(() => {
+    settled = true;
+  });
+  await vi.waitFor(() => expect(heldSpeech.size).toBe(2));
+
+  await cancelRun(handlers);
+  await cancelRun(handlers);
+  heldSpeech.get("One second")!.resolve(new Uint8Array([2]));
+  await flushPromises();
+  expect(settled).toBe(false);
+  heldSpeech.get("One first")!.resolve(new Uint8Array([1]));
+
+  await expect(saving).resolves.toEqual({
+    outcome: { success: false, stage: "cancelled" },
+    savedNoteSlides: [0],
+  });
+  expect(externalWork).toEqual([
+    "synthesize Zero",
+    "save notes 0",
+    "insert audio 0",
+    "synthesize One first",
+    "synthesize One second",
+  ]);
+});
+
+for (const cancelDuring of [
+  {
+    write: "save notes 0",
+    sections: [narrator("Zero")],
+    expectedWork: ["synthesize Zero", "save notes 0", "insert audio 0"],
+  },
+  {
+    write: "insert audio 0",
+    sections: [narrator("Zero")],
+    expectedWork: ["synthesize Zero", "save notes 0", "insert audio 0"],
+  },
+  {
+    write: "remove audio 0",
+    sections: [narrator(" ")],
+    expectedWork: ["save notes 0", "remove audio 0"],
+  },
+]) {
+  it(`finishes the slide's save sequence when cancelled during "${cancelDuring.write}" and starts no later slide`, async () => {
+    const { handlers, externalWork, heldWrites, holdWrite } = registerNarrationHandlers();
+    holdWrite(cancelDuring.write);
+
+    const saving = saveAll(handlers, [
+      { slideIndex: 0, sections: cancelDuring.sections },
+      { slideIndex: 1, sections: [narrator("One")] },
+    ]);
+    await vi.waitFor(() => expect(heldWrites.has(cancelDuring.write)).toBe(true));
+    await cancelRun(handlers);
+    heldWrites.get(cancelDuring.write)!.resolve({ success: true });
+
+    await expect(saving).resolves.toEqual({
+      outcome: { success: false, stage: "cancelled" },
+      savedNoteSlides: [0],
+    });
+    expect(externalWork).toEqual(cancelDuring.expectedWork);
+  });
+}
+
+it("ignores cancellation meant for an earlier run or another window", async () => {
+  const { handlers, heldSpeech, holdSpeech } = registerNarrationHandlers();
+  await saveAll(handlers, [{ slideIndex: 0, sections: [narrator("Earlier")] }], event, 1);
+  holdSpeech();
+
+  const saving = saveAll(handlers, [{ slideIndex: 0, sections: [narrator("Later")] }], event, 2);
+  await vi.waitFor(() => expect(heldSpeech.size).toBe(1));
+  await cancelRun(handlers, 1);
+  await cancelRun(handlers, 2, { sender: { id: 2 } } as unknown as IpcMainInvokeEvent);
+  heldSpeech.get("Later")!.resolve(new Uint8Array([1]));
+
+  await expect(saving).resolves.toEqual({ outcome: { success: true }, savedNoteSlides: [0] });
+});
+
+it("writes nothing for a slide whose section fails and ends only after its sibling requests settle", async () => {
+  const { handlers, externalWork, heldSpeech, holdSpeech } = registerNarrationHandlers();
+  holdSpeech();
+
+  let settled = false;
+  const saving = saveAll(handlers, [
+    {
+      slideIndex: 3,
+      sections: [
+        narrator("First"),
+        { speaker: "", text: "Second", playAcrossSlides: false },
+        narrator("Third"),
+      ],
+    },
+    { slideIndex: 4, sections: [narrator("Later")] },
+  ]).finally(() => {
+    settled = true;
+  });
+  await vi.waitFor(() => expect(heldSpeech.size).toBe(3));
+
+  heldSpeech.get("Second")!.reject(new Error("quota exhausted"));
+  heldSpeech.get("First")!.resolve(new Uint8Array([1]));
+  await flushPromises();
+  expect(settled).toBe(false);
+  heldSpeech.get("Third")!.resolve(new Uint8Array([3]));
+
+  const result = await saving;
+  expect(result).toEqual({
+    outcome: {
+      success: false,
+      stage: "synthesis",
+      partial: false,
+      message:
+        'Narration synthesis failed for slide 4, section 2, speaker "Narrator": quota exhausted.',
+    },
+    savedNoteSlides: [],
+    failedSlideIndex: 3,
+  });
+  expect(externalWork).toEqual(["synthesize First", "synthesize Second", "synthesize Third"]);
+});
+
+for (const failure of [
+  {
+    name: "a reported notes failure",
+    write: "save notes 1",
+    outcome: { success: false, message: "notes locked" },
+    partial: false,
+    savedNoteSlides: [0],
+    work: ["save notes 1"],
+  },
+  {
+    name: "a thrown notes failure",
+    write: "save notes 1",
+    outcome: new Error("PowerPoint closed"),
+    partial: false,
+    savedNoteSlides: [0],
+    work: ["save notes 1"],
+  },
+  {
+    name: "a reported audio failure after the notes saved",
+    write: "insert audio 1",
+    outcome: { success: false, message: "media rejected" },
+    partial: true,
+    savedNoteSlides: [0, 1],
+    work: ["save notes 1", "insert audio 1"],
+  },
+  {
+    name: "a thrown audio failure after the notes saved",
+    write: "insert audio 1",
+    outcome: new Error("PowerPoint closed"),
+    partial: true,
+    savedNoteSlides: [0, 1],
+    work: ["save notes 1", "insert audio 1"],
+  },
+  {
+    name: "a stale-audio removal failure after the notes saved",
+    write: "remove audio 1",
+    outcome: { success: false, message: "shape locked" },
+    partial: true,
+    savedNoteSlides: [0, 1],
+    work: ["save notes 1", "remove audio 1"],
+  },
+] as const) {
+  it(`stops at ${failure.name} on a later slide and keeps the earlier slide saved`, async () => {
+    const { handlers, externalWork, scriptWrite } = registerNarrationHandlers();
+    scriptWrite(failure.write, failure.outcome);
+
+    const result = await saveAll(handlers, [
+      { slideIndex: 0, sections: [narrator("Zero")] },
+      {
+        slideIndex: 1,
+        sections: [narrator(failure.write === "remove audio 1" ? " " : "One")],
+      },
+      { slideIndex: 2, sections: [narrator("Two")] },
+    ]);
+
+    expect(result).toEqual({
+      outcome: {
+        success: false,
+        stage: "powerpoint",
+        partial: failure.partial,
+        message: failure.outcome.message,
+      },
+      savedNoteSlides: failure.savedNoteSlides,
+      failedSlideIndex: 1,
+    });
+    expect(externalWork.filter((work) => !work.endsWith("One"))).toEqual([
+      "synthesize Zero",
+      "save notes 0",
+      "insert audio 0",
+      ...failure.work,
+    ]);
+  });
+}
+
+it("reports a write failure met while cancelling as a PowerPoint failure, not a cancellation", async () => {
+  const { handlers, heldWrites, holdWrite } = registerNarrationHandlers();
+  holdWrite("insert audio 0");
+
+  const saving = saveAll(handlers, [
+    { slideIndex: 0, sections: [narrator("Zero")] },
+    { slideIndex: 1, sections: [narrator("One")] },
+  ]);
+  await vi.waitFor(() => expect(heldWrites.has("insert audio 0")).toBe(true));
+  await cancelRun(handlers);
+  heldWrites.get("insert audio 0")!.resolve({ success: false, message: "media rejected" });
+
+  await expect(saving).resolves.toEqual({
+    outcome: { success: false, stage: "powerpoint", partial: true, message: "media rejected" },
+    savedNoteSlides: [0],
+    failedSlideIndex: 0,
+  });
 });

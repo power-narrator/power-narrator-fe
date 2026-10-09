@@ -37,19 +37,29 @@ const electronAPI = {
   saveNarratedPresentation: async (
     payload: NarratedPresentationSaveRequest,
     onProgress: (progress: SaveAllRunProgress) => void,
+    onCancellable?: (cancel: () => void) => void,
   ): Promise<SaveAllRunResult> => {
     narratedPresentationRequestId += 1;
-    const progressChannel = `narrated-presentation-save-progress:${narratedPresentationRequestId}`;
+    const runId = narratedPresentationRequestId;
+    const progressChannel = `narrated-presentation-save-progress:${runId}`;
     const listener = (_event: unknown, progress: SaveAllRunProgress) => {
       onProgress(progress);
     };
+    let active = true;
     ipcRenderer.on(progressChannel, listener);
+    onCancellable?.(() => {
+      if (active) {
+        void ipcRenderer.invoke("cancel-narrated-presentation-save", runId);
+      }
+    });
     try {
       return (await ipcRenderer.invoke("save-narrated-presentation", {
         ...payload,
+        runId,
         progressChannel,
       })) as SaveAllRunResult;
     } finally {
+      active = false;
       ipcRenderer.removeListener(progressChannel, listener);
     }
   },

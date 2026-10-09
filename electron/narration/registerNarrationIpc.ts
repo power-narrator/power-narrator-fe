@@ -43,5 +43,6 @@ export function registerNarrationIpc(
   registerNarratedSlideSaveIpc(ipc, saver);
 
   ipc.removeHandler("save-narrated-presentation");
+  ipc.removeHandler("cancel-narrated-presentation-save");
   registerNarratedPresentationSaveIpc(ipc, saver, lifecycle);
 }

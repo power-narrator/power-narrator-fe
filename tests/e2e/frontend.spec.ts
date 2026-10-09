@@ -5,6 +5,8 @@ import {
   MOCK_MAPPINGS,
   MOCK_SLIDES,
   expect,
+  failHeldNarrationWork,
+  getAlerts,
   getDiscardConfirmationCalls,
   getGeneratedSpeechCalls,
   getHeldNarrationWork,
@@ -179,6 +181,72 @@ test.describe("PPT Viewer UI Workflows", () => {
     await expect(notesEditor(win)).toHaveValue("Submitted narration");
     await notesEditor(win).fill("Editable again");
     await expect(notesEditor(win)).toHaveValue("Editable again");
+  });
+
+  test("cancels safely while a slide generates and lets a later run finish", async ({
+    app,
+    win,
+  }) => {
+    await notesEditor(win).fill("Kept after cancelling");
+    await holdNarrationWork(app, ["speech"]);
+    await startSaveAll(win);
+    const progress = saveAllProgress(win);
+    await expect.poll(() => getHeldNarrationWork(app)).toHaveLength(1);
+
+    const cancel = progress.getByRole("button", { name: "Cancel", exact: true });
+    await cancel.click();
+    await expect(progress).toContainText("Cancelling...");
+    await expect(cancel).toBeDisabled();
+    await win.keyboard.press("Escape");
+    const closeAttempts = await observeCloseAttempts(app);
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.close();
+    });
+    await expect.poll(closeAttempts).toBe(1);
+    await expect(progress).toBeVisible();
+
+    await releaseHeldNarrationWork(app);
+    await expect(progress).toBeHidden();
+    expect(await getSaveNotesCalls(app)).toEqual([]);
+    expect(await getGeneratedSpeechCalls(app)).toHaveLength(1);
+    expect(await getAlerts(win)).toEqual([]);
+    await expect(notesEditor(win)).toHaveValue("Kept after cancelling");
+
+    await holdNarrationWork(app, []);
+    await startSaveAll(win);
+    await expect(progress).toBeHidden();
+    expect(await getSaveNotesCalls(app)).toEqual([
+      { filePath: FIXTURE_TEST, slides: [{ slideIndex: 0, notes: "Kept after cancelling" }] },
+      { filePath: FIXTURE_TEST, slides: [{ slideIndex: 1, notes: MOCK_SLIDES[1]!.notes }] },
+    ]);
+  });
+
+  test("stops at a slide that fails to generate and alerts which section failed", async ({
+    app,
+    win,
+  }) => {
+    await holdNarrationWork(app, ["speech"]);
+    await startSaveAll(win);
+    await expect.poll(() => getHeldNarrationWork(app)).toHaveLength(1);
+    await releaseHeldNarrationWork(app);
+    await expect
+      .poll(() => getHeldNarrationWork(app))
+      .toEqual([{ kind: "speech", label: MOCK_SLIDES[1]!.notes }]);
+
+    await failHeldNarrationWork(
+      app,
+      { kind: "speech", label: MOCK_SLIDES[1]!.notes },
+      "quota exhausted",
+    );
+
+    await expect(saveAllProgress(win)).toBeHidden();
+    expect(await getAlerts(win)).toEqual([
+      'Save error: Narration synthesis failed for slide 2, section 1, speaker "Default": quota exhausted. Earlier slides remain saved.',
+    ]);
+    expect(await getSaveNotesCalls(app)).toEqual([
+      { filePath: FIXTURE_TEST, slides: [{ slideIndex: 0, notes: MOCK_SLIDES[0]!.notes }] },
+    ]);
+    await expect(saveAllButton(win)).toBeEnabled();
   });
 
   for (const closeCase of [

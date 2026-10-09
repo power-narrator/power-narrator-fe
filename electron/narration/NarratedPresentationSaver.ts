@@ -3,6 +3,7 @@ import type {
   NarratedSaveResult,
   NarratedSlideInput,
   NarratedSlideSaveRequest,
+  SaveAllRunOutcome,
   SaveAllRunProgress,
   SaveAllRunResult,
 } from "../../shared/types/narration.js";
@@ -18,6 +19,11 @@ import {
 
 type SavePowerPoint = Pick<PptProvider, "saveNotes" | "insertAudio" | "removeAudio">;
 
+/** A latch the run reads at each safe boundary; once requested it stays requested. */
+export type SaveAllRunCancellation = { readonly requested: boolean };
+
+const NEVER_CANCELLED: SaveAllRunCancellation = { requested: false };
+
 export class NarratedPresentationSaver {
   constructor(
     private readonly narrationPreparation: NarrationPreparation,
@@ -31,6 +37,9 @@ export class NarratedPresentationSaver {
   async saveSlide(request: NarratedSlideSaveRequest): Promise<NarratedSaveResult> {
     const { filePath, ...slide } = request;
     const { outcome } = await this.savePresentation({ filePath, slides: [slide] });
+    if (!outcome.success && outcome.stage === "cancelled") {
+      throw new Error("A single-slide save has no cancellation.");
+    }
     return outcome;
   }
 
@@ -38,16 +47,20 @@ export class NarratedPresentationSaver {
    * A save-all run: one complete slide at a time, in request order. A slide is
    * written only once all of its sections have been synthesized, and no later
    * slide starts before it is saved.
+   *
+   * Cancellation is honoured before a slide starts generating and before its
+   * save sequence starts; a slide already being saved finishes its writes.
    */
   async savePresentation(
     request: NarratedPresentationSaveRequest,
     onProgress?: (progress: SaveAllRunProgress) => void,
+    cancellation: SaveAllRunCancellation = NEVER_CANCELLED,
   ): Promise<SaveAllRunResult> {
     const savedNoteSlides: SlideIndex[] = [];
-    const finish = (outcome: NarratedSaveResult): SaveAllRunResult => ({
-      outcome,
-      savedNoteSlides,
-    });
+    const finish = (outcome: SaveAllRunOutcome, failedSlideIndex?: SlideIndex): SaveAllRunResult =>
+      failedSlideIndex === undefined
+        ? { outcome, savedNoteSlides }
+        : { outcome, savedNoteSlides, failedSlideIndex };
 
     let planned: PlannedNarrationSlide[];
     try {
@@ -63,7 +76,12 @@ export class NarratedPresentationSaver {
       return finish(powerPointFailure(error, false));
     }
 
+    const cancelled = { success: false, stage: "cancelled" } as const;
     for (const [completedSlides, plannedSlide] of planned.entries()) {
+      if (cancellation.requested) {
+        return finish(cancelled);
+      }
+
       const report = (phase: SaveAllRunProgress["phase"]) =>
         onProgress?.({
           slideIndex: plannedSlide.slideIndex,
@@ -77,7 +95,10 @@ export class NarratedPresentationSaver {
       try {
         audio = await plannedSlide.synthesize();
       } catch (error: unknown) {
-        return finish(preparationFailure(error));
+        return finish(preparationFailure(error), plannedSlide.slideIndex);
+      }
+      if (cancellation.requested) {
+        return finish(cancelled);
       }
 
       report("saving");
@@ -89,7 +110,7 @@ export class NarratedPresentationSaver {
         () => savedNoteSlides.push(plannedSlide.slideIndex),
       );
       if (!saved.success) {
-        return finish(saved);
+        return finish(saved, plannedSlide.slideIndex);
       }
     }
 

@@ -151,10 +151,14 @@ export class NarrationPreparation {
     };
   }
 
-  private synthesizeSections<Section extends PreparedNarrationSection>(
+  /**
+   * Settles every request before reporting, so a failure never leaves sibling
+   * synthesis running untracked. The earliest failed section is reported.
+   */
+  private async synthesizeSections<Section extends PreparedNarrationSection>(
     sections: Section[],
   ): Promise<SynthesizedNarrationSection<Section>[]> {
-    return Promise.all(
+    const settled = await Promise.allSettled(
       sections.map(async (section) => {
         try {
           const speech = await this.synthesizer.generateSpeech(
@@ -172,6 +176,13 @@ export class NarrationPreparation {
         }
       }),
     );
+
+    return settled.map((result) => {
+      if (result.status === "rejected") {
+        throw result.reason;
+      }
+      return result.value;
+    });
   }
 
   private resolveVoice(

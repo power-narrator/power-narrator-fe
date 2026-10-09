@@ -35,6 +35,12 @@ export type NarratedPresentationSaveRequest = {
   slides: readonly NarratedSlideInput[];
 };
 
+/** Correlates a save-all run's progress and cancellation with the run that owns them. */
+export type SaveAllRunChannels = {
+  runId: number;
+  progressChannel: string;
+};
+
 export type SaveAllRunPhase = "generating" | "saving";
 
 /**
@@ -59,8 +65,17 @@ export type NarratedSaveResult =
       message: string;
     };
 
+/**
+ * How a save-all run ended: every slide saved, stopped at a safe boundary after
+ * cancellation, or stopped by a generation (`validation`/`synthesis`) or
+ * PowerPoint failure.
+ */
+export type SaveAllRunOutcome = NarratedSaveResult | { success: false; stage: "cancelled" };
+
 export type SaveAllRunResult = {
-  outcome: NarratedSaveResult;
+  outcome: SaveAllRunOutcome;
   /** Submitted slides whose notes PowerPoint confirmed written, in run order. */
   savedNoteSlides: readonly SlideIndex[];
+  /** The slide being generated or saved when the run failed. */
+  failedSlideIndex?: SlideIndex;
 };
