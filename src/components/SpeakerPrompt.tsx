@@ -51,12 +51,12 @@ export function SpeakerPrompt({
           >
             Prompt
           </Button>
-          {rowContent?.afterPrompt}
           {supportsPrompt === false && (
             <Text size="xs" c="dimmed">
               This model ignores prompts.
             </Text>
           )}
+          {rowContent?.afterPrompt}
         </Group>
         {rowContent?.trailing}
       </Group>
