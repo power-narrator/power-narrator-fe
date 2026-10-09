@@ -20,6 +20,7 @@ import {
 } from "./helpers.js";
 import {
   parseSectionAudioPlaybackReport,
+  sectionsPlayingAcrossSlidesOn,
   type SectionAudioPlaybackResult,
 } from "./sectionAudioPlayback.js";
 import { completeSlideReload } from "./slideReload.js";
@@ -75,7 +76,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
         slideIndex,
         image: images.get(slideIndex)?.image || "",
         notes: notes.get(slideIndex) || "",
-        sectionsPlayingAcrossSlides: playback.get(slideIndex) ?? new Set(),
+        sectionsPlayingAcrossSlides: sectionsPlayingAcrossSlidesOn(playback, slideIndex),
       }));
   }
 
@@ -601,7 +602,10 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       return {
         success: true,
         notes: notesResult.notes,
-        sectionsPlayingAcrossSlides: playbackResult.playback.get(slideIndex) ?? new Set(),
+        sectionsPlayingAcrossSlides: sectionsPlayingAcrossSlidesOn(
+          playbackResult.playback,
+          slideIndex,
+        ),
       };
     });
 

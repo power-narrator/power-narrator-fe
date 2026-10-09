@@ -5,6 +5,7 @@ import {
 } from "../../shared/slides/slideCoordinates.js";
 import type { Result } from "../../shared/types/result.js";
 import { PPT_AUDIO_PREFIX } from "./helpers.js";
+import { isIntegerText, readSlideNumber, reportLines } from "./macroReport.js";
 import type { SectionsPlayingAcrossSlides } from "./types.js";
 
 export type SectionAudioPlaybackResult = Result<{
@@ -23,6 +24,11 @@ const SECTION_AUDIO_NAME = new RegExp(`^${PPT_AUDIO_PREFIX}_([1-9]\\d*)$`);
  */
 export const playsAcrossSlides = (stopAfterSlides: number): boolean => stopAfterSlides > 1;
 
+export const sectionsPlayingAcrossSlidesOn = (
+  playback: ReadonlyMap<SlideIndex, SectionsPlayingAcrossSlides>,
+  slideIndex: SlideIndex,
+): SectionsPlayingAcrossSlides => playback.get(slideIndex) ?? new Set();
+
 /**
  * Reads the inspection macro's report. Each slide block lists the canonically
  * named section audio on that slide as `name<TAB>kind<TAB>stopAfterSlides`.
@@ -31,7 +37,7 @@ export function parseSectionAudioPlaybackReport(
   report: string,
   requestedSlides: readonly SlideNumber[],
 ): SectionAudioPlaybackResult {
-  const lines = report.split(/\r\n|\n|\r/);
+  const lines = reportLines(report);
   const error = lines.find((line) => line.startsWith(ERROR));
   if (error !== undefined) {
     return { success: false, message: error.slice(ERROR.length) };
@@ -43,15 +49,17 @@ export function parseSectionAudioPlaybackReport(
     };
   }
 
-  const reported = new Map<number, Set<number>>();
-  let slideNumber: number | null = null;
+  const reported = new Map<SlideNumber, Set<number>>();
+  let slideNumber: SlideNumber | null = null;
   let namesOnSlide = new Set<string>();
 
   for (const line of lines) {
     if (line.startsWith(SLIDE_START)) {
-      slideNumber = Number(line.slice(SLIDE_START.length));
+      slideNumber = readSlideNumber(line.slice(SLIDE_START.length)) ?? null;
       namesOnSlide = new Set();
-      reported.set(slideNumber, new Set());
+      if (slideNumber !== null) {
+        reported.set(slideNumber, new Set());
+      }
       continue;
     }
     if (line === SLIDE_END) {
@@ -80,7 +88,7 @@ export function parseSectionAudioPlaybackReport(
     if (kind !== "sound") {
       return { success: false, message: `Shape ${name} on slide ${slideNumber} is not audio.` };
     }
-    if (!/^-?\d+$/.test(stopAfterSlides)) {
+    if (!isIntegerText(stopAfterSlides)) {
       return {
         success: false,
         message: `PowerPoint reported an unreadable playback for ${name} on slide ${slideNumber}.`,
