@@ -23,7 +23,11 @@ import {
   type SectionAudioPlaybackResult,
 } from "./sectionAudioPlayback.js";
 import { completeSlideReload } from "./slideReload.js";
-import { checkInsertAudioReport, formatInsertAudioParams } from "./macInsertAudio.js";
+import {
+  checkInsertAudioReport,
+  checkRemoveAudioReport,
+  formatInsertAudioParams,
+} from "./macInsertAudio.js";
 import type {
   BasicPptResult,
   SectionsPlayingAcrossSlides,
@@ -477,11 +481,12 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
   async removeAudio(filePath: string, slideIndices: SlideIndex[]): Promise<BasicPptResult> {
     const officeContainer = this.getOfficeContainerPath();
     const paramsPath = path.join(officeContainer, "remove_audio_params.txt");
+    const resultPath = path.join(officeContainer, "remove_audio_result.txt");
 
     try {
       const slideNumbers = slideIndices.map(slideNumberOf);
-      const paramsContent = `${filePath}|${slideNumbers.join(",")}`;
-      fs.writeFileSync(paramsPath, paramsContent, "utf8");
+      cleanupPaths(resultPath);
+      fs.writeFileSync(paramsPath, `${filePath}|${slideNumbers.join(",")}|${resultPath}`, "utf8");
 
       const scriptResult = await this.runAppleScriptJson("trigger-macro.applescript", [
         "RemoveAudio",
@@ -491,10 +496,16 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
         return { success: false, message: scriptResult.message || "Failed to remove audio." };
       }
 
-      this.focusApp();
-      return { success: true };
+      const report = fs.existsSync(resultPath) ? fs.readFileSync(resultPath, "utf8") : undefined;
+      const result = checkRemoveAudioReport(report, slideNumbers);
+      if (result.success) {
+        this.focusApp();
+      }
+      return result;
+    } catch (e: unknown) {
+      return { success: false, message: getErrorMessage(e) };
     } finally {
-      cleanupPaths(paramsPath);
+      cleanupPaths(paramsPath, resultPath);
     }
   }
 
