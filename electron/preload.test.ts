@@ -39,6 +39,7 @@ type RemoveAudio = (payload: RemoveAudioRequest) => Promise<BasicPptResult>;
 type SaveNarratedPresentation = (
   payload: NarratedPresentationSaveRequest,
   onProgress: (progress: SaveAllRunProgress) => void,
+  onCancellable?: (cancel: () => void) => void,
 ) => Promise<SaveAllRunResult>;
 
 const electron = vi.hoisted(() => {
@@ -137,6 +138,36 @@ it("stops delivering progress after a narrated presentation save settles", async
   }
 
   expect(observedProgress).toEqual([generating]);
+});
+
+it("cancels only the run it was handed for, and only while that run is active", async () => {
+  loadPreload();
+  const pendingSave = controlledPromise<SaveAllRunResult>();
+  electron.ipcRenderer.invoke.mockReturnValueOnce(pendingSave.promise);
+  let cancel!: () => void;
+
+  const saving = electron.state.exposedApi!.saveNarratedPresentation(
+    { filePath: "/slides/talk.pptx", slides: [] },
+    () => {},
+    (cancelRun) => {
+      cancel = cancelRun;
+    },
+  );
+  const [, request] = electron.ipcRenderer.invoke.mock.lastCall! as [string, { runId: number }];
+
+  electron.ipcRenderer.invoke.mockResolvedValue(undefined);
+  cancel();
+  expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(
+    "cancel-narrated-presentation-save",
+    request.runId,
+  );
+
+  pendingSave.resolve({ outcome: { success: false, stage: "cancelled" }, savedNoteSlides: [] });
+  await saving;
+  electron.ipcRenderer.invoke.mockClear();
+  cancel();
+
+  expect(electron.ipcRenderer.invoke).not.toHaveBeenCalled();
 });
 
 it("carries structured slide-note sections across the preview channel", async () => {

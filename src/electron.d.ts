@@ -32,6 +32,7 @@ declare global {
       saveNarratedPresentation: (
         payload: NarratedPresentationSaveRequest,
         onProgress: (progress: SaveAllRunProgress) => void,
+        onCancellable?: (cancel: () => void) => void,
       ) => Promise<SaveAllRunResult>;
       getVoices: () => Promise<VoiceOption[]>;
       prepareNarrationPreview: (

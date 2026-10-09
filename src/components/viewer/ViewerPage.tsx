@@ -1,7 +1,7 @@
 import { Stack } from "@mantine/core";
 import { useCallback, useLayoutEffect, useMemo } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import type { SaveAllRunProgress } from "../../../shared/types/narration";
+import type { SaveAllRunProgress, SaveAllRunResult } from "../../../shared/types/narration";
 import type { ActionButtonState } from "../../types/viewer";
 import type { Slide, SlideElectronResult } from "../../types/electron";
 import { useSettings } from "../../context/useSettings";
@@ -46,6 +46,32 @@ function reportNarratedSaveFailure(result: { partial: boolean; message: string }
     ? "PowerPoint notes were saved, but narration audio was not committed."
     : result.message;
   alert(`Save error: ${partialMessage}${result.partial ? ` ${result.message}` : ""}`);
+}
+
+/**
+ * Explains where a stopped save-all run left the presentation. Notes and audio
+ * are separate writes, so a failure after the notes saved leaves that slide's
+ * notes and audio out of step; nothing is rolled back.
+ */
+function reportSaveAllFailure({ outcome, savedNoteSlides, failedSlideIndex }: SaveAllRunResult) {
+  if (outcome.success || outcome.stage === "cancelled") {
+    return;
+  }
+
+  const earlierSaved = savedNoteSlides.some((slideIndex) => slideIndex !== failedSlideIndex)
+    ? " Earlier slides remain saved."
+    : "";
+  if (outcome.stage !== "powerpoint" || failedSlideIndex === undefined) {
+    alert(`Save error: ${outcome.message}${earlierSaved}`);
+    return;
+  }
+
+  const persistence = outcome.partial
+    ? "its notes were saved, but its narration audio was not fully saved, so the slide's notes and audio may not match"
+    : "its notes may not have been saved";
+  alert(
+    `Save error on slide ${slideNumberOf(failedSlideIndex)}: ${persistence}. ${outcome.message}${earlierSaved} Later slides were not changed.`,
+  );
 }
 
 export function ViewerPage({
@@ -133,7 +159,10 @@ export function ViewerPage({
    * Commits the whole presentation through the narrated save path, one complete
    * slide at a time, and reconciles only the notes PowerPoint confirmed written.
    */
-  async function commitNarratedPresentation(onProgress: (progress: SaveAllRunProgress) => void) {
+  async function commitNarratedPresentation(
+    onProgress: (progress: SaveAllRunProgress) => void,
+    onCancellable?: (cancel: () => void) => void,
+  ) {
     const snapshot = editor.submitSave();
     const result = await electronAPI.saveNarratedPresentation(
       {
@@ -144,10 +173,11 @@ export function ViewerPage({
         })),
       },
       onProgress,
+      onCancellable,
     );
     editor.saveSucceeded(snapshot, result.savedNoteSlides);
     if (!result.outcome.success) {
-      reportNarratedSaveFailure(result.outcome);
+      reportSaveAllFailure(result);
       return false;
     }
 
@@ -338,6 +368,7 @@ export function ViewerPage({
         state={saveAllRun.state}
         onConfirm={saveAllRun.onConfirm}
         onDecline={saveAllRun.onDecline}
+        onCancel={saveAllRun.cancel}
       />
       <ViewerHeader
         onBack={() => {

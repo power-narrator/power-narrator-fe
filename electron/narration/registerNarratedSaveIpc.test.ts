@@ -94,7 +94,7 @@ describe.each([
       sections: [{ speaker: "Narrator", text: "Hello", playAcrossSlides: false }],
     }),
     "saveSlide" as const,
-    0,
+    (): unknown[] => [],
     (outcome: unknown) => outcome,
   ],
   [
@@ -107,13 +107,14 @@ describe.each([
           sections: [{ speaker: "Narrator", text: "Hello", playAcrossSlides: false }],
         },
       ],
+      runId: 1,
       progressChannel: "narrated-presentation-save-progress:1",
     }),
     "savePresentation" as const,
-    1,
+    (): unknown[] => [expect.any(Function), { requested: false }],
     (outcome: unknown) => ({ outcome, savedNoteSlides: [] }),
   ],
-])("%s", (channel, createRequest, saverMethod, progressArgumentCount, asResult) => {
+])("%s", (channel, createRequest, saverMethod, expectedRunArguments, asResult) => {
   it("fails before preparation when the presentation is missing", async () => {
     const { handlers, saver } = registerHandlers();
     const missingPath = path.join(temporaryDirectory, "missing.pptx");
@@ -138,13 +139,9 @@ describe.each([
     await expect(
       handlers.get(channel)!(event, createRequest(relativePath) as never),
     ).resolves.toEqual(asResult({ success: true }));
-    const expectedProgressArguments: unknown[] = Array.from(
-      { length: progressArgumentCount },
-      (): unknown => expect.any(Function),
-    );
     expect(saver[saverMethod]).toHaveBeenCalledWith(
       expect.objectContaining({ filePath: presentationPath }),
-      ...expectedProgressArguments,
+      ...expectedRunArguments(),
     );
   });
 });
