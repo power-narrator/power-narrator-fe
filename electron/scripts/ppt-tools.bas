@@ -365,6 +365,119 @@ Sub ExportSlideNotes()
     ExportNotesToFile pres, outputPath, slideIndex
 End Sub
 
+Function IsSectionAudioShapeName(shapeName As String) As Boolean
+    ' Section audio is named exactly "ppt_audio_<1-based section ordinal>"
+    Dim ordinal As String
+    Dim i As Long
+
+    IsSectionAudioShapeName = False
+    If InStr(1, shapeName, "ppt_audio_") <> 1 Then Exit Function
+
+    ordinal = Mid(shapeName, Len("ppt_audio_") + 1)
+    If Len(ordinal) = 0 Or Left(ordinal, 1) = "0" Then Exit Function
+
+    For i = 1 To Len(ordinal)
+        If Mid(ordinal, i, 1) < "0" Or Mid(ordinal, i, 1) > "9" Then Exit Function
+    Next i
+
+    IsSectionAudioShapeName = True
+End Function
+
+Sub WriteInspectionError(outputPath As String, message As String)
+    Dim fileNum As Integer
+
+    fileNum = FreeFile
+    Open outputPath For Output As fileNum
+    Print #fileNum, "###ERROR### " & message
+    Close fileNum
+End Sub
+
+Sub ExportSectionAudioPlayback()
+    ' Reports every section audio shape on the requested slides as
+    ' "name<TAB>kind<TAB>StopAfterSlides", ending with ###EXPORT_COMPLETE###.
+    ' Any failure replaces the report with a single ###ERROR### line.
+    Dim pres As Presentation
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim paramsPath As String
+    Dim outputPath As String
+    Dim fileContent As String
+    Dim params() As String
+    Dim slideNumbers() As String
+    Dim slideNumber As Long
+    Dim i As Long
+    Dim outputNum As Integer
+    Dim kind As String
+    Dim stopAfterSlides As String
+    Dim context As String
+    Dim errorMessage As String
+
+    paramsPath = GetOfficeFilePath("export_audio_playback_params.txt")
+    fileContent = ReadSingleLineFile(paramsPath, "Error: Could not find export_audio_playback_params.txt")
+    If fileContent = "" Then Exit Sub
+
+    params = Split(fileContent, "|")
+    If UBound(params) < 2 Then Exit Sub
+    outputPath = params(2)
+
+    On Error GoTo InspectionFailed
+
+    context = "Could not find the presentation " & params(0)
+    Set pres = GetPresentation(params(0))
+    If pres Is Nothing Then
+        WriteInspectionError outputPath, "Presentation not found: " & params(0)
+        Exit Sub
+    End If
+
+    outputNum = FreeFile
+    Open outputPath For Output As outputNum
+
+    slideNumbers = Split(params(1), ",")
+    For i = LBound(slideNumbers) To UBound(slideNumbers)
+        context = "Could not inspect slide " & slideNumbers(i)
+        slideNumber = CLng(slideNumbers(i))
+        If slideNumber < 1 Or slideNumber > pres.Slides.Count Then
+            errorMessage = "Invalid slide number: " & slideNumber
+            GoTo ReportFailure
+        End If
+
+        Set sld = pres.Slides(slideNumber)
+        Print #outputNum, "###SLIDE_START### " & slideNumber
+
+        For Each shp In sld.Shapes
+            If IsSectionAudioShapeName(shp.Name) Then
+                context = "Could not read the playback of " & shp.Name & " on slide " & slideNumber
+                kind = "other"
+                stopAfterSlides = ""
+
+                If shp.Type = msoMedia Then
+                    If shp.MediaType = ppMediaTypeSound Then
+                        kind = "sound"
+                        stopAfterSlides = CStr(shp.AnimationSettings.PlaySettings.StopAfterSlides)
+                    End If
+                End If
+
+                Print #outputNum, shp.Name & vbTab & kind & vbTab & stopAfterSlides
+            End If
+        Next shp
+
+        Print #outputNum, "###SLIDE_END###"
+    Next i
+
+    Print #outputNum, "###EXPORT_COMPLETE###"
+    Close outputNum
+    Exit Sub
+
+InspectionFailed:
+    errorMessage = context & ": " & Err.Description
+    Resume ReportFailure
+
+ReportFailure:
+    On Error Resume Next
+    If outputNum <> 0 Then Close outputNum
+    WriteInspectionError outputPath, errorMessage
+End Sub
+
 Sub UpdateNotes()
     Dim pres As Presentation
     Dim paramsPath As String
