@@ -53,12 +53,12 @@ class FakePowerPointAdapter {
   >((_filePath, slidesAudio) => {
     const result = this.audioResults.shift() ?? { success: true as const };
     if (result.success) {
+      for (const slideIndex of new Set(slidesAudio.map((audio) => audio.slideIndex))) {
+        this.insertedAudio.set(slideIndex, new Map());
+        this.removedAudio.delete(slideIndex);
+      }
       for (const audio of slidesAudio) {
-        const slideAudio =
-          this.insertedAudio.get(audio.slideIndex) ?? new Map<number, Uint8Array>();
-        slideAudio.set(audio.sectionIndex, audio.audioData);
-        this.insertedAudio.set(audio.slideIndex, slideAudio);
-        this.removedAudio.delete(audio.slideIndex);
+        this.insertedAudio.get(audio.slideIndex)!.set(audio.sectionIndex, audio.audioData);
       }
     }
     return Promise.resolve(result);

@@ -2,7 +2,7 @@ import { toSlideIndex } from "../../shared/slides/slideCoordinates.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import type { NarratedSaveResult } from "../../shared/types/narration.js";
 import type { BasicPptResult, SlideAudioEntry, SlideNotesEntry } from "../platform/types.js";
@@ -34,7 +34,42 @@ afterEach(() => {
   fs.rmSync(temporaryDirectory, { recursive: true, force: true });
 });
 
-function registerNarrationHandlers() {
+/**
+ * Slide media by name, changed the way the PowerPoint provider contract
+ * describes: a slide's audio entries are its complete section audio.
+ */
+class FakeDeck implements NarrationPowerPoint {
+  constructor(readonly media: Map<number, string[]>) {}
+
+  saveNotes(): Promise<BasicPptResult> {
+    return Promise.resolve({ success: true });
+  }
+
+  insertAudio(_filePath: string, slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult> {
+    for (const slideIndex of new Set(slidesAudio.map((entry) => entry.slideIndex))) {
+      const sectionAudio = slidesAudio
+        .filter((entry) => entry.slideIndex === slideIndex)
+        .map((entry) => `ppt_audio_${entry.sectionIndex + 1}`);
+      const otherMedia = (this.media.get(slideIndex) ?? []).filter(
+        (name) => !/^ppt_audio_\d+$/.test(name),
+      );
+      this.media.set(slideIndex, [...otherMedia, ...sectionAudio]);
+    }
+    return Promise.resolve({ success: true });
+  }
+
+  removeAudio(_filePath: string, slideIndices: number[]): Promise<BasicPptResult> {
+    for (const slideIndex of slideIndices) {
+      this.media.set(
+        slideIndex,
+        (this.media.get(slideIndex) ?? []).filter((name) => !name.startsWith("ppt_audio")),
+      );
+    }
+    return Promise.resolve({ success: true });
+  }
+}
+
+function registerNarrationHandlers(deck?: FakeDeck) {
   const handlers = new Map<string, IpcHandler>();
   const generateSpeech = vi
     .fn<(text: string, voice: Voice, prompt?: string) => Promise<SynthesizedSpeech>>()
@@ -61,7 +96,7 @@ function registerNarrationHandlers() {
     {
       mappingSource: { getSpeakerMappings: () => mappings },
       synthesizer: { supportsProvider: () => true, generateSpeech },
-      getPowerPoint: () => powerpoint,
+      getPowerPoint: () => deck ?? powerpoint,
     },
   );
 
@@ -116,4 +151,53 @@ it("formats the submitted structured sections only as PowerPoint takes them", as
   expect(powerpoint.saveNotes.mock.invocationCallOrder[0]).toBeLessThan(
     powerpoint.insertAudio.mock.invocationCallOrder[0]!,
   );
+});
+
+describe("saving removes obsolete section audio", () => {
+  const narrated = (...texts: string[]) => texts.map((text) => ({ speaker: "Narrator", text }));
+
+  it.each([
+    {
+      change: "deleting the last section",
+      before: ["ppt_audio_1", "ppt_audio_2", "Background music"],
+      sections: narrated("First"),
+      after: ["Background music", "ppt_audio_1"],
+    },
+    {
+      change: "deleting an earlier section, renumbering the survivors",
+      before: ["ppt_audio_1", "ppt_audio_2", "ppt_audio_3", "Background music"],
+      sections: narrated("Second", "Third"),
+      after: ["Background music", "ppt_audio_1", "ppt_audio_2"],
+    },
+    {
+      change: "emptying a section while a later section keeps its narration",
+      before: ["ppt_audio_1", "ppt_audio_2", "Background music"],
+      sections: narrated("", "Second"),
+      after: ["Background music", "ppt_audio_2"],
+    },
+    {
+      change: "emptying every section",
+      before: ["ppt_audio_1", "Background music"],
+      sections: narrated(" "),
+      after: ["Background music"],
+    },
+  ])("after $change", async ({ before, sections, after }) => {
+    const deck = new FakeDeck(
+      new Map([
+        [1, before],
+        [2, ["ppt_audio_1", "ppt_audio_2"]],
+      ]),
+    );
+    const { handlers } = registerNarrationHandlers(deck);
+
+    const result = await handlers.get("save-narrated-slide")!(event, {
+      filePath: presentationPath,
+      slideIndex: toSlideIndex(1),
+      sections,
+    } as never);
+
+    expect(result).toEqual({ success: true });
+    expect(deck.media.get(1)!.toSorted()).toEqual(after);
+    expect(deck.media.get(2)).toEqual(["ppt_audio_1", "ppt_audio_2"]);
+  });
 });
