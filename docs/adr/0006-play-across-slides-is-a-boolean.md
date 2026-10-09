@@ -1,0 +1,3 @@
+# Play Across Slides is a boolean
+
+The application treats section audio's Play Across Slides setting as an enabled/disabled choice, matching the PowerPoint checkbox. Saving enabled audio uses PowerPoint's default span of 999 rather than retaining a custom numeric span; this intentionally normalizes existing enabled spans so the editor and saving need only carry the user's boolean choice. Loading or reloading imports the setting from PowerPoint; saving always writes the app's current setting, including when the checkbox was untouched, so synchronization is explicit and save behavior follows the visible editor state.
