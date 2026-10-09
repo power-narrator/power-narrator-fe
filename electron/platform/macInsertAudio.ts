@@ -1,5 +1,6 @@
-import { slideNumberOf } from "../../shared/slides/slideCoordinates.js";
+import { slideNumberOf, type SlideNumber } from "../../shared/slides/slideCoordinates.js";
 import { buildPptAudioShapeName } from "./helpers.js";
+import { checkSectionAudioLeft, fail, isIntegerText, readAudioMacroReport } from "./macroReport.js";
 import { playsAcrossSlides } from "./sectionAudioPlayback.js";
 import type { BasicPptResult, SlideAudioEntry } from "./types.js";
 
@@ -8,7 +9,6 @@ export type StagedSlideAudio = {
   audioPath: string;
 };
 
-/** PowerPoint's own span when its Play Across Slides checkbox is ticked. */
 const PLAY_ACROSS_SLIDES_SPAN = 999;
 
 /**
@@ -37,7 +37,7 @@ function appliedPlayback(
   [stopAfterSlides, playOnEntry, pauseAnimation]: readonly string[],
   playAcrossSlides: boolean,
 ): boolean {
-  if (!/^-?\d+$/.test(stopAfterSlides ?? "")) {
+  if (!isIntegerText(stopAfterSlides ?? "")) {
     return false;
   }
   return playAcrossSlides
@@ -58,29 +58,17 @@ export function checkInsertAudioReport(
   report: string | undefined,
   slidesAudio: readonly SlideAudioEntry[],
 ): BasicPptResult {
-  if (report === undefined) {
-    return fail("PowerPoint did not report the result of inserting audio.");
-  }
-
-  const records = report
-    .split(/\r\n|\n|\r/)
-    .filter((line) => line.length > 0)
-    .map((line) => line.split("|"));
-
-  const error = records.find(([kind]) => kind === "error");
-  if (error) {
-    return fail(error.slice(1).join("|") || "PowerPoint failed to insert audio.");
-  }
-  if (!records.some(([kind]) => kind === "done")) {
-    return fail("PowerPoint did not finish inserting audio.");
+  const read = readAudioMacroReport(report, "inserting audio");
+  if (!read.success) {
+    return read;
   }
 
   const inserted = new Map(
-    records
+    read.records
       .filter(([kind]) => kind === "inserted")
       .map((record) => [`${record[1]}|${record[2]}`, record]),
   );
-  const expectedBySlide = new Map<number, string[]>();
+  const expectedBySlide = new Map<SlideNumber, string[]>();
   for (const entry of slidesAudio) {
     const slideNumber = slideNumberOf(entry.slideIndex);
     const shapeName = buildPptAudioShapeName(entry.sectionIndex);
@@ -94,26 +82,26 @@ export function checkInsertAudioReport(
     expectedBySlide.set(slideNumber, [...(expectedBySlide.get(slideNumber) ?? []), shapeName]);
   }
 
-  const remainingBySlide = new Map(
-    records
-      .filter(([kind]) => kind === "slide")
-      .map(([, slideNumber, names]) => [Number(slideNumber), names ? names.split(",") : []]),
-  );
-  for (const [slideNumber, expected] of expectedBySlide) {
-    const remaining = remainingBySlide.get(slideNumber);
-    if (remaining === undefined) {
-      return fail(`PowerPoint did not report the section audio left on slide ${slideNumber}.`);
-    }
-    if (remaining.toSorted().join(",") !== expected.toSorted().join(",")) {
-      return fail(
-        `Section audio on slide ${slideNumber} is ${remaining.join(",") || "missing"} instead of ${expected.join(",")}.`,
-      );
-    }
-  }
-
-  return { success: true };
+  return checkSectionAudioLeft(read.sectionAudioLeft, expectedBySlide);
 }
 
-function fail(message: string): BasicPptResult {
-  return { success: false, message };
+/**
+ * Checks the RemoveAudio macro's report, which lists the section audio left on
+ * each requested slide as `slide|slideNumber|names`, `error|message` on
+ * failure, and a final `done`. Every requested slide must be left without
+ * section audio.
+ */
+export function checkRemoveAudioReport(
+  report: string | undefined,
+  slideNumbers: readonly SlideNumber[],
+): BasicPptResult {
+  const read = readAudioMacroReport(report, "removing audio");
+  if (!read.success) {
+    return read;
+  }
+
+  return checkSectionAudioLeft(
+    read.sectionAudioLeft,
+    new Map(slideNumbers.map((slideNumber) => [slideNumber, []])),
+  );
 }
