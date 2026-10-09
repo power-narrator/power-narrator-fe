@@ -2,6 +2,8 @@ Attribute VB_Name = "AudioTools"
 
 Private Const MEDIA_PLAY_EFFECT As Long = 83
 Private Const SECTION_AUDIO_PREFIX As String = "ppt_audio_"
+Private Const PLAY_ACROSS_SLIDES_SPAN As Long = 999
+Private Const CURRENT_SLIDE_SPAN As Long = 1
 
 ' ==============================================================================================
 ' INSTRUCTIONS FOR USER:
@@ -292,9 +294,44 @@ Function ReplaceSectionAudio(pres As Presentation, sld As Slide, audioPath As St
     Set ReplaceSectionAudio = shp
 End Function
 
-' Params: a "presentation|result path" header, then one "slide number|audio path" line per section audio.
+' Play Across Slides on uses PowerPoint's own 999-slide span. Applied after the media-play effect
+' is rebuilt, so rebuilding cannot overwrite it.
+Sub ApplySectionAudioPlayback(sld As Slide, shp As Shape, playAcrossSlides As Boolean)
+    Dim effectCount As Integer
+    Dim i As Integer
+
+    With shp.AnimationSettings.PlaySettings
+        If playAcrossSlides Then
+            .PlayOnEntry = msoTrue
+            .PauseAnimation = msoFalse
+            .StopAfterSlides = PLAY_ACROSS_SLIDES_SPAN
+        Else
+            .StopAfterSlides = CURRENT_SLIDE_SPAN
+        End If
+    End With
+
+    For i = 1 To sld.TimeLine.MainSequence.Count
+        If Not sld.TimeLine.MainSequence(i).Shape Is Nothing Then
+            If sld.TimeLine.MainSequence(i).Shape.Name = shp.Name Then effectCount = effectCount + 1
+        End If
+    Next i
+    If effectCount <> 1 Then
+        Err.Raise vbObjectError + 517, , "Setting the playback of " & shp.Name & " on slide " & sld.SlideIndex & " left " & effectCount & " play effects."
+    End If
+End Sub
+
+' "stopAfterSlides|playOnEntry|pauseAnimation" as PowerPoint reads them back, flags as 1 or 0.
+Function SectionAudioPlaybackReport(shp As Shape) As String
+    With shp.AnimationSettings.PlaySettings
+        SectionAudioPlaybackReport = .StopAfterSlides & "|" & IIf(.PlayOnEntry = msoTrue, "1", "0") & "|" & IIf(.PauseAnimation = msoTrue, "1", "0")
+    End With
+End Function
+
+' Params: a "presentation|result path" header, then one "slide number|audio path|play across slides"
+' line per section audio, the flag as 1 or 0.
 ' The audio lines for a slide are its complete section audio; any other section audio on it is obsolete.
-' The result file gets "inserted|slide|shape" per section audio, "slide|slide|shapes" listing the section
+' The result file gets "inserted|slide|shape|stopAfterSlides|playOnEntry|pauseAnimation" per section
+' audio, read back after its playback is applied, "slide|slide|shapes" listing the section
 ' audio left on each saved slide, "error|message" on failure, and "done" once the presentation is saved.
 Sub InsertAudio()
     Dim pres As Presentation
@@ -309,6 +346,7 @@ Sub InsertAudio()
     Dim slideNumbers() As Integer
     Dim audioPaths() As String
     Dim shapeNames() As String
+    Dim playAcross() As Boolean
     Dim entryCount As Integer
     Dim fileName As String
     Dim currentSlideNumber As Integer
@@ -340,7 +378,7 @@ Sub InsertAudio()
         Line Input #paramsNum, fileContent
         If Len(Trim(fileContent)) > 0 Then
             params = Split(fileContent, "|")
-            If UBound(params) < 1 Then
+            If UBound(params) < 2 Then
                 Err.Raise vbObjectError + 514, , "Malformed audio line: " & fileContent
             End If
 
@@ -348,9 +386,11 @@ Sub InsertAudio()
             ReDim Preserve slideNumbers(1 To entryCount)
             ReDim Preserve audioPaths(1 To entryCount)
             ReDim Preserve shapeNames(1 To entryCount)
+            ReDim Preserve playAcross(1 To entryCount)
 
             slideNumbers(entryCount) = CInt(params(0))
             audioPaths(entryCount) = params(1)
+            playAcross(entryCount) = params(2) = "1"
             ' Managed audio filenames and shape names follow "ppt_audio_<section>"
             fileName = Mid(params(1), InStrRev(params(1), "/") + 1)
             shapeNames(entryCount) = Left(fileName, InStrRev(fileName, ".") - 1)
@@ -375,8 +415,10 @@ Sub InsertAudio()
             newAudioInsertIndex = 1
         End If
 
-        Set shp = ReplaceSectionAudio(pres, pres.Slides(slideNumbers(i)), audioPaths(i), shapeNames(i), newAudioInsertIndex)
-        Print #resultNum, "inserted|" & slideNumbers(i) & "|" & shp.Name
+        Set sld = pres.Slides(slideNumbers(i))
+        Set shp = ReplaceSectionAudio(pres, sld, audioPaths(i), shapeNames(i), newAudioInsertIndex)
+        ApplySectionAudioPlayback sld, shp, playAcross(i)
+        Print #resultNum, "inserted|" & slideNumbers(i) & "|" & shp.Name & "|" & SectionAudioPlaybackReport(shp)
     Next i
 
     ' Only once every replacement has captured its old animation is obsolete audio removed
