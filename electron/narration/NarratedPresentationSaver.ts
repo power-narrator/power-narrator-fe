@@ -118,9 +118,6 @@ export class NarratedPresentationSaver {
       }
     }
 
-    if (cancellation.requested) {
-      return finish(cancelled);
-    }
     const lastSlide = planned.at(-1);
     if (lastSlide) {
       onProgress?.({
@@ -130,7 +127,7 @@ export class NarratedPresentationSaver {
         phase: "saving",
       });
     }
-    return finish({ success: true });
+    return finish(cancellation.requested ? cancelled : { success: true });
   }
 
   private async prepare(slides: readonly NarratedSlideInput[]): Promise<PreparedSave> {

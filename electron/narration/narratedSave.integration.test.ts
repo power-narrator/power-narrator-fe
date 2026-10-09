@@ -591,12 +591,17 @@ for (const cancelDuring of [
 
 it("reports cancellation, not success, when cancelled while the final slide saves", async () => {
   const { handlers, externalWork, heldWrites, holdWrite } = registerNarrationHandlers();
+  const send = vi.fn<(channel: string, ...args: unknown[]) => void>();
   holdWrite("insert audio 1");
 
-  const saving = saveAll(handlers, [
-    { slideIndex: 0, sections: [narrator("Zero")] },
-    { slideIndex: 1, sections: [narrator("One")] },
-  ]);
+  const saving = saveAll(
+    handlers,
+    [
+      { slideIndex: 0, sections: [narrator("Zero")] },
+      { slideIndex: 1, sections: [narrator("One")] },
+    ],
+    { sender: { id: 1, send } } as unknown as IpcMainInvokeEvent,
+  );
   await vi.waitFor(() => expect(heldWrites.has("insert audio 1")).toBe(true));
   await cancelRun(handlers);
   heldWrites.get("insert audio 1")!.resolve({ success: true });
@@ -606,6 +611,9 @@ it("reports cancellation, not success, when cancelled while the final slide save
     savedNoteSlides: [0, 1],
   });
   expect(externalWork.slice(-2)).toEqual(["save notes 1", "insert audio 1"]);
+  expect(send.mock.calls.at(-1)?.[1]).toEqual(
+    expect.objectContaining({ completedSlides: 2, totalSlides: 2 }),
+  );
 });
 
 it("ignores cancellation meant for an earlier run or another window", async () => {
