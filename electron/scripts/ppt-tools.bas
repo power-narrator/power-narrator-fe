@@ -302,29 +302,40 @@ Function ReplaceSectionAudio(pres As Presentation, sld As Slide, audioPath As St
     Set ReplaceSectionAudio = shp
 End Function
 
+Function SectionAudioPlayEffect(sld As Slide, shp As Shape) As Effect
+    Dim i As Long
+
+    For i = 1 To sld.TimeLine.MainSequence.Count
+        If sld.TimeLine.MainSequence(i).EffectType = MEDIA_PLAY_EFFECT Then
+            If EffectShapeName(sld.TimeLine.MainSequence(i)) = shp.Name Then
+                Set SectionAudioPlayEffect = sld.TimeLine.MainSequence(i)
+                Exit Function
+            End If
+        End If
+    Next i
+End Function
+
 ' Play Across Slides on uses PowerPoint's own 999-slide span. Applied after the media-play effect
 ' is rebuilt, so rebuilding cannot overwrite it.
 Sub ApplySectionAudioPlayback(sld As Slide, shp As Shape, playAcrossSlides As Boolean)
     Dim effectCount As Long
+    Dim playback As PlaySettings
     Dim i As Long
 
-    With shp.AnimationSettings.PlaySettings
-        If playAcrossSlides Then
-            .PlayOnEntry = msoTrue
-            .PauseAnimation = msoFalse
-            .StopAfterSlides = PLAY_ACROSS_SLIDES_SPAN
-        Else
-            .StopAfterSlides = CURRENT_SLIDE_SPAN
-        End If
-    End With
-
     For i = 1 To sld.TimeLine.MainSequence.Count
-        If Not sld.TimeLine.MainSequence(i).Shape Is Nothing Then
-            If sld.TimeLine.MainSequence(i).Shape.Name = shp.Name Then effectCount = effectCount + 1
-        End If
+        If EffectShapeName(sld.TimeLine.MainSequence(i)) = shp.Name Then effectCount = effectCount + 1
     Next i
-    If effectCount <> 1 Then
-        Err.Raise vbObjectError + 517, , "Setting the playback of " & shp.Name & " on slide " & sld.SlideIndex & " left " & effectCount & " play effects."
+    If effectCount <> 1 Or SectionAudioPlayEffect(sld, shp) Is Nothing Then
+        Err.Raise vbObjectError + 517, , shp.Name & " on slide " & sld.SlideIndex & " has " & effectCount & " animations instead of one play effect."
+    End If
+
+    Set playback = SectionAudioPlayEffect(sld, shp).EffectInformation.PlaySettings
+    If playAcrossSlides Then
+        playback.PlayOnEntry = msoTrue
+        playback.PauseAnimation = msoFalse
+        playback.StopAfterSlides = PLAY_ACROSS_SLIDES_SPAN
+    Else
+        playback.StopAfterSlides = CURRENT_SLIDE_SPAN
     End If
 End Sub
 
@@ -332,8 +343,11 @@ Function EffectShapeName(eff As Effect) As String
     If Not eff.Shape Is Nothing Then EffectShapeName = eff.Shape.Name
 End Function
 
-' Writing any shape's PlaySettings resets the trigger and delay of play effects across the
-' whole slide, so the slide's timing is captured before all playback writes and restored after.
+' Play Across Slides (StopAfterSlides) lives on PlaySettings, reachable from the play effect's
+' EffectInformation (used here) or from Shape.AnimationSettings. Writing it either way resets the
+' trigger and delay of every play effect on the slide (observed on Mac: With Previous after 1.5s
+' became After Previous after 1s). So the slide's timing is captured before all playback writes
+' and restored after.
 Function SaveSlideTiming(sld As Slide, shapeNames() As String, triggerTypes() As Long, delays() As Single) As Long
     Dim i As Long
     Dim effectCount As Long
@@ -375,21 +389,25 @@ Sub RestoreSlideTiming(sld As Slide, shapeNames() As String, triggerTypes() As L
     Next i
 End Sub
 
-' Reads a media shape's playback span (0 means current slide only).
+' Reads a section audio's playback span (0 means current slide only, also when it has no play effect).
 ' Keep this in a separate function: on Mac, the inline export read returned 2
 ' for disabled audio after reopening, while this helper returned 0.
-Function SectionAudioStopAfterSlides(shp As Shape) As Long
+Function SectionAudioStopAfterSlides(sld As Slide, shp As Shape) As Long
+    Dim eff As Effect
     Dim playback As PlaySettings
 
-    Set playback = shp.AnimationSettings.PlaySettings
+    Set eff = SectionAudioPlayEffect(sld, shp)
+    If eff Is Nothing Then Exit Function
+    Set playback = eff.EffectInformation.PlaySettings
     SectionAudioStopAfterSlides = playback.StopAfterSlides
 End Function
 
 ' "stopAfterSlides|playOnEntry|pauseAnimation" as PowerPoint reads them back, flags as 1 or 0.
-Function SectionAudioPlaybackReport(shp As Shape) As String
-    With shp.AnimationSettings.PlaySettings
-        SectionAudioPlaybackReport = SectionAudioStopAfterSlides(shp) & "|" & IIf(.PlayOnEntry = msoTrue, "1", "0") & "|" & IIf(.PauseAnimation = msoTrue, "1", "0")
-    End With
+Function SectionAudioPlaybackReport(sld As Slide, shp As Shape) As String
+    Dim playback As PlaySettings
+
+    Set playback = SectionAudioPlayEffect(sld, shp).EffectInformation.PlaySettings
+    SectionAudioPlaybackReport = SectionAudioStopAfterSlides(sld, shp) & "|" & IIf(playback.PlayOnEntry = msoTrue, "1", "0") & "|" & IIf(playback.PauseAnimation = msoTrue, "1", "0")
 End Function
 
 ' Params: a "presentation|result path" header, then one "slide number|audio path|play across slides"
@@ -508,8 +526,9 @@ Sub InsertAudio()
     Next i
 
     For i = 1 To entryCount
-        Set shp = pres.Slides(slideNumbers(i)).Shapes(shapeNames(i))
-        Print #resultNum, "inserted|" & slideNumbers(i) & "|" & shp.Name & "|" & SectionAudioPlaybackReport(shp)
+        Set sld = pres.Slides(slideNumbers(i))
+        Set shp = sld.Shapes(shapeNames(i))
+        Print #resultNum, "inserted|" & slideNumbers(i) & "|" & shp.Name & "|" & SectionAudioPlaybackReport(sld, shp)
     Next i
 
     ' Only once every replacement has captured its old animation is obsolete audio removed
@@ -656,7 +675,7 @@ Sub ExportSectionAudioPlayback()
 
                 If shp.MediaType = ppMediaTypeSound Then
                     kind = "sound"
-                    stopAfterSlides = CStr(SectionAudioStopAfterSlides(shp))
+                    stopAfterSlides = CStr(SectionAudioStopAfterSlides(sld, shp))
                 End If
 
                 Print #outputNum, shp.Name & vbTab & kind & vbTab & stopAfterSlides
