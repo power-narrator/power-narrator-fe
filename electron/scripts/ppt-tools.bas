@@ -134,11 +134,12 @@ Function GetSectionIndex(audioTag As String) As Integer
     On Error GoTo 0
 End Function
 
-' Section audio is a media shape named exactly "ppt_audio_<1-based section ordinal>", without leading zeros
+' Section audio is a sound shape named exactly "ppt_audio_<1-based section ordinal>", without leading zeros
 Function IsSectionAudioShape(s As Shape) As Boolean
     Dim ordinal As String
 
     If s.Type <> msoMedia Then Exit Function
+    If s.MediaType <> ppMediaTypeSound Then Exit Function
     If InStr(1, s.Name, SECTION_AUDIO_PREFIX) <> 1 Then Exit Function
 
     ordinal = Mid(s.Name, Len(SECTION_AUDIO_PREFIX) + 1)
@@ -617,7 +618,7 @@ End Sub
 
 Sub ExportSectionAudioPlayback()
     ' Reports every section audio shape on the requested slides as
-    ' "name<TAB>kind<TAB>StopAfterSlides", ending with ###EXPORT_COMPLETE###.
+    ' "name<TAB>StopAfterSlides", ending with ###EXPORT_COMPLETE###.
     ' Any failure replaces the report with a single ###ERROR### line.
     Dim pres As Presentation
     Dim sld As Slide
@@ -630,7 +631,6 @@ Sub ExportSectionAudioPlayback()
     Dim slideNumber As Long
     Dim i As Long
     Dim outputNum As Integer
-    Dim kind As String
     Dim stopAfterSlides As String
     Dim context As String
     Dim errorMessage As String
@@ -670,15 +670,8 @@ Sub ExportSectionAudioPlayback()
         For Each shp In sld.Shapes
             If IsSectionAudioShape(shp) Then
                 context = "Could not read the playback of " & shp.Name & " on slide " & slideNumber
-                kind = "other"
-                stopAfterSlides = ""
-
-                If shp.MediaType = ppMediaTypeSound Then
-                    kind = "sound"
-                    stopAfterSlides = CStr(SectionAudioStopAfterSlides(sld, shp))
-                End If
-
-                Print #outputNum, shp.Name & vbTab & kind & vbTab & stopAfterSlides
+                stopAfterSlides = CStr(SectionAudioStopAfterSlides(sld, shp))
+                Print #outputNum, shp.Name & vbTab & stopAfterSlides
             End If
         Next shp
 

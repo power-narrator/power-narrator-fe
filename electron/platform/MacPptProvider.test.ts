@@ -245,10 +245,10 @@ describe("MacPptProvider section audio playback", () => {
         "###SLIDE_START### 1",
         "###SLIDE_END###",
         "###SLIDE_START### 4",
-        "ppt_audio_1\tsound\t0",
-        "ppt_audio_2\tsound\t999",
-        "ppt_audio_3\tsound\t2",
-        "ppt_audio_4\tsound\t1",
+        "ppt_audio_1\t0",
+        "ppt_audio_2\t999",
+        "ppt_audio_3\t2",
+        "ppt_audio_4\t1",
         "###SLIDE_END###",
         "###EXPORT_COMPLETE###",
         "",
@@ -276,13 +276,8 @@ describe("MacPptProvider section audio playback", () => {
   it.each([
     [
       "two audio shapes share a section's name",
-      "###SLIDE_START### 1\nppt_audio_1\tsound\t999\nppt_audio_1\tsound\t0\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "###SLIDE_START### 1\nppt_audio_1\t999\nppt_audio_1\t0\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
       "Slide 1 has more than one shape named ppt_audio_1.",
-    ],
-    [
-      "the named shape is not audio",
-      "###SLIDE_START### 1\nppt_audio_1\tother\t\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
-      "Shape ppt_audio_1 on slide 1 is not audio.",
     ],
     [
       "PowerPoint reports an inspection error",
@@ -291,7 +286,7 @@ describe("MacPptProvider section audio playback", () => {
     ],
     [
       "the playback value is unreadable",
-      "###SLIDE_START### 1\nppt_audio_1\tsound\tlots\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "###SLIDE_START### 1\nppt_audio_1\tlots\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
       "PowerPoint reported an unreadable playback for ppt_audio_1 on slide 1.",
     ],
     [
@@ -330,7 +325,7 @@ describe("MacPptProvider section audio playback", () => {
     });
     vi.spyOn(provider, "readSlideNotes").mockResolvedValue({ success: true, notes: "Second" });
     const request = reportSectionAudioPlayback(
-      "###SLIDE_START### 2\nppt_audio_1\tsound\t999\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "###SLIDE_START### 2\nppt_audio_1\t999\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
     );
 
     const result = await provider.reloadSlide(
