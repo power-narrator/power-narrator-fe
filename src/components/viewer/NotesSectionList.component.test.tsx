@@ -1,3 +1,4 @@
+import "@mantine/core/styles.css";
 import { toSlideIndex } from "../../../shared/slides/slideCoordinates";
 import { MantineProvider } from "@mantine/core";
 import { expect, test, vi } from "vitest";
