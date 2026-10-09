@@ -3,7 +3,7 @@ Attribute VB_Name = "AudioTools"
 Private Const MEDIA_PLAY_EFFECT As Long = 83
 Private Const SECTION_AUDIO_PREFIX As String = "ppt_audio_"
 Private Const PLAY_ACROSS_SLIDES_SPAN As Long = 999
-Private Const CURRENT_SLIDE_SPAN As Long = 1
+Private Const CURRENT_SLIDE_SPAN As Long = 0
 
 ' ==============================================================================================
 ' INSTRUCTIONS FOR USER:
@@ -328,10 +328,20 @@ Sub ApplySectionAudioPlayback(sld As Slide, shp As Shape, playAcrossSlides As Bo
     End If
 End Sub
 
+' Reads a media shape's playback span (0 means current slide only).
+' Keep this in a separate function: on Mac, the inline export read returned 2
+' for disabled audio after reopening, while this helper returned 0.
+Function SectionAudioStopAfterSlides(shp As Shape) As Long
+    Dim playback As PlaySettings
+
+    Set playback = shp.AnimationSettings.PlaySettings
+    SectionAudioStopAfterSlides = playback.StopAfterSlides
+End Function
+
 ' "stopAfterSlides|playOnEntry|pauseAnimation" as PowerPoint reads them back, flags as 1 or 0.
 Function SectionAudioPlaybackReport(shp As Shape) As String
     With shp.AnimationSettings.PlaySettings
-        SectionAudioPlaybackReport = .StopAfterSlides & "|" & IIf(.PlayOnEntry = msoTrue, "1", "0") & "|" & IIf(.PauseAnimation = msoTrue, "1", "0")
+        SectionAudioPlaybackReport = SectionAudioStopAfterSlides(shp) & "|" & IIf(.PlayOnEntry = msoTrue, "1", "0") & "|" & IIf(.PauseAnimation = msoTrue, "1", "0")
     End With
 End Function
 
@@ -579,7 +589,7 @@ Sub ExportSectionAudioPlayback()
 
                 If shp.MediaType = ppMediaTypeSound Then
                     kind = "sound"
-                    stopAfterSlides = CStr(shp.AnimationSettings.PlaySettings.StopAfterSlides)
+                    stopAfterSlides = CStr(SectionAudioStopAfterSlides(shp))
                 End If
 
                 Print #outputNum, shp.Name & vbTab & kind & vbTab & stopAfterSlides
