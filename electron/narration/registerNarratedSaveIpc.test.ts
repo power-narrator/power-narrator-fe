@@ -3,7 +3,10 @@ import { toSlideIndex } from "../../shared/slides/slideCoordinates.js";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { NarratedPresentationSaver } from "./NarratedPresentationSaver.js";
+import {
+  SaveAllRunCancellation,
+  type NarratedPresentationSaver,
+} from "./NarratedPresentationSaver.js";
 import { registerNarratedPresentationSaveIpc } from "./registerNarratedPresentationSaveIpc.js";
 import { registerNarratedSlideSaveIpc } from "./registerNarratedSlideSaveIpc.js";
 
@@ -111,7 +114,7 @@ describe.each([
       progressChannel: "narrated-presentation-save-progress:1",
     }),
     "savePresentation" as const,
-    (): unknown[] => [expect.any(Function), { requested: false }],
+    (): unknown[] => [expect.any(Function), expect.any(SaveAllRunCancellation)],
     (outcome: unknown) => ({ outcome, savedNoteSlides: [] }),
   ],
 ])("%s", (channel, createRequest, saverMethod, expectedRunArguments, asResult) => {

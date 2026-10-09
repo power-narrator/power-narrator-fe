@@ -5,7 +5,7 @@ import type {
   NarratedPresentationSaveRequest,
   NarratedSaveResult,
   NarratedSlideSaveRequest,
-  SaveAllRunProgress,
+  SaveAllRunObserver,
   SaveAllRunResult,
   NarrationPreviewResult,
   PreviewNarrationRequest,
@@ -31,8 +31,7 @@ declare global {
       saveNarratedSlide: (payload: NarratedSlideSaveRequest) => Promise<NarratedSaveResult>;
       saveNarratedPresentation: (
         payload: NarratedPresentationSaveRequest,
-        onProgress: (progress: SaveAllRunProgress) => void,
-        onCancellable?: (cancel: () => void) => void,
+        observer: SaveAllRunObserver,
       ) => Promise<SaveAllRunResult>;
       getVoices: () => Promise<VoiceOption[]>;
       prepareNarrationPreview: (

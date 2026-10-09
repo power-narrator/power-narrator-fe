@@ -24,6 +24,7 @@ import { registerNarrationIpc } from "./narration/registerNarrationIpc.js";
 import { withSlideSections, withSlidesSections } from "./narration/structuredSlideNotes.js";
 import { getSpeakerNames } from "../shared/narration/speaker.js";
 import { toSlideIndex } from "../shared/slides/slideCoordinates.js";
+import { SaveAllRunGuard } from "./windows/SaveAllRunGuard.js";
 import { UnsavedNarrationChanges } from "./windows/UnsavedNarrationChanges.js";
 import { createMainWindow } from "./windows/createMainWindow.js";
 import { installTestHarness } from "./testing/narrationTestHarness.js";
@@ -54,6 +55,9 @@ const store = new Store({
 });
 const unsavedNarrationChanges = new UnsavedNarrationChanges();
 unsavedNarrationChanges.install(ipcMain);
+const saveAllRuns = new SaveAllRunGuard();
+saveAllRuns.install(ipcMain);
+const windowGuards = { saveAllRuns, unsavedNarrationChanges };
 
 function getGcpKeyPath(): string | undefined {
   const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
@@ -118,11 +122,11 @@ registerNarrationIpc(
     synthesizer: ttsManager,
     getPowerPoint: getActiveCoreProvider,
   },
-  unsavedNarrationChanges,
+  saveAllRuns,
 );
 
 if (process.env.NODE_ENV === "test") {
-  installTestHarness(unsavedNarrationChanges);
+  installTestHarness(windowGuards);
 }
 
 function getOutputDir(absolutePath: string): string {
@@ -155,11 +159,11 @@ void app.whenReady().then(() => {
 
     return net.fetch(pathToFileURL(assetPath).toString());
   });
-  createMainWindow(unsavedNarrationChanges);
+  createMainWindow(windowGuards);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow(unsavedNarrationChanges);
+      createMainWindow(windowGuards);
     }
   });
 });

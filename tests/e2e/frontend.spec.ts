@@ -200,6 +200,37 @@ test.describe("PPT Viewer UI Workflows", () => {
     await expect(notesEditor(win)).toHaveValue("Editable again");
   });
 
+  test("keeps the viewer loaded when a reload is attempted during a save-all run", async ({
+    app,
+    win,
+  }) => {
+    await notesEditor(win).fill("Submitted before reload");
+    await holdNarrationWork(app, ["speech"]);
+    await startSaveAll(win);
+    const progress = saveAllProgress(win);
+    await expect.poll(() => getHeldNarrationWork(app)).toHaveLength(1);
+
+    // Electron refuses the reload itself; listening keeps Playwright from answering the prompt.
+    const unloadPrompt = win.waitForEvent("dialog");
+    const refusedReload = app.evaluate(
+      ({ BrowserWindow }) =>
+        new Promise<void>((resolve) => {
+          const { webContents } = BrowserWindow.getAllWindows()[0]!;
+          webContents.once("will-prevent-unload", () => resolve());
+          webContents.reload();
+        }),
+    );
+    await refusedReload;
+    expect((await unloadPrompt).type()).toBe("beforeunload");
+    await expect(progress).toBeVisible();
+
+    await holdNarrationWork(app, []);
+    await releaseHeldNarrationWork(app);
+    await expect(progress).toBeHidden();
+    await expect(notesEditor(win)).toHaveValue("Submitted before reload");
+    expect(await getSaveNotesCalls(app)).toHaveLength(2);
+  });
+
   test("cancels safely while a slide generates and lets a later run finish", async ({
     app,
     win,

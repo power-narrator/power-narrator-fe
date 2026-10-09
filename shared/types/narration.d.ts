@@ -54,6 +54,12 @@ export type SaveAllRunProgress = {
   phase: SaveAllRunPhase;
 };
 
+/** How the renderer follows a save-all run it started and asks to cancel it. */
+export type SaveAllRunObserver = {
+  onProgress: (progress: SaveAllRunProgress) => void;
+  onCancellable: (cancel: () => void) => void;
+};
+
 export type NarratedSaveFailureStage = "validation" | "synthesis" | "powerpoint";
 
 export type NarratedSaveResult =
@@ -65,11 +71,6 @@ export type NarratedSaveResult =
       message: string;
     };
 
-/**
- * How a save-all run ended: every slide saved, stopped at a safe boundary after
- * cancellation, or stopped by a generation (`validation`/`synthesis`) or
- * PowerPoint failure.
- */
 export type SaveAllRunOutcome = NarratedSaveResult | { success: false; stage: "cancelled" };
 
 export type SaveAllRunResult = {

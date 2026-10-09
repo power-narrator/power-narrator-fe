@@ -40,8 +40,7 @@ type SynthesizedNarrationSection<Section extends PreparedNarrationSection> = Sec
 };
 
 /** A slide whose narration passed validation and has not been synthesized yet. */
-export type PlannedNarrationSlide = {
-  readonly slideIndex: SlideIndex;
+export type PlannedNarrationSlide = NarratedSlideInput & {
   synthesize(): Promise<SlideAudioEntry[]>;
 };
 
@@ -117,6 +116,7 @@ export class NarrationPreparation {
 
       return {
         slideIndex: slide.slideIndex,
+        sections: slide.sections,
         synthesize: async () => {
           const synthesized = await this.synthesizeSections(sections);
           return synthesized.map(({ slideIndex, sectionIndex, speech, playAcrossSlides }) => ({

@@ -291,12 +291,67 @@ async function startGenerateVideo(screen: Awaited<ReturnType<typeof renderViewer
   await screen.getByRole("button", { name: "Save and Generate", exact: true }).click();
 }
 
+test("fills the progress bar on the final slide once every slide has saved", async () => {
+  const saveNarratedPresentation = vi.fn<typeof window.electronAPI.saveNarratedPresentation>(
+    (_request, { onProgress }) => {
+      onProgress({ slideIndex: at(0), completedSlides: 1, totalSlides: 1, phase: "saving" });
+      return new Promise<SaveAllRunResult>(() => {});
+    },
+  );
+  installElectronApi({ saveNarratedPresentation });
+  const { screen } = await renderViewer();
+
+  await startSaveAll(screen);
+
+  const progress = screen.getByRole("dialog", { name: "Saving all slides" });
+  await expect.element(progress.getByText("Slide 1 of 1")).toBeVisible();
+  await expect
+    .element(progress.getByRole("progressbar", { name: "Save all progress" }))
+    .toHaveAttribute("aria-valuenow", "100");
+});
+
+test("treats the slides the run reported complete as saved when the run request fails", async () => {
+  const thirdSlide: Slide = { ...loadedSlide, slideIndex: at(2), image: "slide-three.png" };
+  const saveNarratedPresentation = vi.fn<typeof window.electronAPI.saveNarratedPresentation>(
+    (_request, { onProgress }) => {
+      onProgress({ slideIndex: at(2), completedSlides: 1, totalSlides: 2, phase: "generating" });
+      return Promise.reject(new Error("connection lost"));
+    },
+  );
+  const confirmDiscardNarrationChanges = vi.fn<
+    typeof window.electronAPI.confirmDiscardNarrationChanges
+  >(() => Promise.resolve(false));
+  const reloadSlide = vi.fn<typeof window.electronAPI.reloadSlide>(() =>
+    Promise.resolve({ success: true as const, slide: loadedSlide }),
+  );
+  installElectronApi({ saveNarratedPresentation, confirmDiscardNarrationChanges, reloadSlide });
+  const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
+  const { screen } = await renderViewer(vi.fn<() => void>(), [loadedSlide, thirdSlide]);
+
+  await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Saved first");
+  await screen.getByRole("button", { name: "Slide 3" }).click();
+  await screen.getByRole("textbox", { name: "Slide 3 section 1 notes" }).fill("Never saved");
+  await startSaveAll(screen);
+
+  await vi.waitFor(() => expect(alert).toHaveBeenCalledWith("Save error: connection lost"));
+  await expect
+    .element(screen.getByRole("dialog", { name: "Saving all slides" }))
+    .not.toBeInTheDocument();
+  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+  await vi.waitFor(() => expect(confirmDiscardNarrationChanges).toHaveBeenCalledOnce());
+
+  await screen.getByRole("button", { name: "Slide 1" }).click();
+  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+  await vi.waitFor(() => expect(reloadSlide).toHaveBeenCalledOnce());
+  expect(confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
+});
+
 test("shows Cancelling... after Cancel and keeps unsaved edits once the run stops", async () => {
   let finishRun: ((result: SaveAllRunResult) => void) | undefined;
   const cancel = vi.fn<() => void>();
   const saveNarratedPresentation = vi.fn<typeof window.electronAPI.saveNarratedPresentation>(
-    (_request, _onProgress, onCancellable) => {
-      onCancellable?.(cancel);
+    (_request, { onCancellable }) => {
+      onCancellable(cancel);
       return new Promise<SaveAllRunResult>((resolve) => (finishRun = resolve));
     },
   );

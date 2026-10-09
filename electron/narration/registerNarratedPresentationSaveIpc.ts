@@ -4,19 +4,23 @@ import type {
   SaveAllRunChannels,
   SaveAllRunResult,
 } from "../../shared/types/narration.js";
-import type { NarratedPresentationSaver } from "./NarratedPresentationSaver.js";
+import {
+  SaveAllRunCancellation,
+  type NarratedPresentationSaver,
+} from "./NarratedPresentationSaver.js";
 import type { SaveAllRunLifecycle } from "./registerNarrationIpc.js";
 import { resolvePresentationSaveTarget } from "./resolvePresentationSaveTarget.js";
 
 type NarratedPresentationSaveIpcRequest = NarratedPresentationSaveRequest & SaveAllRunChannels;
+
+type ActiveRun = { runId: number; cancellation: SaveAllRunCancellation };
 
 export function registerNarratedPresentationSaveIpc(
   ipc: Pick<IpcMain, "handle">,
   saver: NarratedPresentationSaver,
   lifecycle: SaveAllRunLifecycle,
 ) {
-  const activeRuns = new Map<string, { requested: boolean }>();
-  const runKey = (webContentsId: number, runId: number) => `${webContentsId}:${runId}`;
+  const activeRunsByWindow = new Map<number, ActiveRun>();
 
   ipc.handle(
     "save-narrated-presentation",
@@ -26,29 +30,31 @@ export function registerNarratedPresentationSaveIpc(
         return { outcome: target.failure, savedNoteSlides: [] };
       }
 
-      const key = runKey(event.sender.id, request.runId);
-      const cancellation = { requested: false };
-      activeRuns.set(key, cancellation);
+      const webContentsId = event.sender.id;
+      const run: ActiveRun = { runId: request.runId, cancellation: new SaveAllRunCancellation() };
+      activeRunsByWindow.set(webContentsId, run);
       try {
-        return await lifecycle.holdWindowOpen(event.sender.id, () =>
+        return await lifecycle.holdWindowOpen(webContentsId, () =>
           saver.savePresentation(
             target.request,
             (progress) => {
               event.sender.send(request.progressChannel, progress);
             },
-            cancellation,
+            run.cancellation,
           ),
         );
       } finally {
-        activeRuns.delete(key);
+        if (activeRunsByWindow.get(webContentsId) === run) {
+          activeRunsByWindow.delete(webContentsId);
+        }
       }
     },
   );
 
   ipc.handle("cancel-narrated-presentation-save", (event, runId: number) => {
-    const cancellation = activeRuns.get(runKey(event.sender.id, runId));
-    if (cancellation) {
-      cancellation.requested = true;
+    const run = activeRunsByWindow.get(event.sender.id);
+    if (run?.runId === runId) {
+      run.cancellation.request();
     }
   });
 }

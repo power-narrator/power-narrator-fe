@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-import type { SaveAllRunProgress } from "../../../shared/types/narration";
+import type { SaveAllRunObserver, SaveAllRunProgress } from "../../../shared/types/narration";
 
-/** What the author is asked to confirm a save-all run for. */
 export type SaveAllRunPurpose = "saveAll" | "generateVideo";
 
 export type SaveAllRunState =
@@ -9,12 +8,12 @@ export type SaveAllRunState =
   | { stage: "confirming"; purpose: SaveAllRunPurpose }
   | { stage: "running"; progress: SaveAllRunProgress | null; cancelling: boolean };
 
-export type SaveAllRunWork<T> = (
-  onProgress: (progress: SaveAllRunProgress) => void,
-  onCancellable: (cancel: () => void) => void,
-) => Promise<T>;
+export type SaveAllRunWork = (observer: SaveAllRunObserver) => Promise<boolean>;
 
 type ActiveRun = { cancelRequested: boolean; cancel: (() => void) | null };
+
+const IDLE: SaveAllRunState = { stage: "idle" };
+const STARTED: SaveAllRunState = { stage: "running", progress: null, cancelling: false };
 
 /**
  * The author-facing lifecycle of a save-all run: confirmation first, then a
@@ -22,50 +21,51 @@ type ActiveRun = { cancelRequested: boolean; cancel: (() => void) | null };
  * Cancelling is latched: once asked, the run stays cancelling until it settles.
  */
 export function useSaveAllRun() {
-  const [state, setState] = useState<SaveAllRunState>({ stage: "idle" });
+  const [state, setState] = useState<SaveAllRunState>(IDLE);
   const answerConfirmation = useRef<((confirmed: boolean) => void) | null>(null);
   const activeRun = useRef<ActiveRun | null>(null);
-
-  const confirm = useCallback(
-    (purpose: SaveAllRunPurpose) =>
-      new Promise<boolean>((resolve) => {
-        answerConfirmation.current = resolve;
-        setState({ stage: "confirming", purpose });
-      }),
-    [],
-  );
 
   const answer = useCallback((confirmed: boolean) => {
     answerConfirmation.current?.(confirmed);
     answerConfirmation.current = null;
-    setState(
-      confirmed ? { stage: "running", progress: null, cancelling: false } : { stage: "idle" },
-    );
+    setState(confirmed ? STARTED : IDLE);
   }, []);
 
-  const track = useCallback(async <T>(work: SaveAllRunWork<T>) => {
+  const track = useCallback(async (work: SaveAllRunWork) => {
     const run: ActiveRun = { cancelRequested: false, cancel: null };
     activeRun.current = run;
-    setState({ stage: "running", progress: null, cancelling: false });
+    setState(STARTED);
     try {
-      return await work(
-        (progress) => {
+      return await work({
+        onProgress: (progress) => {
           if (activeRun.current === run) {
             setState({ stage: "running", progress, cancelling: run.cancelRequested });
           }
         },
-        (cancel) => {
+        onCancellable: (cancel) => {
           run.cancel = cancel;
           if (run.cancelRequested) {
             cancel();
           }
         },
-      );
+      });
     } finally {
       activeRun.current = null;
-      setState({ stage: "idle" });
+      setState(IDLE);
     }
   }, []);
+
+  /** Resolves true only when the author confirmed and the run's work reported success. */
+  const confirmAndRun = useCallback(
+    async (purpose: SaveAllRunPurpose, work: SaveAllRunWork) => {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        answerConfirmation.current = resolve;
+        setState({ stage: "confirming", purpose });
+      });
+      return confirmed && track(work);
+    },
+    [track],
+  );
 
   const cancel = useCallback(() => {
     const run = activeRun.current;
@@ -83,8 +83,7 @@ export function useSaveAllRun() {
   return {
     state,
     active: state.stage !== "idle",
-    confirm,
-    track,
+    confirmAndRun,
     cancel,
     onConfirm: () => answer(true),
     onDecline: () => answer(false),
