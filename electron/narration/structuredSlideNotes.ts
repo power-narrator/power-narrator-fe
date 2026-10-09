@@ -11,12 +11,15 @@ import type { SlidePptResult, SlidesPptResult, SlideWithSrc } from "../platform/
  * note syntax never travels further into the application than this seam.
  */
 const parseSlide = (
-  { notes, slideIndex, ...slide }: SlideWithSrc,
+  { notes, slideIndex, sectionsPlayingAcrossSlides, ...slide }: SlideWithSrc,
   knownSpeakers: Iterable<string>,
 ): StructuredSlide => ({
   ...slide,
   slideIndex,
-  sections: parseNarrationSections(notes, knownSpeakers),
+  sections: parseNarrationSections(notes, knownSpeakers).map((section, sectionIndex) => ({
+    ...section,
+    playAcrossSlides: sectionsPlayingAcrossSlides.has(sectionIndex),
+  })),
 });
 
 export const withSlideSections = (

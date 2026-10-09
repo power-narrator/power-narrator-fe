@@ -481,6 +481,73 @@ test("advises when the section's effective speaker ignores prompts", async () =>
   await expect.element(screen.getByText("This model ignores prompts.")).toBeVisible();
 });
 
+function loadedWithPlayback(notes: string, playAcrossSlides: readonly boolean[]): Slide {
+  const slide = loadedWith(notes);
+  return {
+    ...slide,
+    sections: slide.sections.map((section, index) => ({
+      ...section,
+      playAcrossSlides: playAcrossSlides[index],
+    })),
+  };
+}
+
+const playAcrossSlidesLabel = (sectionNumber: number) =>
+  `Play across slides for slide 1 section ${sectionNumber}`;
+
+test("shows whether each section's audio plays across slides, whatever its prompt support", async () => {
+  installPromptMappings(false);
+  const { screen } = await renderViewer(vi.fn(), [
+    loadedWithPlayback("First narration\n---\nSecond narration", [true, false]),
+  ]);
+
+  const first = screen.getByRole("checkbox", { name: playAcrossSlidesLabel(1) });
+  await expect.element(first).toBeChecked();
+  await expect.element(first).toBeDisabled();
+  await expect
+    .element(screen.getByRole("checkbox", { name: playAcrossSlidesLabel(2) }))
+    .not.toBeChecked();
+});
+
+test("imports the playback PowerPoint reports when the slide is reloaded", async () => {
+  installElectronApi({
+    reloadSlide: vi.fn<typeof window.electronAPI.reloadSlide>(() =>
+      Promise.resolve({ success: true, slide: loadedWithPlayback("Loaded narration", [true]) }),
+    ),
+  });
+  const { screen } = await renderViewer(vi.fn(), [loadedWithPlayback("Loaded narration", [false])]);
+
+  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+
+  await expect
+    .element(screen.getByRole("checkbox", { name: playAcrossSlidesLabel(1) }))
+    .toBeChecked();
+});
+
+test("keeps the shown playback when reloading the slide fails", async () => {
+  const alerted = vi.spyOn(window, "alert").mockImplementation(() => {});
+  installElectronApi({
+    reloadSlide: vi.fn<typeof window.electronAPI.reloadSlide>(() =>
+      Promise.resolve({
+        success: false,
+        message: "Slide 1 has more than one shape named ppt_audio_1.",
+      }),
+    ),
+  });
+  const { screen } = await renderViewer(vi.fn(), [loadedWithPlayback("Loaded narration", [true])]);
+
+  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+
+  await vi.waitFor(() =>
+    expect(alerted).toHaveBeenCalledWith(
+      "Sync slide error: Slide 1 has more than one shape named ppt_audio_1.",
+    ),
+  );
+  await expect
+    .element(screen.getByRole("checkbox", { name: playAcrossSlidesLabel(1) }))
+    .toBeChecked();
+});
+
 /** Loaded before the mapping existed, so its bracketed line was narration text. */
 const taggedSlide = loadedWith("[Alice]\nLoaded narration");
 

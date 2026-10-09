@@ -17,11 +17,16 @@ const mappings: Record<string, SpeakerMapping> = {
   },
 };
 
-const rawSlide = (slideNumber: number, notes: string) => ({
+const rawSlide = (
+  slideNumber: number,
+  notes: string,
+  sectionsPlayingAcrossSlides: ReadonlySet<number> = new Set(),
+) => ({
   slideIndex: slideIndexFromOneBased(slideNumber),
   image: `slide-${slideNumber}.png`,
   src: `app://slide-${slideNumber}.png`,
   notes,
+  sectionsPlayingAcrossSlides,
 });
 
 it("structures every slide in a loaded presentation", () => {
@@ -70,6 +75,22 @@ it("structures one reloaded slide", () => {
       sections: [expect.objectContaining({ speaker: "Narrator", text: "Replaced line" })],
     },
   });
+});
+
+it("gives each section the playback of the audio at its own position, counting blank sections", () => {
+  const loaded: SlidePptResult = {
+    success: true,
+    slide: rawSlide(1, "First\n---\n\n---\nThird\n---\nFourth", new Set([2])),
+  };
+
+  const structured = withSlideSections(loaded, getSpeakerNames(mappings));
+
+  expect(structured.success && structured.slide.sections).toEqual([
+    expect.objectContaining({ text: "First", playAcrossSlides: false }),
+    expect.objectContaining({ text: "", playAcrossSlides: false }),
+    expect.objectContaining({ text: "Third", playAcrossSlides: true }),
+    expect.objectContaining({ text: "Fourth", playAcrossSlides: false }),
+  ]);
 });
 
 it("leaves a failed load untouched", () => {

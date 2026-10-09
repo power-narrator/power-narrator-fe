@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { toSlideIndex } from "../../shared/slides/slideCoordinates.js";
 import { completeSlideReload } from "./slideReload.js";
-import type { ReadSlideNotesResult } from "./types.js";
+import type { ReadSlideContentResult } from "./types.js";
 
 vi.mock("electron", () => ({
   app: {
@@ -48,19 +48,24 @@ describe("completeSlideReload", () => {
     ],
     ["throws", () => Promise.reject(new Error("Notes crashed")), "Notes crashed", true],
   ])(
-    "rolls back the staged image when loading notes %s",
-    async (_, loadNotesImplementation, expectedMessage, shouldLog) => {
+    "rolls back the staged image when loading its content %s",
+    async (_, loadContentImplementation, expectedMessage, shouldLog) => {
       const outputDir = createOutputDir();
       const previousImage = writeFixture(outputDir, "slides/Slide_2_previous.png");
       const stagedImage = "slides/Slide_2_staged.png";
       const stagedImagePath = writeFixture(outputDir, stagedImage);
-      const loadNotes = vi.fn<() => Promise<ReadSlideNotesResult>>(loadNotesImplementation);
+      const loadContent = vi.fn<() => Promise<ReadSlideContentResult>>(loadContentImplementation);
       const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
-      const result = await completeSlideReload(outputDir, toSlideIndex(1), stagedImage, loadNotes);
+      const result = await completeSlideReload(
+        outputDir,
+        toSlideIndex(1),
+        stagedImage,
+        loadContent,
+      );
 
       expect(result).toEqual({ success: false, message: expectedMessage });
-      expect(loadNotes).toHaveBeenCalledOnce();
+      expect(loadContent).toHaveBeenCalledOnce();
       expect(consoleError).toHaveBeenCalledTimes(shouldLog ? 1 : 0);
       expect(fs.existsSync(stagedImagePath)).toBe(false);
       expect(fs.existsSync(previousImage)).toBe(true);
@@ -78,15 +83,20 @@ describe("completeSlideReload", () => {
       const outputDir = createOutputDir();
       const previousImage = writeFixture(outputDir, "slides/Slide_2_previous.png");
       const stagedImagePath = createStagedImage ? writeFixture(outputDir, stagedImage) : null;
-      const loadNotes = vi.fn<() => Promise<ReadSlideNotesResult>>();
+      const loadContent = vi.fn<() => Promise<ReadSlideContentResult>>();
 
-      const result = await completeSlideReload(outputDir, toSlideIndex(1), stagedImage, loadNotes);
+      const result = await completeSlideReload(
+        outputDir,
+        toSlideIndex(1),
+        stagedImage,
+        loadContent,
+      );
 
       expect(result).toEqual({
         success: false,
         message: "The exported slide image is not available.",
       });
-      expect(loadNotes).not.toHaveBeenCalled();
+      expect(loadContent).not.toHaveBeenCalled();
       expect(fs.existsSync(previousImage)).toBe(true);
       const stagedImageStillExists =
         stagedImagePath === null ? createStagedImage : fs.existsSync(stagedImagePath);

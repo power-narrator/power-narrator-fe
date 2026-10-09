@@ -8,7 +8,7 @@ type SpeakerPromptProps = {
   value: string | undefined;
   supportsPrompt: boolean | undefined;
   onChange: (prompt: string | undefined) => void;
-  rowContent?: { leading?: ReactNode; trailing?: ReactNode };
+  rowContent?: { leading?: ReactNode; afterPrompt?: ReactNode; trailing?: ReactNode };
 };
 
 export function SpeakerPrompt({
@@ -51,6 +51,7 @@ export function SpeakerPrompt({
           >
             Prompt
           </Button>
+          {rowContent?.afterPrompt}
           {supportsPrompt === false && (
             <Text size="xs" c="dimmed">
               This model ignores prompts.

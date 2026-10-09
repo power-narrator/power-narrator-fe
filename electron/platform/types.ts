@@ -16,10 +16,14 @@ export type {
   VideoPptResult,
 } from "../../shared/types/powerpoint.js";
 
+/** Zero-based section indices whose audio is set to play across slides. */
+export type SectionsPlayingAcrossSlides = ReadonlySet<number>;
+
 export type SlideManifestEntry = {
   slideIndex: SlideIndex;
   image: string;
   notes: string;
+  sectionsPlayingAcrossSlides: SectionsPlayingAcrossSlides;
 };
 
 export type SlideNotesEntry = {
@@ -56,6 +60,11 @@ export type ReloadSlideImageResult = Result<{ image: string }>;
 export type ReadAllSlideNotesResult = Result<{ notes: SlideNotesMap }>;
 
 export type ReadSlideNotesResult = Result<{ notes: string }>;
+
+export type ReadSlideContentResult = Result<{
+  notes: string;
+  sectionsPlayingAcrossSlides: SectionsPlayingAcrossSlides;
+}>;
 
 export type XmlSlideAudio = {
   name: string;

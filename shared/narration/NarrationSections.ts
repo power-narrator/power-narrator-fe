@@ -11,6 +11,8 @@ export type NarrationSection = {
   speaker: string;
   prompt?: string;
   text: string;
+  /** Whether the section's audio continues across slides; absent means it stops with its slide. */
+  playAcrossSlides?: boolean;
   format?: {
     separatorBefore?: string;
     speakerPrefix?: string;

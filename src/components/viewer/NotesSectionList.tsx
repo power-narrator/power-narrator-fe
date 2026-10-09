@@ -1,5 +1,6 @@
 import {
   Button,
+  Checkbox,
   Divider,
   Group,
   Paper,
@@ -120,6 +121,15 @@ export function NotesSectionList({
                           size="xs"
                           placeholder={placeholder}
                           allowDeselect
+                        />
+                      ),
+                      afterPrompt: (
+                        <Checkbox
+                          aria-label={`Play across slides for ${sectionLabel}`}
+                          label="Play Across Slides"
+                          checked={section.playAcrossSlides ?? false}
+                          disabled
+                          size="xs"
                         />
                       ),
                       trailing: (
