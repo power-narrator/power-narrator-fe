@@ -39,7 +39,7 @@ type PreparedNarrationSection = {
   prompt?: string;
 };
 
-type SynthesizedNarrationSection = PreparedNarrationSection & {
+type SynthesizedNarrationSection<Section extends PreparedNarrationSection> = Section & {
   speech: SynthesizedSpeech;
 };
 
@@ -97,17 +97,28 @@ export class NarrationPreparation {
         const speaker = getEffectiveSpeaker(slide.sections, sectionIndex);
 
         return [
-          this.planSection(mappings, slide.slideIndex, sectionIndex, text, speaker, section.prompt),
+          {
+            ...this.planSection(
+              mappings,
+              slide.slideIndex,
+              sectionIndex,
+              text,
+              speaker,
+              section.prompt,
+            ),
+            playAcrossSlides: section.playAcrossSlides ?? false,
+          },
         ];
       }),
     );
 
     const synthesized = await this.synthesizeSections(prepared, onProgress);
 
-    return synthesized.map(({ slideIndex, sectionIndex, speech }) => ({
+    return synthesized.map(({ slideIndex, sectionIndex, speech, playAcrossSlides }) => ({
       slideIndex,
       sectionIndex,
       audioData: new Uint8Array(speech.audio),
+      playAcrossSlides,
     }));
   }
 
@@ -132,10 +143,10 @@ export class NarrationPreparation {
     };
   }
 
-  private synthesizeSections(
-    sections: PreparedNarrationSection[],
+  private synthesizeSections<Section extends PreparedNarrationSection>(
+    sections: Section[],
     onProgress?: (progress: NarrationPreparationProgress) => void,
-  ): Promise<SynthesizedNarrationSection[]> {
+  ): Promise<SynthesizedNarrationSection<Section>[]> {
     let completed = 0;
 
     return Promise.all(

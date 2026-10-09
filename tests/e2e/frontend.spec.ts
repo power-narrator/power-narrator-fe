@@ -79,6 +79,7 @@ test.describe("PPT Viewer UI Workflows", () => {
             slideIndex: slide.slideIndex,
             sectionIndex: 0,
             audioData: new Uint8Array(DETERMINISTIC_MP3_BYTES),
+            playAcrossSlides: false,
           })),
         },
       ]);

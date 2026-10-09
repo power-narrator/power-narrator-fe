@@ -76,7 +76,12 @@ export type SaveNotesCall = {
 };
 export type InsertAudioCall = {
   filePath: string;
-  slidesAudio: Array<{ slideIndex: number; sectionIndex: number; audioData: Uint8Array }>;
+  slidesAudio: Array<{
+    slideIndex: number;
+    sectionIndex: number;
+    audioData: Uint8Array;
+    playAcrossSlides: boolean;
+  }>;
 };
 
 type MainProbes = {

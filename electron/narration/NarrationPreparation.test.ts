@@ -123,9 +123,9 @@ describe("NarrationPreparation", () => {
     pending.get("Five first")?.({ audio: new Uint8Array([1]), mediaType: "audio/mpeg" });
 
     await expect(batch).resolves.toEqual([
-      { slideIndex: 4, sectionIndex: 0, audioData: new Uint8Array([1]) },
-      { slideIndex: 4, sectionIndex: 1, audioData: new Uint8Array([2]) },
-      { slideIndex: 0, sectionIndex: 0, audioData: new Uint8Array([3]) },
+      { slideIndex: 4, sectionIndex: 0, audioData: new Uint8Array([1]), playAcrossSlides: false },
+      { slideIndex: 4, sectionIndex: 1, audioData: new Uint8Array([2]), playAcrossSlides: false },
+      { slideIndex: 0, sectionIndex: 0, audioData: new Uint8Array([3]), playAcrossSlides: false },
     ]);
   });
 
@@ -479,8 +479,8 @@ describe("NarrationPreparation inline prompts", () => {
         },
       ]),
     ).resolves.toEqual([
-      { slideIndex: 2, sectionIndex: 0, audioData: new Uint8Array([1, 2, 3]) },
-      { slideIndex: 2, sectionIndex: 2, audioData: new Uint8Array([1, 2, 3]) },
+      { slideIndex: 2, sectionIndex: 0, audioData: new Uint8Array([1, 2, 3]), playAcrossSlides: false },
+      { slideIndex: 2, sectionIndex: 2, audioData: new Uint8Array([1, 2, 3]), playAcrossSlides: false },
     ]);
     expect(generateSpeech.mock.calls.map(([text]) => text)).toEqual(["First", "Third"]);
   });
