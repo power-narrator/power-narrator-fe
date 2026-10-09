@@ -509,8 +509,8 @@ test("shows whether each section's audio plays across slides, whatever its promp
     .not.toBeChecked();
 });
 
-const submittedPlayback = (request: { sections: readonly { playAcrossSlides?: boolean }[] }) =>
-  request.sections.map((section) => section.playAcrossSlides ?? false);
+const submittedPlayback = (request: { sections: readonly { playAcrossSlides: boolean }[] }) =>
+  request.sections.map((section) => section.playAcrossSlides);
 
 test("saves the playback chosen for each section with Save Slide", async () => {
   const saveNarratedSlide = vi.fn<typeof window.electronAPI.saveNarratedSlide>(() =>
@@ -553,19 +553,37 @@ test("saves every slide's shown playback with Save All Slides, including untouch
   ]);
 });
 
-test("imports the playback PowerPoint reports when the slide is reloaded", async () => {
+test("saves the shown playback until a reload imports PowerPoint's", async () => {
+  let powerPointPlayback = [false];
+  const saveNarratedSlide = vi.fn<typeof window.electronAPI.saveNarratedSlide>(() =>
+    Promise.resolve({ success: true }),
+  );
   installElectronApi({
+    saveNarratedSlide,
     reloadSlide: vi.fn<typeof window.electronAPI.reloadSlide>(() =>
-      Promise.resolve({ success: true, slide: loadedWithPlayback("Loaded narration", [true]) }),
+      Promise.resolve({
+        success: true,
+        slide: loadedWithPlayback("Loaded narration", powerPointPlayback),
+      }),
     ),
   });
-  const { screen } = await renderViewer(vi.fn(), [loadedWithPlayback("Loaded narration", [false])]);
+  const { screen } = await renderViewer(vi.fn(), [
+    loadedWithPlayback("Loaded narration", powerPointPlayback),
+  ]);
+  const saveSlide = screen.getByRole("button", { name: "Save Slide", exact: true });
+
+  powerPointPlayback = [true];
+  await saveSlide.click();
+  await vi.waitFor(() => expect(saveNarratedSlide).toHaveBeenCalledOnce());
+  expect(submittedPlayback(saveNarratedSlide.mock.calls[0]![0])).toEqual([false]);
 
   await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
-
   await expect
     .element(screen.getByRole("checkbox", { name: playAcrossSlidesLabel(1) }))
     .toBeChecked();
+  await saveSlide.click();
+  await vi.waitFor(() => expect(saveNarratedSlide).toHaveBeenCalledTimes(2));
+  expect(submittedPlayback(saveNarratedSlide.mock.calls[1]![0])).toEqual([true]);
 });
 
 test("keeps the shown playback when reloading the slide fails", async () => {
