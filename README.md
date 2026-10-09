@@ -12,9 +12,9 @@ provider registry so another adapter can be added without changing narration pre
 ## Features
 
 - Load a `.pptx` and view slide images and notes side by side.
-- Split notes into multiple narration sections and assign speaker aliases.
+- Split notes into multiple note sections and assign speaker aliases.
 - Choose a Google Cloud voice, model, and language for each speaker from a searchable catalogue.
-- Give a speaker a preset delivery prompt or add an inline prompt to one narration section.
+- Give a speaker a preset delivery prompt or add an inline prompt to one note section.
 - Preview a whole section or the currently selected text with the effective speaker or a temporary
   speaker choice.
 - Add supported SSML markup with the editor toolbar.
