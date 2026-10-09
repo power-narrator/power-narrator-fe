@@ -67,10 +67,6 @@ Function GetPresentationOrShowError(targetPath As String) As Presentation
     End If
 End Function
 
-Function IsManagedAudioShapeName(shapeName As String) As Boolean
-    IsManagedAudioShapeName = InStr(1, shapeName, "ppt_audio") = 1
-End Function
-
 Function GetSlideNotesText(sld As Slide) As String
     On Error GoTo EmptyNotes
 
@@ -138,6 +134,7 @@ Function GetSectionIndex(audioTag As String) As Integer
     On Error GoTo 0
 End Function
 
+' Section audio is a media shape named exactly "ppt_audio_<1-based section ordinal>", without leading zeros
 Function IsSectionAudioShape(s As Shape) As Boolean
     Dim ordinal As String
 
@@ -145,7 +142,18 @@ Function IsSectionAudioShape(s As Shape) As Boolean
     If InStr(1, s.Name, SECTION_AUDIO_PREFIX) <> 1 Then Exit Function
 
     ordinal = Mid(s.Name, Len(SECTION_AUDIO_PREFIX) + 1)
-    IsSectionAudioShape = Len(ordinal) > 0 And Not ordinal Like "*[!0-9]*"
+    If Len(ordinal) = 0 Or Left(ordinal, 1) = "0" Then Exit Function
+    IsSectionAudioShape = Not ordinal Like "*[!0-9]*"
+End Function
+
+Function CountSectionAudioNamed(sld As Slide, shapeName As String) As Integer
+    Dim s As Shape
+
+    For Each s In sld.Shapes
+        If IsSectionAudioShape(s) Then
+            If s.Name = shapeName Then CountSectionAudioNamed = CountSectionAudioNamed + 1
+        End If
+    Next s
 End Function
 
 Function ListSectionAudio(sld As Slide) As String
@@ -221,7 +229,7 @@ Function ReplaceSectionAudio(pres As Presentation, sld As Slide, audioPath As St
     ' Find and delete existing audio from our tool, but save its animation properties first
     For iShape = sld.Shapes.Count To 1 Step -1
         Set s = sld.Shapes(iShape)
-        If s.Name = audioTag Then
+        If IsSectionAudioShape(s) And s.Name = audioTag Then
             For effIdx = 1 To sld.TimeLine.MainSequence.Count
                 If Not sld.TimeLine.MainSequence(effIdx).Shape Is Nothing Then
                     If sld.TimeLine.MainSequence(effIdx).Shape.Name = audioTag Then
@@ -297,8 +305,8 @@ End Function
 ' Play Across Slides on uses PowerPoint's own 999-slide span. Applied after the media-play effect
 ' is rebuilt, so rebuilding cannot overwrite it.
 Sub ApplySectionAudioPlayback(sld As Slide, shp As Shape, playAcrossSlides As Boolean)
-    Dim effectCount As Integer
-    Dim i As Integer
+    Dim effectCount As Long
+    Dim i As Long
 
     With shp.AnimationSettings.PlaySettings
         If playAcrossSlides Then
@@ -330,6 +338,7 @@ End Function
 ' Params: a "presentation|result path" header, then one "slide number|audio path|play across slides"
 ' line per section audio, the flag as 1 or 0.
 ' The audio lines for a slide are its complete section audio; any other section audio on it is obsolete.
+' A slide holding more than one section audio shape with a requested name fails before anything changes.
 ' The result file gets "inserted|slide|shape|stopAfterSlides|playOnEntry|pauseAnimation" per section
 ' audio, read back after its playback is applied, "slide|slide|shapes" listing the section
 ' audio left on each saved slide, "error|message" on failure, and "done" once the presentation is saved.
@@ -404,12 +413,17 @@ Sub InsertAudio()
         Err.Raise vbObjectError + 515, , "Presentation not found: " & header(0)
     End If
 
-    currentSlideNumber = 0
     For i = 1 To entryCount
         If slideNumbers(i) < 1 Or slideNumbers(i) > pres.Slides.Count Then
             Err.Raise vbObjectError + 516, , "Slide " & slideNumbers(i) & " does not exist."
         End If
+        If CountSectionAudioNamed(pres.Slides(slideNumbers(i)), shapeNames(i)) > 1 Then
+            Err.Raise vbObjectError + 518, , "Slide " & slideNumbers(i) & " has more than one shape named " & shapeNames(i) & "."
+        End If
+    Next i
 
+    currentSlideNumber = 0
+    For i = 1 To entryCount
         If slideNumbers(i) <> currentSlideNumber Then
             currentSlideNumber = slideNumbers(i)
             newAudioInsertIndex = 1
@@ -496,24 +510,6 @@ Sub ExportSlideNotes()
     ExportNotesToFile pres, outputPath, slideIndex
 End Sub
 
-Function IsSectionAudioShapeName(shapeName As String) As Boolean
-    ' Section audio is named exactly "ppt_audio_<1-based section ordinal>"
-    Dim ordinal As String
-    Dim i As Long
-
-    IsSectionAudioShapeName = False
-    If InStr(1, shapeName, "ppt_audio_") <> 1 Then Exit Function
-
-    ordinal = Mid(shapeName, Len("ppt_audio_") + 1)
-    If Len(ordinal) = 0 Or Left(ordinal, 1) = "0" Then Exit Function
-
-    For i = 1 To Len(ordinal)
-        If Mid(ordinal, i, 1) < "0" Or Mid(ordinal, i, 1) > "9" Then Exit Function
-    Next i
-
-    IsSectionAudioShapeName = True
-End Function
-
 Sub WriteInspectionError(outputPath As String, message As String)
     Dim fileNum As Integer
 
@@ -576,16 +572,14 @@ Sub ExportSectionAudioPlayback()
         Print #outputNum, "###SLIDE_START### " & slideNumber
 
         For Each shp In sld.Shapes
-            If IsSectionAudioShapeName(shp.Name) Then
+            If IsSectionAudioShape(shp) Then
                 context = "Could not read the playback of " & shp.Name & " on slide " & slideNumber
                 kind = "other"
                 stopAfterSlides = ""
 
-                If shp.Type = msoMedia Then
-                    If shp.MediaType = ppMediaTypeSound Then
-                        kind = "sound"
-                        stopAfterSlides = CStr(shp.AnimationSettings.PlaySettings.StopAfterSlides)
-                    End If
+                If shp.MediaType = ppMediaTypeSound Then
+                    kind = "sound"
+                    stopAfterSlides = CStr(shp.AnimationSettings.PlaySettings.StopAfterSlides)
                 End If
 
                 Print #outputNum, shp.Name & vbTab & kind & vbTab & stopAfterSlides
@@ -684,47 +678,70 @@ Sub UpdateNotes()
     
 End Sub
 
+' Params: "presentation|slide numbers|result path", the slide numbers comma-separated.
+' Deletes the section audio on each slide. The result file gets "slide|slide|shapes" listing the
+' section audio left on each slide, "error|message" on failure, and "done" once the presentation is saved.
 Sub RemoveAudio()
     Dim pres As Presentation
-    Dim paramsPath As String
-    Dim fileContent As String
-    Dim params() As String
-    Dim slideIndices() As String
-    Dim targetPath As String
-    Dim slideIndex As Integer
     Dim sld As Slide
     Dim s As Shape
+    Dim paramsPath As String
+    Dim paramsNum As Integer
+    Dim resultNum As Integer
+    Dim fileContent As String
+    Dim params() As String
+    Dim slideNumbers() As String
+    Dim slideNumber As Integer
     Dim iShape As Integer
     Dim i As Integer
-    
+
     paramsPath = GetOfficeFilePath("remove_audio_params.txt")
-    fileContent = ReadSingleLineFile(paramsPath, "Error: Could not find remove_audio_params.txt")
-    If fileContent = "" Then Exit Sub
-    
-    ' Format: TargetPath|SlideIndex1,SlideIndex2,...
+    If Dir(paramsPath) = "" Then Exit Sub
+
+    paramsNum = FreeFile
+    Open paramsPath For Input As paramsNum
+    If EOF(paramsNum) Then
+        Close paramsNum
+        Exit Sub
+    End If
+    Line Input #paramsNum, fileContent
+    Close paramsNum
+
     params = Split(fileContent, "|")
-    If UBound(params) < 1 Then Exit Sub
-    
-    targetPath = params(0)
-    slideIndices = Split(params(1), ",")
-    
-    Set pres = GetPresentationOrShowError(targetPath)
-    If pres Is Nothing Then Exit Sub
-    
-    For i = LBound(slideIndices) To UBound(slideIndices)
-        If Len(Trim(slideIndices(i))) > 0 Then
-            slideIndex = CInt(Trim(slideIndices(i)))
-            If slideIndex > 0 And slideIndex <= pres.Slides.Count Then
-                Set sld = pres.Slides(slideIndex)
-                For iShape = sld.Shapes.Count To 1 Step -1
-                    Set s = sld.Shapes(iShape)
-                    If IsManagedAudioShapeName(s.Name) Then
-                        s.Delete
-                    End If
-                Next iShape
+    If UBound(params) < 2 Then Exit Sub
+
+    resultNum = FreeFile
+    Open params(2) For Output As resultNum
+    On Error GoTo Failed
+
+    Set pres = GetPresentation(params(0))
+    If pres Is Nothing Then
+        Err.Raise vbObjectError + 515, , "Presentation not found: " & params(0)
+    End If
+
+    slideNumbers = Split(params(1), ",")
+    For i = LBound(slideNumbers) To UBound(slideNumbers)
+        If Len(Trim(slideNumbers(i))) > 0 Then
+            slideNumber = CInt(Trim(slideNumbers(i)))
+            If slideNumber < 1 Or slideNumber > pres.Slides.Count Then
+                Err.Raise vbObjectError + 516, , "Slide " & slideNumber & " does not exist."
             End If
+
+            Set sld = pres.Slides(slideNumber)
+            For iShape = sld.Shapes.Count To 1 Step -1
+                Set s = sld.Shapes(iShape)
+                If IsSectionAudioShape(s) Then s.Delete
+            Next iShape
+            Print #resultNum, "slide|" & slideNumber & "|" & ListSectionAudio(sld)
         End If
     Next i
-    
+
     pres.Save
+    Print #resultNum, "done"
+    Close resultNum
+    Exit Sub
+
+Failed:
+    Print #resultNum, "error|" & Replace(Replace(Err.Description, vbCr, " "), vbLf, " ")
+    Close resultNum
 End Sub
