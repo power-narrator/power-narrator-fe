@@ -77,82 +77,45 @@ function respondWithSuccess(): void {
   xmlCliResponses.push({ results: [] });
 }
 
-function createNativeProvider(
-  reloadSlideImage: NativePlatformProvider["reloadSlideImage"],
-): NativePlatformProvider {
+function createNativeProvider(): NativePlatformProvider {
   return {
     closePresentation: vi
       .fn<NativePlatformProvider["closePresentation"]>()
       .mockResolvedValue(toSlideIndex(0)),
     exportSlideImages: vi
       .fn<NativePlatformProvider["exportSlideImages"]>()
-      .mockResolvedValue({ success: false, message: "Not used" }),
+      .mockResolvedValue({ success: true, images: new Map() }),
     generateVideo: vi
       .fn<NativePlatformProvider["generateVideo"]>()
       .mockResolvedValue({ success: false, message: "Not used" }),
     playSlide: vi
       .fn<NativePlatformProvider["playSlide"]>()
       .mockResolvedValue({ success: false, message: "Not used" }),
-    reloadSlideImage,
+    reloadSlideImage: vi
+      .fn<NativePlatformProvider["reloadSlideImage"]>()
+      .mockResolvedValue({ success: true, image: "slides/Slide_1_staged.png" }),
     reopenPresentation: vi.fn<NativePlatformProvider["reopenPresentation"]>(() =>
       Promise.resolve(),
     ),
   };
 }
 
-describe("XmlPptProvider.reloadSlide", () => {
-  it("uses the requested slide notes and commits only its staged image", async () => {
-    if (!tempDir) {
-      throw new Error("Expected a temporary test directory");
-    }
-    const outputDir = path.join(tempDir, "deck");
-    const slidesDir = path.join(outputDir, "slides");
-    fs.mkdirSync(slidesDir, { recursive: true });
+const PLAYBACK_UNSUPPORTED = {
+  success: false,
+  message: "Reading section audio playback is not supported by the XML PowerPoint integration.",
+};
 
-    const previousImage = path.join(slidesDir, "Slide_2_previous.png");
-    const stagedImage = path.join(slidesDir, "Slide_2_staged.png");
-    const otherSlideImage = path.join(slidesDir, "Slide_20_existing.png");
-    for (const imagePath of [previousImage, stagedImage, otherSlideImage]) {
-      fs.writeFileSync(imagePath, "fixture");
-    }
+describe("XmlPptProvider loading", () => {
+  it("reports that it cannot read section audio playback rather than loading slides without it", async () => {
+    const provider = new XmlPptProvider(createNativeProvider());
+    respondWithSlides([{ notes: "First", audio: [{ name: "ppt_audio_1.mp3" }] }]);
 
-    const reloadSlideImage = vi
-      .fn<NativePlatformProvider["reloadSlideImage"]>()
-      .mockResolvedValue({ success: true, image: "slides/Slide_2_staged.png" });
-    const provider = new XmlPptProvider(createNativeProvider(reloadSlideImage));
-    respondWithSlides([
-      { notes: "First slide", audio: [] },
-      { notes: "Fresh\r\nnotes", audio: [] },
-    ]);
-
-    const result = await provider.reloadSlide(
-      "/presentations/deck.pptx",
-      toSlideIndex(1),
-      outputDir,
+    await expect(provider.convertPptx("/presentations/deck.pptx", "/tmp/deck")).resolves.toEqual(
+      PLAYBACK_UNSUPPORTED,
     );
-
-    expect(reloadSlideImage).toHaveBeenCalledWith(
-      "/presentations/deck.pptx",
-      toSlideIndex(1),
-      outputDir,
-    );
-    expect(xmlCliCalls).toContainEqual({
-      input: "/presentations/deck.pptx",
-      output: null,
-      ops: [{ op: "get_slides", args: {} }],
-    });
-    expect(result.success).toBe(true);
-    if (!result.success) {
-      throw new Error(result.message);
-    }
-    expect(result.slide).toMatchObject({
-      slideIndex: 1,
-      image: "slides/Slide_2_staged.png",
-      notes: "Fresh\nnotes",
-    });
-    expect(fs.existsSync(stagedImage)).toBe(true);
-    expect(fs.existsSync(previousImage)).toBe(false);
-    expect(fs.existsSync(otherSlideImage)).toBe(true);
+    await expect(
+      provider.reloadSlide("/presentations/deck.pptx", toSlideIndex(0), "/tmp/deck"),
+    ).resolves.toEqual(PLAYBACK_UNSUPPORTED);
   });
 });
 

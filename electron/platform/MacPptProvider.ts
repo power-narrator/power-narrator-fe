@@ -18,10 +18,15 @@ import {
   cleanupPaths,
   resolveScriptPath,
 } from "./helpers.js";
+import {
+  parseSectionAudioPlaybackReport,
+  type SectionAudioPlaybackResult,
+} from "./sectionAudioPlayback.js";
 import { completeSlideReload } from "./slideReload.js";
 import { checkInsertAudioReport, formatInsertAudioParams } from "./macInsertAudio.js";
 import type {
   BasicPptResult,
+  SectionsPlayingAcrossSlides,
   ExportSlideImagesResult,
   ReadAllSlideNotesResult,
   ReadSlideNotesResult,
@@ -55,13 +60,18 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     return path.join(app.getPath("home"), "Library/Group Containers/UBF8T346G9.Office");
   }
 
-  private mergeSlideData(images: SlideImageMap, notes: SlideNotesMap): SlideManifestEntry[] {
+  private mergeSlideData(
+    images: SlideImageMap,
+    notes: SlideNotesMap,
+    playback: ReadonlyMap<SlideIndex, SectionsPlayingAcrossSlides>,
+  ): SlideManifestEntry[] {
     return [...images.keys()]
       .toSorted((a, b) => a - b)
       .map((slideIndex) => ({
         slideIndex,
         image: images.get(slideIndex)?.image || "",
         notes: notes.get(slideIndex) || "",
+        sectionsPlayingAcrossSlides: playback.get(slideIndex) ?? new Set(),
       }));
   }
 
@@ -347,6 +357,39 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
+  private async readSectionAudioPlayback(
+    filePath: string,
+    slideIndices: readonly SlideIndex[],
+  ): Promise<SectionAudioPlaybackResult> {
+    const officeContainer = this.getOfficeContainerPath();
+    const paramsPath = path.join(officeContainer, "export_audio_playback_params.txt");
+    const outputPath = path.join(officeContainer, `export_audio_playback_${Date.now()}.txt`);
+    const slideNumbers = slideIndices.map(slideNumberOf);
+
+    try {
+      fs.writeFileSync(paramsPath, `${filePath}|${slideNumbers.join(",")}|${outputPath}`, "utf8");
+      const scriptResult = await this.runAppleScriptJson("trigger-macro.applescript", [
+        "ExportSectionAudioPlayback",
+        filePath,
+      ]);
+      if (!scriptResult.success) {
+        return {
+          success: false,
+          message: scriptResult.message || "Failed to read section audio playback.",
+        };
+      }
+
+      if (!fs.existsSync(outputPath)) {
+        return { success: false, message: "PowerPoint did not report section audio playback." };
+      }
+      return parseSectionAudioPlaybackReport(fs.readFileSync(outputPath, "utf8"), slideNumbers);
+    } catch (e: unknown) {
+      return { success: false, message: getErrorMessage(e) };
+    } finally {
+      cleanupPaths(paramsPath, outputPath);
+    }
+  }
+
   async convertPptx(filePath: string, outputDir: string): Promise<SlidesPptResult> {
     const imageResult = await this.exportSlideImages(filePath, outputDir);
     if (!imageResult.success) {
@@ -358,8 +401,19 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       return notesResult;
     }
 
+    const playbackResult = await this.readSectionAudioPlayback(filePath, [
+      ...imageResult.images.keys(),
+    ]);
+    if (!playbackResult.success) {
+      return playbackResult;
+    }
+
     try {
-      const slides = this.mergeSlideData(imageResult.images, notesResult.notes);
+      const slides = this.mergeSlideData(
+        imageResult.images,
+        notesResult.notes,
+        playbackResult.playback,
+      );
 
       this.focusApp();
       return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
@@ -522,9 +576,23 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       return imageResult;
     }
 
-    const result = await completeSlideReload(outputDir, slideIndex, imageResult.image, () =>
-      this.readSlideNotes(filePath, slideIndex),
-    );
+    const result = await completeSlideReload(outputDir, slideIndex, imageResult.image, async () => {
+      const notesResult = await this.readSlideNotes(filePath, slideIndex);
+      if (!notesResult.success) {
+        return notesResult;
+      }
+
+      const playbackResult = await this.readSectionAudioPlayback(filePath, [slideIndex]);
+      if (!playbackResult.success) {
+        return playbackResult;
+      }
+
+      return {
+        success: true,
+        notes: notesResult.notes,
+        sectionsPlayingAcrossSlides: playbackResult.playback.get(slideIndex) ?? new Set(),
+      };
+    });
 
     if (result.success) {
       try {

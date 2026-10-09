@@ -7,9 +7,9 @@ import {
 } from "../../shared/slides/slideCoordinates.js";
 import { getErrorMessage } from "./errors.js";
 import { buildSlidesWithPaths } from "./helpers.js";
-import type { ReadSlideNotesResult, SlidePptResult } from "./types.js";
+import type { ReadSlideContentResult, SlidePptResult } from "./types.js";
 
-type LoadSlideNotes = () => Promise<ReadSlideNotesResult>;
+type LoadSlideContent = () => Promise<ReadSlideContentResult>;
 
 function resolveSlideImagePath(outputDir: string, image: string): string | null {
   const slidesDir = path.resolve(outputDir, "slides");
@@ -103,7 +103,7 @@ export async function completeSlideReload(
   outputDir: string,
   slideIndex: SlideIndex,
   stagedImage: string,
-  loadNotes: LoadSlideNotes,
+  loadContent: LoadSlideContent,
 ): Promise<SlidePptResult> {
   const slideNumber = slideNumberOf(slideIndex);
   let committed = false;
@@ -113,16 +113,23 @@ export async function completeSlideReload(
       return { success: false, message: "The exported slide image is not available." };
     }
 
-    const notesResult = await loadNotes();
-    if (!notesResult.success) {
-      return notesResult;
+    const contentResult = await loadContent();
+    if (!contentResult.success) {
+      return contentResult;
     }
-    if (notesResult.notes === undefined) {
+    if (contentResult.notes === undefined) {
       return { success: false, message: "Slide notes are not available." };
     }
 
     const [slide] = buildSlidesWithPaths(
-      [{ slideIndex, image: stagedImage, notes: notesResult.notes }],
+      [
+        {
+          slideIndex,
+          image: stagedImage,
+          notes: contentResult.notes,
+          sectionsPlayingAcrossSlides: contentResult.sectionsPlayingAcrossSlides,
+        },
+      ],
       outputDir,
     );
 
