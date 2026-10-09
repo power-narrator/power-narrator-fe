@@ -77,14 +77,16 @@ function respondWithSuccess(): void {
   xmlCliResponses.push({ results: [] });
 }
 
-function createNativeProvider(): NativePlatformProvider {
+function createNativeProvider(
+  overrides: Partial<NativePlatformProvider> = {},
+): NativePlatformProvider {
   return {
     closePresentation: vi
       .fn<NativePlatformProvider["closePresentation"]>()
       .mockResolvedValue(toSlideIndex(0)),
     exportSlideImages: vi
       .fn<NativePlatformProvider["exportSlideImages"]>()
-      .mockResolvedValue({ success: true, images: new Map() }),
+      .mockResolvedValue({ success: false, message: "Not used" }),
     generateVideo: vi
       .fn<NativePlatformProvider["generateVideo"]>()
       .mockResolvedValue({ success: false, message: "Not used" }),
@@ -93,29 +95,102 @@ function createNativeProvider(): NativePlatformProvider {
       .mockResolvedValue({ success: false, message: "Not used" }),
     reloadSlideImage: vi
       .fn<NativePlatformProvider["reloadSlideImage"]>()
-      .mockResolvedValue({ success: true, image: "slides/Slide_1_staged.png" }),
+      .mockResolvedValue({ success: false, message: "Not used" }),
     reopenPresentation: vi.fn<NativePlatformProvider["reopenPresentation"]>(() =>
       Promise.resolve(),
     ),
+    ...overrides,
   };
 }
 
-const PLAYBACK_UNSUPPORTED = {
-  success: false,
-  message: "Reading section audio playback is not supported by the XML PowerPoint integration.",
-};
-
 describe("XmlPptProvider loading", () => {
-  it("reports that it cannot read section audio playback rather than loading slides without it", async () => {
-    const provider = new XmlPptProvider(createNativeProvider());
-    respondWithSlides([{ notes: "First", audio: [{ name: "ppt_audio_1.mp3" }] }]);
-
-    await expect(provider.convertPptx("/presentations/deck.pptx", "/tmp/deck")).resolves.toEqual(
-      PLAYBACK_UNSUPPORTED,
+  it("loads every slide with none of its section audio playing across slides", async () => {
+    const provider = new XmlPptProvider(
+      createNativeProvider({
+        exportSlideImages: vi.fn<NativePlatformProvider["exportSlideImages"]>().mockResolvedValue({
+          success: true,
+          images: new Map([
+            [toSlideIndex(0), { image: "slides/Slide_1.png" }],
+            [toSlideIndex(1), { image: "slides/Slide_2.png" }],
+          ]),
+        }),
+      }),
     );
-    await expect(
-      provider.reloadSlide("/presentations/deck.pptx", toSlideIndex(0), "/tmp/deck"),
-    ).resolves.toEqual(PLAYBACK_UNSUPPORTED);
+    respondWithSlides([
+      { notes: "First", audio: [{ name: "ppt_audio_1.mp3" }] },
+      { notes: "Second\r\nnotes", audio: [] },
+    ]);
+
+    const result = await provider.convertPptx("/presentations/deck.pptx", "/tmp/deck");
+
+    expect(result).toMatchObject({
+      success: true,
+      slides: [
+        {
+          slideIndex: 0,
+          image: "slides/Slide_1.png",
+          notes: "First",
+          sectionsPlayingAcrossSlides: new Set(),
+        },
+        {
+          slideIndex: 1,
+          image: "slides/Slide_2.png",
+          notes: "Second\nnotes",
+          sectionsPlayingAcrossSlides: new Set(),
+        },
+      ],
+    });
+  });
+});
+
+describe("XmlPptProvider.reloadSlide", () => {
+  it("uses the requested slide notes, with no section audio playing across slides, and commits only its staged image", async () => {
+    if (!tempDir) {
+      throw new Error("Expected a temporary test directory");
+    }
+    const outputDir = path.join(tempDir, "deck");
+    const slidesDir = path.join(outputDir, "slides");
+    fs.mkdirSync(slidesDir, { recursive: true });
+
+    const previousImage = path.join(slidesDir, "Slide_2_previous.png");
+    const stagedImage = path.join(slidesDir, "Slide_2_staged.png");
+    const otherSlideImage = path.join(slidesDir, "Slide_20_existing.png");
+    for (const imagePath of [previousImage, stagedImage, otherSlideImage]) {
+      fs.writeFileSync(imagePath, "fixture");
+    }
+
+    const reloadSlideImage = vi
+      .fn<NativePlatformProvider["reloadSlideImage"]>()
+      .mockResolvedValue({ success: true, image: "slides/Slide_2_staged.png" });
+    const provider = new XmlPptProvider(createNativeProvider({ reloadSlideImage }));
+    respondWithSlides([
+      { notes: "First slide", audio: [] },
+      { notes: "Fresh\r\nnotes", audio: [{ name: "ppt_audio_1.mp3" }] },
+    ]);
+
+    const result = await provider.reloadSlide(
+      "/presentations/deck.pptx",
+      toSlideIndex(1),
+      outputDir,
+    );
+
+    expect(reloadSlideImage).toHaveBeenCalledWith(
+      "/presentations/deck.pptx",
+      toSlideIndex(1),
+      outputDir,
+    );
+    expect(result).toMatchObject({
+      success: true,
+      slide: {
+        slideIndex: 1,
+        image: "slides/Slide_2_staged.png",
+        notes: "Fresh\nnotes",
+        sectionsPlayingAcrossSlides: new Set(),
+      },
+    });
+    expect(fs.existsSync(stagedImage)).toBe(true);
+    expect(fs.existsSync(previousImage)).toBe(false);
+    expect(fs.existsSync(otherSlideImage)).toBe(true);
   });
 });
 
@@ -205,7 +280,7 @@ describe("XmlPptProvider slide addressing", () => {
 });
 
 describe("XmlPptProvider.insertAudio", () => {
-  it("saves audio against the slide index the CLI already counts from zero", async () => {
+  it("saves audio against the slide index the CLI already counts from zero, whatever its playback", async () => {
     const provider = new XmlPptProvider();
     respondWithSlides([
       { notes: "First", audio: [] },
@@ -219,7 +294,7 @@ describe("XmlPptProvider.insertAudio", () => {
         slideIndex: toSlideIndex(0),
         sectionIndex: 0,
         audioData: new Uint8Array([1]),
-        playAcrossSlides: false,
+        playAcrossSlides: true,
       },
       {
         slideIndex: toSlideIndex(2),
