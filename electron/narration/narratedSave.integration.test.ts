@@ -428,7 +428,30 @@ it("reports each slide's position in the run and its generating and saving phase
       "narrated-presentation-save-progress:1",
       { slideIndex: 2, completedSlides: 1, totalSlides: 2, phase: "saving" },
     ],
+    [
+      "narrated-presentation-save-progress:1",
+      { slideIndex: 2, completedSlides: 2, totalSlides: 2, phase: "saving" },
+    ],
   ]);
+});
+
+it("never reports every slide completed when the final slide fails to save", async () => {
+  const { handlers, scriptWrite } = registerNarrationHandlers();
+  const send = vi.fn<(channel: string, ...args: unknown[]) => void>();
+  scriptWrite("insert audio 1", { success: false, message: "media rejected" });
+
+  await saveAll(
+    handlers,
+    [
+      { slideIndex: 0, sections: [narrator("Zero")] },
+      { slideIndex: 1, sections: [narrator("One")] },
+    ],
+    { sender: { send } } as unknown as IpcMainInvokeEvent,
+  );
+
+  expect(send.mock.calls.map(([, progress]) => progress)).not.toContainEqual(
+    expect.objectContaining({ completedSlides: 2 }),
+  );
 });
 
 it("rejects an unmapped speaker on a later slide before any synthesis or PowerPoint write", async () => {
@@ -565,6 +588,25 @@ for (const cancelDuring of [
     expect(externalWork).toEqual(cancelDuring.expectedWork);
   });
 }
+
+it("reports cancellation, not success, when cancelled while the final slide saves", async () => {
+  const { handlers, externalWork, heldWrites, holdWrite } = registerNarrationHandlers();
+  holdWrite("insert audio 1");
+
+  const saving = saveAll(handlers, [
+    { slideIndex: 0, sections: [narrator("Zero")] },
+    { slideIndex: 1, sections: [narrator("One")] },
+  ]);
+  await vi.waitFor(() => expect(heldWrites.has("insert audio 1")).toBe(true));
+  await cancelRun(handlers);
+  heldWrites.get("insert audio 1")!.resolve({ success: true });
+
+  await expect(saving).resolves.toEqual({
+    outcome: { success: false, stage: "cancelled" },
+    savedNoteSlides: [0, 1],
+  });
+  expect(externalWork.slice(-2)).toEqual(["save notes 1", "insert audio 1"]);
+});
 
 it("ignores cancellation meant for an earlier run or another window", async () => {
   const { handlers, heldSpeech, holdSpeech } = registerNarrationHandlers();

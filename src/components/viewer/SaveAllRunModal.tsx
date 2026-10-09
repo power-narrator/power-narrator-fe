@@ -72,7 +72,7 @@ export function SaveAllRunModal({ state, onConfirm, onDecline, onCancel }: SaveA
           <Group justify="space-between">
             <Text fw={500}>
               {progress
-                ? `Slide ${progress.completedSlides + 1} of ${progress.totalSlides}`
+                ? `Slide ${Math.min(progress.completedSlides + 1, progress.totalSlides)} of ${progress.totalSlides}`
                 : "Checking narration..."}
             </Text>
             {phaseLabel && <Text c="dimmed">{phaseLabel}</Text>}

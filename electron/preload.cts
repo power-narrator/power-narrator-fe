@@ -17,6 +17,7 @@ import type {
   NarratedPresentationSaveRequest,
   NarratedSaveResult,
   NarratedSlideSaveRequest,
+  SaveAllRunObserver,
   SaveAllRunProgress,
   SaveAllRunResult,
   NarrationPreviewResult,
@@ -36,8 +37,7 @@ const electronAPI = {
     ipcRenderer.invoke("save-narrated-slide", payload),
   saveNarratedPresentation: async (
     payload: NarratedPresentationSaveRequest,
-    onProgress: (progress: SaveAllRunProgress) => void,
-    onCancellable?: (cancel: () => void) => void,
+    { onProgress, onCancellable }: SaveAllRunObserver,
   ): Promise<SaveAllRunResult> => {
     narratedPresentationRequestId += 1;
     const runId = narratedPresentationRequestId;
@@ -47,7 +47,7 @@ const electronAPI = {
     };
     let active = true;
     ipcRenderer.on(progressChannel, listener);
-    onCancellable?.(() => {
+    onCancellable(() => {
       if (active) {
         void ipcRenderer.invoke("cancel-narrated-presentation-save", runId);
       }
@@ -89,5 +89,11 @@ const electronAPI = {
   confirmDiscardNarrationChanges: (): Promise<boolean> =>
     ipcRenderer.invoke("confirm-discard-narration-changes"),
 };
+
+(globalThis as unknown as EventTarget).addEventListener("beforeunload", (event) => {
+  if (!ipcRenderer.sendSync("may-unload-save-all-window")) {
+    event.preventDefault();
+  }
+});
 
 contextBridge.exposeInMainWorld("electronAPI", electronAPI);

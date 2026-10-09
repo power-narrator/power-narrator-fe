@@ -1,7 +1,11 @@
 import { Stack } from "@mantine/core";
 import { useCallback, useLayoutEffect, useMemo } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import type { SaveAllRunProgress, SaveAllRunResult } from "../../../shared/types/narration";
+import type {
+  NarratedSaveResult,
+  SaveAllRunObserver,
+  SaveAllRunResult,
+} from "../../../shared/types/narration";
 import type { ActionButtonState } from "../../types/viewer";
 import type { Slide, SlideElectronResult } from "../../types/electron";
 import { useSettings } from "../../context/useSettings";
@@ -41,11 +45,18 @@ function alertError(label: string, error: unknown) {
   alert(`${label}: ${message}`);
 }
 
-function reportNarratedSaveFailure(result: { partial: boolean; message: string }) {
-  const partialMessage = result.partial
-    ? "PowerPoint notes were saved, but narration audio was not committed."
-    : result.message;
-  alert(`Save error: ${partialMessage}${result.partial ? ` ${result.message}` : ""}`);
+type NarratedSaveFailure = Extract<NarratedSaveResult, { success: false }>;
+
+function alertSaveError(detail: string) {
+  alert(`Save error: ${detail}`);
+}
+
+function reportNarratedSaveFailure({ partial, message }: NarratedSaveFailure) {
+  alertSaveError(
+    partial
+      ? `PowerPoint notes were saved, but narration audio was not committed. ${message}`
+      : message,
+  );
 }
 
 /**
@@ -62,7 +73,7 @@ function reportSaveAllFailure({ outcome, savedNoteSlides, failedSlideIndex }: Sa
     ? " Earlier slides remain saved."
     : "";
   if (outcome.stage !== "powerpoint" || failedSlideIndex === undefined) {
-    alert(`Save error: ${outcome.message}${earlierSaved}`);
+    alertSaveError(`${outcome.message}${earlierSaved}`);
     return;
   }
 
@@ -158,23 +169,35 @@ export function ViewerPage({
   /**
    * Commits the whole presentation through the narrated save path, one complete
    * slide at a time, and reconciles only the notes PowerPoint confirmed written.
+   * Should the run's result never arrive, the slides its progress reported
+   * complete are the only ones known to be written.
    */
-  async function commitNarratedPresentation(
-    onProgress: (progress: SaveAllRunProgress) => void,
-    onCancellable: (cancel: () => void) => void,
-  ) {
+  async function commitNarratedPresentation({ onProgress, onCancellable }: SaveAllRunObserver) {
     const snapshot = editor.submitSave();
-    const result = await electronAPI.saveNarratedPresentation(
-      {
-        filePath,
-        slides: snapshot.slides.map((slide) => ({
-          slideIndex: slide.slideIndex,
-          sections: slide.sections,
-        })),
-      },
-      onProgress,
-      onCancellable,
-    );
+    const submitted = snapshot.slides.map((slide) => ({
+      slideIndex: slide.slideIndex,
+      sections: slide.sections,
+    }));
+    let completedSlides = 0;
+    let result: SaveAllRunResult;
+    try {
+      result = await electronAPI.saveNarratedPresentation(
+        { filePath, slides: submitted },
+        {
+          onProgress: (progress) => {
+            completedSlides = progress.completedSlides;
+            onProgress(progress);
+          },
+          onCancellable,
+        },
+      );
+    } catch (error: unknown) {
+      editor.saveSucceeded(
+        snapshot,
+        submitted.slice(0, completedSlides).map((slide) => slide.slideIndex),
+      );
+      throw error;
+    }
     editor.saveSucceeded(snapshot, result.savedNoteSlides);
     if (!result.outcome.success) {
       reportSaveAllFailure(result);
@@ -189,10 +212,7 @@ export function ViewerPage({
       "generateVideo",
       "Preparing narration...",
       async (command) => {
-        if (
-          !(await saveAllRun.confirm("generateVideo")) ||
-          !(await saveAllRun.track(commitNarratedPresentation))
-        ) {
+        if (!(await saveAllRun.confirmAndRun("generateVideo", commitNarratedPresentation))) {
           command.clearStatus();
           return;
         }
@@ -222,12 +242,7 @@ export function ViewerPage({
       "saveAllSlides",
       "Saving all slides...",
       async (command) => {
-        if (!(await saveAllRun.confirm("saveAll"))) {
-          command.clearStatus();
-          return;
-        }
-
-        if (!(await saveAllRun.track(commitNarratedPresentation))) {
+        if (!(await saveAllRun.confirmAndRun("saveAll", commitNarratedPresentation))) {
           command.clearStatus();
           return;
         }

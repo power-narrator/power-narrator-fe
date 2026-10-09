@@ -27,12 +27,11 @@ const showDiscardDialog: DiscardConfirmation = async (options, window) => {
 
 /**
  * Tracks which windows hold unsaved narration edits and blocks closing one
- * until the user confirms discarding them. A window running a save-all run
- * cannot close at all until the run settles.
+ * until the user confirms discarding them. A close another guard already
+ * prevented is left alone, and abandons any quit in progress.
  */
 export class UnsavedNarrationChanges {
   private readonly windowsWithChanges = new Set<number>();
-  private readonly windowsWithActiveRuns = new Map<number, number>();
   private quitRequested = false;
   private confirmDiscard: DiscardConfirmation = showDiscardDialog;
 
@@ -59,31 +58,13 @@ export class UnsavedNarrationChanges {
     });
   }
 
-  async holdWindowOpen<T>(webContentsId: number, run: () => Promise<T>): Promise<T> {
-    this.windowsWithActiveRuns.set(
-      webContentsId,
-      (this.windowsWithActiveRuns.get(webContentsId) ?? 0) + 1,
-    );
-    try {
-      return await run();
-    } finally {
-      const remaining = (this.windowsWithActiveRuns.get(webContentsId) ?? 1) - 1;
-      if (remaining > 0) {
-        this.windowsWithActiveRuns.set(webContentsId, remaining);
-      } else {
-        this.windowsWithActiveRuns.delete(webContentsId);
-      }
-    }
-  }
-
   guard(window: BrowserWindow): void {
     const webContentsId = window.webContents.id;
     let allowClose = false;
     let confirmationOpen = false;
 
     window.on("close", (event) => {
-      if (this.windowsWithActiveRuns.has(webContentsId)) {
-        event.preventDefault();
+      if (event.defaultPrevented) {
         this.quitRequested = false;
         return;
       }

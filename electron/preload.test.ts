@@ -4,6 +4,7 @@ import vm from "node:vm";
 import { expect, it, vi } from "vitest";
 import type {
   NarratedPresentationSaveRequest,
+  SaveAllRunObserver,
   SaveAllRunProgress,
   SaveAllRunResult,
   NarrationPreviewResult,
@@ -38,8 +39,7 @@ type PlaySlide = (payload: PlaySlideRequest) => Promise<BasicPptResult>;
 type RemoveAudio = (payload: RemoveAudioRequest) => Promise<BasicPptResult>;
 type SaveNarratedPresentation = (
   payload: NarratedPresentationSaveRequest,
-  onProgress: (progress: SaveAllRunProgress) => void,
-  onCancellable?: (cancel: () => void) => void,
+  observer: SaveAllRunObserver,
 ) => Promise<SaveAllRunResult>;
 
 const electron = vi.hoisted(() => {
@@ -89,6 +89,7 @@ function loadPreload() {
   const javascript = stripTypeScriptTypes(source);
   vm.runInNewContext(javascript, {
     exports: {},
+    addEventListener: () => {},
     require: (moduleName: string) => {
       if (moduleName === "electron") {
         return {
@@ -117,7 +118,7 @@ it("stops delivering progress after a narrated presentation save settles", async
         },
       ],
     },
-    (progress) => observedProgress.push(progress),
+    { onProgress: (progress) => observedProgress.push(progress), onCancellable: () => {} },
   );
 
   const generating = {
@@ -148,9 +149,11 @@ it("cancels only the run it was handed for, and only while that run is active", 
 
   const saving = electron.state.exposedApi!.saveNarratedPresentation(
     { filePath: "/slides/talk.pptx", slides: [] },
-    () => {},
-    (cancelRun) => {
-      cancel = cancelRun;
+    {
+      onProgress: () => {},
+      onCancellable: (cancelRun) => {
+        cancel = cancelRun;
+      },
     },
   );
   const [, request] = electron.ipcRenderer.invoke.mock.lastCall! as [string, { runId: number }];
@@ -209,7 +212,7 @@ it("carries structured slide-note sections across the narrated presentation save
         },
       ],
     },
-    () => {},
+    { onProgress: () => {}, onCancellable: () => {} },
   );
 
   const [, payload] = electron.ipcRenderer.invoke.mock.lastCall!;
