@@ -31,7 +31,7 @@ export const sectionsPlayingAcrossSlidesOn = (
 
 /**
  * Reads the inspection macro's report. Each slide block lists the canonically
- * named section audio on that slide as `name<TAB>kind<TAB>stopAfterSlides`.
+ * named section audio on that slide as `name<TAB>stopAfterSlides`.
  */
 export function parseSectionAudioPlaybackReport(
   report: string,
@@ -70,7 +70,7 @@ export function parseSectionAudioPlaybackReport(
       continue;
     }
 
-    const [name = "", kind, stopAfterSlides = ""] = line.split("\t");
+    const [name = "", stopAfterSlides = ""] = line.split("\t");
     const ordinal = SECTION_AUDIO_NAME.exec(name)?.[1];
     if (ordinal === undefined) {
       return {
@@ -85,9 +85,6 @@ export function parseSectionAudioPlaybackReport(
       };
     }
     namesOnSlide.add(name);
-    if (kind !== "sound") {
-      return { success: false, message: `Shape ${name} on slide ${slideNumber} is not audio.` };
-    }
     if (!isIntegerText(stopAfterSlides)) {
       return {
         success: false,
