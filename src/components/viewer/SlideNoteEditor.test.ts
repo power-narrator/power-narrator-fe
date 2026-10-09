@@ -1212,6 +1212,20 @@ describe("saving", () => {
     expect(saved.hasUnsavedChanges).toBe(true);
   });
 
+  it("clears dirty state only for the submitted slides whose notes were confirmed written", () => {
+    const editor = openedEditor();
+    const firstEdited = editor.setSectionText(editor.sections[0]!.id, "Rewritten");
+    const onSecond = firstEdited.selectSlide(at(1));
+    const bothEdited = onSecond.setSectionText(onSecond.sections[0]!.id, "Also rewritten");
+    const { editor: submitted, snapshot } = bothEdited.beginSave();
+
+    const saved = submitted.saveSucceeded(snapshot, [at(0)]);
+
+    expect(saved.isSlideDirty(at(0))).toBe(false);
+    expect(saved.isSlideDirty(at(1))).toBe(true);
+    expect(sectionTexts(saved)).toEqual(["Also rewritten"]);
+  });
+
   it("keeps edits made after submission dirty once the older save succeeds", () => {
     const editor = openedEditor();
     const sectionId = editor.sections[0]!.id;

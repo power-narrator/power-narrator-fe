@@ -1,9 +1,5 @@
 import type { SpeakerMapping, SynthesizedSpeech, Voice } from "../tts/TtsProvider.js";
-import type {
-  NarratedSlideInput,
-  NarrationPreparationProgress,
-  PreviewNarrationRequest,
-} from "../../shared/types/narration.js";
+import type { NarratedSlideInput, PreviewNarrationRequest } from "../../shared/types/narration.js";
 import type { SlideAudioEntry } from "../platform/types.js";
 import { getEffectiveSpeaker } from "../../shared/narration/NarrationSections.js";
 import {
@@ -43,6 +39,12 @@ type SynthesizedNarrationSection<Section extends PreparedNarrationSection> = Sec
   speech: SynthesizedSpeech;
 };
 
+/** A slide whose narration passed validation and has not been synthesized yet. */
+export type PlannedNarrationSlide = {
+  readonly slideIndex: SlideIndex;
+  synthesize(): Promise<SlideAudioEntry[]>;
+};
+
 export class NarrationPreparation {
   constructor(
     private readonly mappingSource: SpeakerMappingSource,
@@ -80,15 +82,17 @@ export class NarrationPreparation {
     return preview!.speech;
   }
 
-  async prepareBatch(
-    slides: readonly NarratedSlideInput[],
-    onProgress?: (progress: NarrationPreparationProgress) => void,
-  ): Promise<SlideAudioEntry[]> {
+  /**
+   * Validates every requested slide before any synthesis starts. Each planned
+   * slide synthesizes its own sections in parallel when asked.
+   */
+  async planSlides(slides: readonly NarratedSlideInput[]): Promise<PlannedNarrationSlide[]> {
     const mappings = await this.mappingSource.getSpeakerMappings();
-    const prepared = slides.flatMap((slide) =>
+
+    return slides.map((slide) => {
       // Narration positions follow the submitted section order; mappings resolve
       // voices and prompts here, never which bracketed lines are speaker tags.
-      slide.sections.flatMap((section, sectionIndex) => {
+      const sections = slide.sections.flatMap((section, sectionIndex) => {
         const text = section.text.trim();
         if (!text) {
           return [];
@@ -109,17 +113,21 @@ export class NarrationPreparation {
             playAcrossSlides: section.playAcrossSlides,
           },
         ];
-      }),
-    );
+      });
 
-    const synthesized = await this.synthesizeSections(prepared, onProgress);
-
-    return synthesized.map(({ slideIndex, sectionIndex, speech, playAcrossSlides }) => ({
-      slideIndex,
-      sectionIndex,
-      audioData: new Uint8Array(speech.audio),
-      playAcrossSlides,
-    }));
+      return {
+        slideIndex: slide.slideIndex,
+        synthesize: async () => {
+          const synthesized = await this.synthesizeSections(sections);
+          return synthesized.map(({ slideIndex, sectionIndex, speech, playAcrossSlides }) => ({
+            slideIndex,
+            sectionIndex,
+            audioData: new Uint8Array(speech.audio),
+            playAcrossSlides,
+          }));
+        },
+      };
+    });
   }
 
   private planSection(
@@ -145,10 +153,7 @@ export class NarrationPreparation {
 
   private synthesizeSections<Section extends PreparedNarrationSection>(
     sections: Section[],
-    onProgress?: (progress: NarrationPreparationProgress) => void,
   ): Promise<SynthesizedNarrationSection<Section>[]> {
-    let completed = 0;
-
     return Promise.all(
       sections.map(async (section) => {
         try {
@@ -157,8 +162,6 @@ export class NarrationPreparation {
             section.voice,
             section.prompt,
           );
-          completed += 1;
-          onProgress?.({ completed, total: sections.length });
           return { ...section, speech };
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : "Unknown synthesis error";

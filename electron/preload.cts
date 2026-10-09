@@ -17,7 +17,8 @@ import type {
   NarratedPresentationSaveRequest,
   NarratedSaveResult,
   NarratedSlideSaveRequest,
-  NarrationPreparationProgress,
+  SaveAllRunProgress,
+  SaveAllRunResult,
   NarrationPreviewResult,
   PreviewNarrationRequest,
 } from "../shared/types/narration.js";
@@ -35,11 +36,11 @@ const electronAPI = {
     ipcRenderer.invoke("save-narrated-slide", payload),
   saveNarratedPresentation: async (
     payload: NarratedPresentationSaveRequest,
-    onProgress: (progress: NarrationPreparationProgress) => void,
-  ): Promise<NarratedSaveResult> => {
+    onProgress: (progress: SaveAllRunProgress) => void,
+  ): Promise<SaveAllRunResult> => {
     narratedPresentationRequestId += 1;
     const progressChannel = `narrated-presentation-save-progress:${narratedPresentationRequestId}`;
-    const listener = (_event: unknown, progress: NarrationPreparationProgress) => {
+    const listener = (_event: unknown, progress: SaveAllRunProgress) => {
       onProgress(progress);
     };
     ipcRenderer.on(progressChannel, listener);
@@ -47,7 +48,7 @@ const electronAPI = {
       return (await ipcRenderer.invoke("save-narrated-presentation", {
         ...payload,
         progressChannel,
-      })) as NarratedSaveResult;
+      })) as SaveAllRunResult;
     } finally {
       ipcRenderer.removeListener(progressChannel, listener);
     }

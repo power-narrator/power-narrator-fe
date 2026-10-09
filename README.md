@@ -171,10 +171,10 @@ flowchart TB
 
 - `preparePreview` plans one section from the live slide context, resolves its preset and inline
   prompts, and passes it through the shared array-based synthesis path.
-- `prepareBatch` parses all requested slides, skips empty text, resolves every effective speaker,
-  combines its prompts, and validates every concrete voice before synthesis starts. Valid sections
-  synthesize in parallel, results retain source order, and progress reports completed sections over
-  total eligible sections.
+- `planSlides` parses all requested slides, skips empty text, resolves every effective speaker,
+  combines its prompts, and validates every concrete voice before synthesis starts. Each planned
+  slide then synthesizes its own valid sections in parallel on request, and its results retain
+  source order.
 
 Both paths trim surrounding text consistently and produce contextual validation or synthesis
 errors. Preview cancellation only detaches the renderer request, preventing late playback; it does
@@ -226,24 +226,32 @@ sequenceDiagram
   Author->>UI: Save slide, Save All, or Generate Video
   UI->>IPC: File path and serialized notes
   IPC->>Saver: Save request
-  Saver->>Prep: prepareBatch(slides)
+  Saver->>Prep: planSlides(slides)
   Prep->>Prep: Parse, resolve, and preflight every section
-  Prep->>TTS: Synthesize valid sections in parallel
-  TTS-->>Prep: Ordered MP3 entries
-  Prep-->>Saver: Audio remains in Electron
-  Saver->>PPT: Commit notes
-  Saver->>PPT: Remove stale audio and insert prepared audio
-  PPT-->>Saver: Commit result
-  Saver-->>UI: Success or structured failure
+  loop Each slide, in order
+    Saver-->>UI: Slide position and phase
+    Saver->>Prep: Synthesize this slide
+    Prep->>TTS: Synthesize its valid sections in parallel
+    TTS-->>Prep: Ordered MP3 entries
+    Prep-->>Saver: Audio remains in Electron
+    Saver->>PPT: Commit this slide's notes
+    Saver->>PPT: Insert its audio, or remove stale audio
+  end
+  Saver-->>UI: Outcome and slides whose notes were written
 ```
 
-Validation and synthesis complete before PowerPoint is changed. A preparation failure therefore
-leaves PowerPoint untouched and keeps the edited notes in the Viewer session. If notes commit but
-audio mutation fails, the result is reported as a partial PowerPoint failure; an ordinary retry can
-reuse the synthesized cache entries. There is no automated PowerPoint rollback.
+Save All is a save-all run: the author confirms it first, a blocking progress modal shows the slide
+position and phase, and the window cannot close or quit until the run settles. Slides are generated
+and saved one complete slide at a time, so a slide is written only after all of its sections
+synthesize, and no later slide starts before it is saved. Validation of every slide completes before
+any synthesis or PowerPoint change. A failure stops the run, keeps earlier saved slides, and leaves
+the failed and later slides untouched; the Viewer treats only notes confirmed written as saved. If a
+slide's notes commit but its audio mutation fails, the result is reported as a partial PowerPoint
+failure; an ordinary retry can reuse the synthesized cache entries. There is no automated
+PowerPoint rollback. Save Slide uses the same path for its single slide.
 
-**Generate Video** first runs the same full narrated save. Video export starts only after notes and
-audio commit successfully.
+**Generate Video** first runs the same narrated save. Video export starts only after every slide's
+notes and audio commit successfully.
 
 ### Synthesis cache
 

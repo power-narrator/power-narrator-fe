@@ -779,8 +779,11 @@ export class SlideNoteEditor {
    * newer baseline, so a completed save can never reinstate content PowerPoint
    * has since replaced, nor undo a later overlapping save that already landed.
    * A slide the presentation no longer holds has no baseline to advance.
+   *
+   * `savedSlides` narrows the advance to the submitted slides whose notes were
+   * confirmed written when only part of the submission was saved.
    */
-  saveSucceeded(snapshot: SaveSnapshot): SlideNoteEditor {
+  saveSucceeded(snapshot: SaveSnapshot, savedSlides?: readonly SlideIndex[]): SlideNoteEditor {
     const submitted = submittedRevision.get(snapshot);
     if (submitted === undefined) {
       return this;
@@ -789,6 +792,10 @@ export class SlideNoteEditor {
     const savedBaselines = new Map(this.#state.savedBaselines);
     let advanced = false;
     for (const slide of snapshot.slides) {
+      if (savedSlides && !savedSlides.includes(slide.slideIndex)) {
+        continue;
+      }
+
       const current = savedBaselines.get(slide.slideIndex);
       if (!current || current.revision > submitted) {
         continue;

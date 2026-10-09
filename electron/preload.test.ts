@@ -4,8 +4,8 @@ import vm from "node:vm";
 import { expect, it, vi } from "vitest";
 import type {
   NarratedPresentationSaveRequest,
-  NarratedSaveResult,
-  NarrationPreparationProgress,
+  SaveAllRunProgress,
+  SaveAllRunResult,
   NarrationPreviewResult,
   PreviewNarrationRequest,
 } from "../shared/types/narration.js";
@@ -31,15 +31,15 @@ const sectionsOf = (notes: string, knownSpeakers: string[]) =>
 type PrepareNarrationPreview = (
   payload: PreviewNarrationRequest,
 ) => Promise<NarrationPreviewResult>;
-type ProgressListener = (event: unknown, progress: NarrationPreparationProgress) => void;
+type ProgressListener = (event: unknown, progress: SaveAllRunProgress) => void;
 type ConvertPptx = (filePath: string) => Promise<StructuredSlidesResult>;
 type ReloadSlide = (payload: ReloadSlideRequest) => Promise<StructuredSlideResult>;
 type PlaySlide = (payload: PlaySlideRequest) => Promise<BasicPptResult>;
 type RemoveAudio = (payload: RemoveAudioRequest) => Promise<BasicPptResult>;
 type SaveNarratedPresentation = (
   payload: NarratedPresentationSaveRequest,
-  onProgress: (progress: NarrationPreparationProgress) => void,
-) => Promise<NarratedSaveResult>;
+  onProgress: (progress: SaveAllRunProgress) => void,
+) => Promise<SaveAllRunResult>;
 
 const electron = vi.hoisted(() => {
   const state = {
@@ -102,9 +102,9 @@ function loadPreload() {
 
 it("stops delivering progress after a narrated presentation save settles", async () => {
   loadPreload();
-  const pendingSave = controlledPromise<NarratedSaveResult>();
+  const pendingSave = controlledPromise<SaveAllRunResult>();
   electron.ipcRenderer.invoke.mockReturnValue(pendingSave.promise);
-  const observedProgress: NarrationPreparationProgress[] = [];
+  const observedProgress: SaveAllRunProgress[] = [];
 
   const saving = electron.state.exposedApi!.saveNarratedPresentation(
     {
@@ -119,18 +119,24 @@ it("stops delivering progress after a narrated presentation save settles", async
     (progress) => observedProgress.push(progress),
   );
 
+  const generating = {
+    slideIndex: toSlideIndex(0),
+    completedSlides: 0,
+    totalSlides: 1,
+    phase: "generating",
+  } as const;
   for (const listener of electron.state.listeners) {
-    listener({}, { completed: 1, total: 2 });
+    listener({}, generating);
   }
-  expect(observedProgress).toEqual([{ completed: 1, total: 2 }]);
+  expect(observedProgress).toEqual([generating]);
 
-  pendingSave.resolve({ success: true });
+  pendingSave.resolve({ outcome: { success: true }, savedNoteSlides: [toSlideIndex(0)] });
   await saving;
   for (const listener of electron.state.listeners) {
-    listener({}, { completed: 2, total: 2 });
+    listener({}, { ...generating, phase: "saving" });
   }
 
-  expect(observedProgress).toEqual([{ completed: 1, total: 2 }]);
+  expect(observedProgress).toEqual([generating]);
 });
 
 it("carries structured slide-note sections across the preview channel", async () => {

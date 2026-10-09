@@ -111,11 +111,15 @@ registerSettingsIpc(ipcMain, {
   createGcpProvider: (keyPath) => new GcpTtsProvider(() => keyPath),
 });
 
-registerNarrationIpc(ipcMain, {
-  mappingSource: { getSpeakerMappings },
-  synthesizer: ttsManager,
-  getPowerPoint: getActiveCoreProvider,
-});
+registerNarrationIpc(
+  ipcMain,
+  {
+    mappingSource: { getSpeakerMappings },
+    synthesizer: ttsManager,
+    getPowerPoint: getActiveCoreProvider,
+  },
+  unsavedNarrationChanges,
+);
 
 if (process.env.NODE_ENV === "test") {
   installTestHarness(unsavedNarrationChanges);
