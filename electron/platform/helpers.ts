@@ -18,8 +18,13 @@ export function resolveSlideAssetUrl(filePath: string): string {
   return `${APP_NAME}://slide/${encodeURIComponent(filePath)}`;
 }
 
+/** PowerPoint names the inserted shape after the audio file it was staged as. */
+export function buildPptAudioShapeName(sectionIndex: number): string {
+  return `${PPT_AUDIO_PREFIX}_${sectionIndex + 1}`;
+}
+
 export function buildPptAudioFileName(sectionIndex: number): string {
-  return `${PPT_AUDIO_PREFIX}_${sectionIndex + 1}.mp3`;
+  return `${buildPptAudioShapeName(sectionIndex)}.mp3`;
 }
 
 export function isManagedPptAudioName(name: string): boolean {
