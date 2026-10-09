@@ -324,6 +324,97 @@ describe("editing inline prompts", () => {
   });
 });
 
+describe("choosing Play Across Slides", () => {
+  const playback = (editor: SlideNoteEditor) =>
+    editor.sections.map((section) => section.playAcrossSlides ?? false);
+
+  it("changes only the chosen section and marks its slide dirty", () => {
+    const editor = openedEditor();
+
+    const chosen = editor.setSectionPlayAcrossSlides(editor.sections[1]!.id, true);
+
+    expect(playback(chosen)).toEqual([false, true]);
+    expect(chosen.isSlideDirty(at(0))).toBe(true);
+    expect(chosen.isSlideDirty(at(1))).toBe(false);
+  });
+
+  it("is its own undo step", () => {
+    const editor = openedEditor();
+
+    const chosen = editor.setSectionPlayAcrossSlides(editor.sections[0]!.id, true);
+
+    expect(playback(chosen.undo())).toEqual([false, false]);
+    expect(chosen.undo().hasUnsavedChanges).toBe(false);
+    expect(playback(chosen.undo().redo())).toEqual([true, false]);
+  });
+
+  it("stays with the surviving section when another section is deleted", () => {
+    const editor = openedEditor();
+    const chosen = editor.setSectionPlayAcrossSlides(editor.sections[1]!.id, true);
+
+    const deleted = chosen.deleteSection(chosen.sections[0]!.id);
+
+    expect(deleted.narrationSections).toEqual([
+      expect.objectContaining({ text: "Second section", playAcrossSlides: true }),
+    ]);
+  });
+
+  it("starts unchecked on an added section", () => {
+    const editor = SlideNoteEditor.open(
+      [
+        {
+          ...slide(at(0), "Loaded"),
+          sections: [{ speaker: "", text: "Loaded", playAcrossSlides: true }],
+        },
+      ],
+      speakers,
+    );
+
+    expect(playback(editor.addSection())).toEqual([true, false]);
+  });
+
+  it("survives speaker reclassification in content, saved baselines, and history", () => {
+    const loaded = SlideNoteEditor.open(
+      [
+        {
+          ...slide(at(0), "[Alice]\nGreeting\n---\nSecond", []),
+          sections: [
+            { speaker: "", text: "[Alice]\nGreeting", playAcrossSlides: true },
+            { speaker: "", text: "Second", format: { separatorBefore: "---" } },
+          ],
+        },
+      ],
+      [],
+    );
+    const chosen = loaded.setSectionPlayAcrossSlides(loaded.sections[1]!.id, true);
+
+    const editor = chosen.reclassifySpeakerTags(["Alice"]);
+
+    expect(editor.sections[0]).toMatchObject({ speaker: "Alice", text: "Greeting" });
+    expect(playback(editor)).toEqual([true, true]);
+    expect(playback(editor.undo())).toEqual([true, false]);
+    expect(editor.undo().hasUnsavedChanges).toBe(false);
+  });
+
+  it("is submitted and committed by a save, keeping later choices pending", () => {
+    const editor = openedEditor();
+    const [first, second] = editor.sections;
+    const { editor: submitted, snapshot } = editor
+      .setSectionPlayAcrossSlides(first!.id, true)
+      .beginSave([at(0)]);
+    const newer = submitted.setSectionPlayAcrossSlides(second!.id, true);
+
+    const saved = newer.saveSucceeded(snapshot);
+
+    expect(snapshot.slides[0]?.sections.map((section) => section.playAcrossSlides)).toEqual([
+      true,
+      undefined,
+    ]);
+    expect(saved.isSlideDirty(at(0))).toBe(true);
+    expect(saved.setSectionPlayAcrossSlides(second!.id, false).isSlideDirty(at(0))).toBe(false);
+  });
+});
+
 describe("adding sections", () => {
   it("appends an empty section to the active slide and selects it", () => {
     const editor = openedEditor();
@@ -651,6 +742,7 @@ describe("undo and redo", () => {
     expect(editor.setSectionSpeaker(first!.id, "Alice")).toBe(editor);
     expect(editor.setSectionText(first!.id, "First narration")).toBe(editor);
     expect(editor.setSectionPrompt(first!.id, undefined)).toBe(editor);
+    expect(editor.setSectionPlayAcrossSlides(first!.id, false)).toBe(editor);
     expect(editor.setSectionText(first!.id, "First narration").canUndo).toBe(false);
   });
 
