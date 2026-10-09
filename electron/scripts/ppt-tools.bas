@@ -1,6 +1,7 @@
 Attribute VB_Name = "AudioTools"
 
 Private Const MEDIA_PLAY_EFFECT As Long = 83
+Private Const SECTION_AUDIO_PREFIX As String = "ppt_audio_"
 
 ' ==============================================================================================
 ' INSTRUCTIONS FOR USER:
@@ -135,22 +136,70 @@ Function GetSectionIndex(audioTag As String) As Integer
     On Error GoTo 0
 End Function
 
-Sub InsertAudio()
-    Dim sld As Slide
+Function IsSectionAudioShape(s As Shape) As Boolean
+    Dim ordinal As String
+
+    If s.Type <> msoMedia Then Exit Function
+    If InStr(1, s.Name, SECTION_AUDIO_PREFIX) <> 1 Then Exit Function
+
+    ordinal = Mid(s.Name, Len(SECTION_AUDIO_PREFIX) + 1)
+    IsSectionAudioShape = Len(ordinal) > 0 And Not ordinal Like "*[!0-9]*"
+End Function
+
+Function ListSectionAudio(sld As Slide) As String
+    Dim s As Shape
+
+    For Each s In sld.Shapes
+        If IsSectionAudioShape(s) Then
+            If Len(ListSectionAudio) > 0 Then ListSectionAudio = ListSectionAudio & ","
+            ListSectionAudio = ListSectionAudio & s.Name
+        End If
+    Next s
+End Function
+
+Function IsRequestedSectionAudio(slideNumber As Integer, shapeName As String, slideNumbers() As Integer, shapeNames() As String, entryCount As Integer) As Boolean
+    Dim i As Integer
+
+    For i = 1 To entryCount
+        If slideNumbers(i) = slideNumber And shapeNames(i) = shapeName Then
+            IsRequestedSectionAudio = True
+            Exit Function
+        End If
+    Next i
+End Function
+
+Function IsFirstEntryForSlide(slideNumbers() As Integer, entry As Integer) As Boolean
+    Dim i As Integer
+
+    For i = 1 To entry - 1
+        If slideNumbers(i) = slideNumbers(entry) Then Exit Function
+    Next i
+    IsFirstEntryForSlide = True
+End Function
+
+Sub RemoveObsoleteSectionAudio(sld As Slide, slideNumber As Integer, slideNumbers() As Integer, shapeNames() As String, entryCount As Integer)
+    Dim iShape As Integer
+    Dim s As Shape
+
+    For iShape = sld.Shapes.Count To 1 Step -1
+        Set s = sld.Shapes(iShape)
+        If IsSectionAudioShape(s) Then
+            If Not IsRequestedSectionAudio(slideNumber, s.Name, slideNumbers, shapeNames, entryCount) Then
+                s.Delete
+            End If
+        End If
+    Next iShape
+End Sub
+
+Function ReplaceSectionAudio(pres As Presentation, sld As Slide, audioPath As String, audioTag As String, newAudioInsertIndex As Integer) As Shape
     Dim shp As Shape
-    Dim pres As Presentation
-    Dim paramsPath As String
-    Dim fileNum As Integer
-    Dim fileContent As String
-    Dim params() As String
-    Dim slideIndex As Integer
-    Dim audioPath As String
-    Dim currentSlideIndex As Integer
-    Dim newAudioInsertIndex As Integer
-    Dim targetPath As String
-    Dim hasPres As Boolean
-    Dim audioTag As String
-    Dim fileName As String
+    Dim s As Shape
+    Dim eff As Effect
+    Dim iShape As Integer
+    Dim effIdx As Integer
+    Dim i As Integer
+    Dim margin As Single
+    Dim sectionIdx As Integer
     Dim hadExistingAudio As Boolean
     Dim existingAnimIndex As Integer
     Dim existingTriggerType As Integer
@@ -158,156 +207,196 @@ Sub InsertAudio()
     Dim existingRepeatCount As Long
     Dim existingRepeatDuration As Single
     Dim existingRewindAtEnd As MsoTriState
-    Dim s As Shape
-    Dim iShape As Integer
-    Dim effIdx As Integer
-    Dim margin As Single
-    Dim sectionIdx As Integer
-    Dim eff As Effect
-    Dim i As Integer
-    
-    currentSlideIndex = 0
-    newAudioInsertIndex = 1
-    
-    ' Path construction for Mac Office sandbox
-    paramsPath = GetOfficeFilePath("insert_audio_params.txt")
-    
-    If Dir(paramsPath) = "" Then
-        MsgBox "Error: Could not find insert_audio_params.txt at " & paramsPath
-        Exit Sub
-    End If
-    
-    hasPres = False
-    
-    fileNum = FreeFile
-    Open paramsPath For Input As fileNum
-    
-    Do While Not EOF(fileNum)
-        Line Input #fileNum, fileContent
-        
-        If Len(Trim(fileContent)) > 0 Then
-            params = Split(fileContent, "|")
-            
-            If UBound(params) >= 2 Then
-                targetPath = params(0)
-                slideIndex = CInt(params(1))
-                audioPath = params(2)
-                
-                If Not hasPres Then
-                    Set pres = GetPresentationOrShowError(targetPath)
-                    
-                    If pres Is Nothing Then
-                        Close fileNum
-                        Exit Sub
-                    End If
-                    
-                    hasPres = True
-                End If
-                
-                If slideIndex > 0 And slideIndex <= pres.Slides.Count Then
-                    Set sld = pres.Slides(slideIndex)
-                    
-                    If slideIndex <> currentSlideIndex Then
-                        currentSlideIndex = slideIndex
-                        newAudioInsertIndex = 1
-                    End If
-                    
-                    ' Managed audio filenames and shape names follow "ppt_audio_<section>"
-                    fileName = Mid(audioPath, InStrRev(audioPath, "/") + 1)
-                    fileName = Left(fileName, InStrRev(fileName, ".") - 1)
-                    audioTag = fileName
-                    
-                    hadExistingAudio = False
-                    existingAnimIndex = 1
-                    existingTriggerType = 3 ' 3 = msoAnimTriggerAfterPrevious
-                    existingDelay = 0
-                    existingRepeatCount = 1
-                    existingRepeatDuration = 0
-                    existingRewindAtEnd = msoFalse
-                    
-                    ' Find and delete existing audio from our tool, but save its animation properties first
-                    For iShape = sld.Shapes.Count To 1 Step -1
-                        Set s = sld.Shapes(iShape)
-                        If s.Name = audioTag Then
-                            For effIdx = 1 To sld.TimeLine.MainSequence.Count
-                                If Not sld.TimeLine.MainSequence(effIdx).Shape Is Nothing Then
-                                    If sld.TimeLine.MainSequence(effIdx).Shape.Name = audioTag Then
-                                        hadExistingAudio = True
-                                        existingAnimIndex = effIdx
-                                        existingTriggerType = sld.TimeLine.MainSequence(effIdx).Timing.TriggerType
-                                        existingDelay = sld.TimeLine.MainSequence(effIdx).Timing.TriggerDelayTime
-                                        existingRepeatCount = sld.TimeLine.MainSequence(effIdx).Timing.RepeatCount
-                                        existingRepeatDuration = sld.TimeLine.MainSequence(effIdx).Timing.RepeatDuration
-                                        existingRewindAtEnd = sld.TimeLine.MainSequence(effIdx).Timing.RewindAtEnd
-                                        Exit For
-                                    End If
-                                End If
-                            Next effIdx
-                            s.Delete
-                        End If
-                    Next iShape
-                    
-                    Set shp = sld.Shapes.AddMediaObject2(audioPath, 0, -1, 10, 10)
-                    
-                    If Not shp Is Nothing Then
-                        shp.Name = audioTag
-                        
-                        margin = 20
 
-                        ' Calculate vertical position based on section index to avoid stacking
-                        sectionIdx = GetSectionIndex(audioTag)
-                        
-                        shp.Left = pres.PageSetup.SlideWidth + margin
-                        
-                        shp.Top = margin + (sectionIdx - 1) * (shp.Height + margin)
-                        
-                        For i = sld.TimeLine.MainSequence.Count To 1 Step -1
-                            If Not sld.TimeLine.MainSequence(i).Shape Is Nothing Then
-                                If sld.TimeLine.MainSequence(i).Shape.Name = shp.Name Then
-                                    sld.TimeLine.MainSequence(i).Delete
-                                End If
-                            End If
-                        Next i
-                        
-                        Set eff = sld.TimeLine.MainSequence.AddEffect(shp, MEDIA_PLAY_EFFECT, , existingTriggerType)
-                        
-                        If hadExistingAudio Then
-                            eff.Timing.TriggerDelayTime = existingDelay
-                            eff.Timing.RepeatCount = existingRepeatCount
-                            eff.Timing.RepeatDuration = existingRepeatDuration
-                            eff.Timing.RewindAtEnd = existingRewindAtEnd
-                        End If
-                        
-                        If hadExistingAudio Then
-                            If existingAnimIndex <= sld.TimeLine.MainSequence.Count And existingAnimIndex > 0 Then
-                                eff.MoveTo existingAnimIndex
-                                newAudioInsertIndex = existingAnimIndex + 1
-                            End If
-                        Else
-                            ' Insert audio to the FRONT of the powerpoint sequentially
-                            If sld.TimeLine.MainSequence.Count >= newAudioInsertIndex Then
-                                eff.MoveTo newAudioInsertIndex
-                            End If
-                            newAudioInsertIndex = newAudioInsertIndex + 1
-                        End If
-                        
-                        With shp.MediaFormat
-                            .Muted = False
-                            .Volume = 0.5
-                        End With
+    hadExistingAudio = False
+    existingAnimIndex = 1
+    existingTriggerType = 3 ' 3 = msoAnimTriggerAfterPrevious
+    existingDelay = 0
+    existingRepeatCount = 1
+    existingRepeatDuration = 0
+    existingRewindAtEnd = msoFalse
+
+    ' Find and delete existing audio from our tool, but save its animation properties first
+    For iShape = sld.Shapes.Count To 1 Step -1
+        Set s = sld.Shapes(iShape)
+        If s.Name = audioTag Then
+            For effIdx = 1 To sld.TimeLine.MainSequence.Count
+                If Not sld.TimeLine.MainSequence(effIdx).Shape Is Nothing Then
+                    If sld.TimeLine.MainSequence(effIdx).Shape.Name = audioTag Then
+                        hadExistingAudio = True
+                        existingAnimIndex = effIdx
+                        existingTriggerType = sld.TimeLine.MainSequence(effIdx).Timing.TriggerType
+                        existingDelay = sld.TimeLine.MainSequence(effIdx).Timing.TriggerDelayTime
+                        existingRepeatCount = sld.TimeLine.MainSequence(effIdx).Timing.RepeatCount
+                        existingRepeatDuration = sld.TimeLine.MainSequence(effIdx).Timing.RepeatDuration
+                        existingRewindAtEnd = sld.TimeLine.MainSequence(effIdx).Timing.RewindAtEnd
+                        Exit For
                     End If
                 End If
+            Next effIdx
+            s.Delete
+        End If
+    Next iShape
+
+    Set shp = sld.Shapes.AddMediaObject2(audioPath, 0, -1, 10, 10)
+    If shp Is Nothing Then
+        Err.Raise vbObjectError + 513, , "Could not insert " & audioTag & " on slide " & sld.SlideIndex & "."
+    End If
+
+    shp.Name = audioTag
+
+    margin = 20
+
+    ' Calculate vertical position based on section index to avoid stacking
+    sectionIdx = GetSectionIndex(audioTag)
+
+    shp.Left = pres.PageSetup.SlideWidth + margin
+
+    shp.Top = margin + (sectionIdx - 1) * (shp.Height + margin)
+
+    For i = sld.TimeLine.MainSequence.Count To 1 Step -1
+        If Not sld.TimeLine.MainSequence(i).Shape Is Nothing Then
+            If sld.TimeLine.MainSequence(i).Shape.Name = shp.Name Then
+                sld.TimeLine.MainSequence(i).Delete
             End If
         End If
-    Loop
-    
-    Close fileNum
-    
-    ' Save ONCE after batch processing
-    If hasPres Then
-        pres.Save
+    Next i
+
+    Set eff = sld.TimeLine.MainSequence.AddEffect(shp, MEDIA_PLAY_EFFECT, , existingTriggerType)
+
+    If hadExistingAudio Then
+        eff.Timing.TriggerDelayTime = existingDelay
+        eff.Timing.RepeatCount = existingRepeatCount
+        eff.Timing.RepeatDuration = existingRepeatDuration
+        eff.Timing.RewindAtEnd = existingRewindAtEnd
     End If
-    
+
+    If hadExistingAudio Then
+        If existingAnimIndex <= sld.TimeLine.MainSequence.Count And existingAnimIndex > 0 Then
+            eff.MoveTo existingAnimIndex
+            newAudioInsertIndex = existingAnimIndex + 1
+        End If
+    Else
+        ' Insert audio to the FRONT of the powerpoint sequentially
+        If sld.TimeLine.MainSequence.Count >= newAudioInsertIndex Then
+            eff.MoveTo newAudioInsertIndex
+        End If
+        newAudioInsertIndex = newAudioInsertIndex + 1
+    End If
+
+    With shp.MediaFormat
+        .Muted = False
+        .Volume = 0.5
+    End With
+
+    Set ReplaceSectionAudio = shp
+End Function
+
+' Params: a "presentation|result path" header, then one "slide number|audio path" line per section audio.
+' The audio lines for a slide are its complete section audio; any other section audio on it is obsolete.
+' The result file gets "inserted|slide|shape" per section audio, "slide|slide|shapes" listing the section
+' audio left on each saved slide, "error|message" on failure, and "done" once the presentation is saved.
+Sub InsertAudio()
+    Dim pres As Presentation
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim paramsPath As String
+    Dim paramsNum As Integer
+    Dim resultNum As Integer
+    Dim fileContent As String
+    Dim header() As String
+    Dim params() As String
+    Dim slideNumbers() As Integer
+    Dim audioPaths() As String
+    Dim shapeNames() As String
+    Dim entryCount As Integer
+    Dim fileName As String
+    Dim currentSlideNumber As Integer
+    Dim newAudioInsertIndex As Integer
+    Dim i As Integer
+
+    paramsPath = GetOfficeFilePath("insert_audio_params.txt")
+    If Dir(paramsPath) = "" Then Exit Sub
+
+    paramsNum = FreeFile
+    Open paramsPath For Input As paramsNum
+    If EOF(paramsNum) Then
+        Close paramsNum
+        Exit Sub
+    End If
+    Line Input #paramsNum, fileContent
+    header = Split(fileContent, "|")
+    If UBound(header) < 1 Then
+        Close paramsNum
+        Exit Sub
+    End If
+
+    resultNum = FreeFile
+    Open header(1) For Output As resultNum
+    On Error GoTo Failed
+
+    entryCount = 0
+    Do While Not EOF(paramsNum)
+        Line Input #paramsNum, fileContent
+        If Len(Trim(fileContent)) > 0 Then
+            params = Split(fileContent, "|")
+            If UBound(params) < 1 Then
+                Err.Raise vbObjectError + 514, , "Malformed audio line: " & fileContent
+            End If
+
+            entryCount = entryCount + 1
+            ReDim Preserve slideNumbers(1 To entryCount)
+            ReDim Preserve audioPaths(1 To entryCount)
+            ReDim Preserve shapeNames(1 To entryCount)
+
+            slideNumbers(entryCount) = CInt(params(0))
+            audioPaths(entryCount) = params(1)
+            ' Managed audio filenames and shape names follow "ppt_audio_<section>"
+            fileName = Mid(params(1), InStrRev(params(1), "/") + 1)
+            shapeNames(entryCount) = Left(fileName, InStrRev(fileName, ".") - 1)
+        End If
+    Loop
+    Close paramsNum
+    paramsNum = 0
+
+    Set pres = GetPresentation(header(0))
+    If pres Is Nothing Then
+        Err.Raise vbObjectError + 515, , "Presentation not found: " & header(0)
+    End If
+
+    currentSlideNumber = 0
+    For i = 1 To entryCount
+        If slideNumbers(i) < 1 Or slideNumbers(i) > pres.Slides.Count Then
+            Err.Raise vbObjectError + 516, , "Slide " & slideNumbers(i) & " does not exist."
+        End If
+
+        If slideNumbers(i) <> currentSlideNumber Then
+            currentSlideNumber = slideNumbers(i)
+            newAudioInsertIndex = 1
+        End If
+
+        Set shp = ReplaceSectionAudio(pres, pres.Slides(slideNumbers(i)), audioPaths(i), shapeNames(i), newAudioInsertIndex)
+        Print #resultNum, "inserted|" & slideNumbers(i) & "|" & shp.Name
+    Next i
+
+    ' Only once every replacement has captured its old animation is obsolete audio removed
+    For i = 1 To entryCount
+        If IsFirstEntryForSlide(slideNumbers, i) Then
+            Set sld = pres.Slides(slideNumbers(i))
+            RemoveObsoleteSectionAudio sld, slideNumbers(i), slideNumbers, shapeNames, entryCount
+            Print #resultNum, "slide|" & slideNumbers(i) & "|" & ListSectionAudio(sld)
+        End If
+    Next i
+
+    pres.Save
+    Print #resultNum, "done"
+    Close resultNum
+    Exit Sub
+
+Failed:
+    Print #resultNum, "error|" & Replace(Replace(Err.Description, vbCr, " "), vbLf, " ")
+    Close resultNum
+    If paramsNum <> 0 Then Close paramsNum
 End Sub
 
 Sub ExportAllSlideNotes()
