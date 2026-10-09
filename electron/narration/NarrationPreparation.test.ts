@@ -39,8 +39,8 @@ afterEach(() => {
 const defaultMappings: Record<string, SpeakerMapping> = { Narrator: { voice: narratorVoice } };
 
 const FIRST_SECOND: NarrationSection[] = [
-  { speaker: "Narrator", text: "First" },
-  { speaker: "", text: "Second" },
+  { speaker: "Narrator", text: "First", playAcrossSlides: false },
+  { speaker: "", text: "Second", playAcrossSlides: false },
 ];
 
 function createPreparation(mappings: Record<string, SpeakerMapping> = defaultMappings) {
@@ -79,7 +79,7 @@ describe("NarrationPreparation", () => {
     const request = {
       slideIndex: toSlideIndex(1),
       sectionIndex: 0,
-      sections: [{ speaker: "Narrator", text: "Hello" }],
+      sections: [{ speaker: "Narrator", text: "Hello", playAcrossSlides: false }],
       text: " Hello ",
       speakerChoice: { kind: "effective" as const },
     };
@@ -110,11 +110,14 @@ describe("NarrationPreparation", () => {
       {
         slideIndex: toSlideIndex(4),
         sections: [
-          { speaker: "Narrator", text: "Five first" },
-          { speaker: "", text: "Five second" },
+          { speaker: "Narrator", text: "Five first", playAcrossSlides: false },
+          { speaker: "", text: "Five second", playAcrossSlides: false },
         ],
       },
-      { slideIndex: toSlideIndex(0), sections: [{ speaker: "Narrator", text: "One first" }] },
+      {
+        slideIndex: toSlideIndex(0),
+        sections: [{ speaker: "Narrator", text: "One first", playAcrossSlides: false }],
+      },
     ]);
     await vi.waitFor(() => expect(pending.size).toBe(3));
 
@@ -136,7 +139,7 @@ describe("NarrationPreparation", () => {
       preparation.preparePreview({
         slideIndex: toSlideIndex(1),
         sectionIndex: 0,
-        sections: [{ speaker: "Narrator", text: "Stored text" }],
+        sections: [{ speaker: "Narrator", text: "Stored text", playAcrossSlides: false }],
         text: "  Live renderer text  \n",
         speakerChoice: { kind: "effective" },
       }),
@@ -211,7 +214,7 @@ describe("NarrationPreparation", () => {
     await preparation.preparePreview({
       slideIndex: toSlideIndex(3),
       sectionIndex: 0,
-      sections: [{ speaker: "", text: "No speaker on this slide" }],
+      sections: [{ speaker: "", text: "No speaker on this slide", playAcrossSlides: false }],
       text: "Defaulted",
       speakerChoice: { kind: "effective" },
     });
@@ -227,7 +230,7 @@ describe("NarrationPreparation", () => {
     const request = {
       slideIndex: toSlideIndex(0),
       sectionIndex: 0,
-      sections: [{ speaker: "Narrator", text: "Welcome" }],
+      sections: [{ speaker: "Narrator", text: "Welcome", playAcrossSlides: false }],
       text: "Welcome",
       speakerChoice: { kind: "override" as const, speaker: "Guest" },
     };
@@ -235,7 +238,9 @@ describe("NarrationPreparation", () => {
     await preparation.preparePreview(request);
 
     expect(generateSpeech).toHaveBeenCalledWith("Welcome", guestVoice, undefined);
-    expect(request.sections).toEqual([{ speaker: "Narrator", text: "Welcome" }]);
+    expect(request.sections).toEqual([
+      { speaker: "Narrator", text: "Welcome", playAcrossSlides: false },
+    ]);
   });
 
   it("treats an explicit Default preview as an override of the effective speaker", async () => {
@@ -247,7 +252,7 @@ describe("NarrationPreparation", () => {
     await preparation.preparePreview({
       slideIndex: toSlideIndex(0),
       sectionIndex: 0,
-      sections: [{ speaker: "Narrator", text: "Welcome" }],
+      sections: [{ speaker: "Narrator", text: "Welcome", playAcrossSlides: false }],
       text: "Welcome",
       speakerChoice: { kind: "default" },
     });
@@ -262,7 +267,7 @@ describe("NarrationPreparation", () => {
       preparation.preparePreview({
         slideIndex: toSlideIndex(3),
         sectionIndex: 0,
-        sections: [{ speaker: "Narrator", text: "Hello" }],
+        sections: [{ speaker: "Narrator", text: "Hello", playAcrossSlides: false }],
         text: "Hello",
         speakerChoice: { kind: "effective" },
       }),
@@ -289,7 +294,7 @@ describe("NarrationPreparation", () => {
       preparation.preparePreview({
         slideIndex: toSlideIndex(0),
         sectionIndex: 0,
-        sections: [{ speaker: "Narrator", text: "Stored" }],
+        sections: [{ speaker: "Narrator", text: "Stored", playAcrossSlides: false }],
         text: " \n\t ",
         speakerChoice: { kind: "effective" },
       }),
@@ -330,8 +335,8 @@ describe("NarrationPreparation prompts", () => {
       {
         slideIndex: toSlideIndex(0),
         sections: [
-          { speaker: "Narrator", text: "First" },
-          { speaker: "Guest", text: "Second" },
+          { speaker: "Narrator", text: "First", playAcrossSlides: false },
+          { speaker: "Guest", text: "Second", playAcrossSlides: false },
         ],
       },
     ]);
@@ -350,7 +355,7 @@ describe("NarrationPreparation prompts", () => {
     await preparation.preparePreview({
       slideIndex: toSlideIndex(0),
       sectionIndex: 0,
-      sections: [{ speaker: "Narrator", text: "First" }],
+      sections: [{ speaker: "Narrator", text: "First", playAcrossSlides: false }],
       text: "First",
       speakerChoice: { kind: "effective" },
     });
@@ -372,7 +377,14 @@ describe("NarrationPreparation inline prompts", () => {
     await preparation.prepareBatch([
       {
         slideIndex: toSlideIndex(0),
-        sections: [{ speaker: "Narrator", prompt: "almost whispering", text: "First" }],
+        sections: [
+          {
+            speaker: "Narrator",
+            prompt: "almost whispering",
+            text: "First",
+            playAcrossSlides: false,
+          },
+        ],
       },
     ]);
 
@@ -387,7 +399,9 @@ describe("NarrationPreparation inline prompts", () => {
     await preparation.prepareBatch([
       {
         slideIndex: toSlideIndex(0),
-        sections: [{ speaker: "Narrator", prompt: "sigh first", text: "First" }],
+        sections: [
+          { speaker: "Narrator", prompt: "sigh first", text: "First", playAcrossSlides: false },
+        ],
       },
     ]);
 
@@ -403,8 +417,13 @@ describe("NarrationPreparation inline prompts", () => {
       {
         slideIndex: toSlideIndex(0),
         sections: [
-          { speaker: "Narrator", prompt: "almost whispering", text: "First" },
-          { speaker: "", text: "Second" },
+          {
+            speaker: "Narrator",
+            prompt: "almost whispering",
+            text: "First",
+            playAcrossSlides: false,
+          },
+          { speaker: "", text: "Second", playAcrossSlides: false },
         ],
       },
     ]);
@@ -423,7 +442,14 @@ describe("NarrationPreparation inline prompts", () => {
     await preparation.preparePreview({
       slideIndex: toSlideIndex(0),
       sectionIndex: 0,
-      sections: [{ speaker: "Narrator", prompt: "almost whispering", text: "First" }],
+      sections: [
+        {
+          speaker: "Narrator",
+          prompt: "almost whispering",
+          text: "First",
+          playAcrossSlides: false,
+        },
+      ],
       text: "First",
       speakerChoice: { kind: "effective" },
     });
@@ -439,7 +465,14 @@ describe("NarrationPreparation inline prompts", () => {
     await preparation.prepareBatch([
       {
         slideIndex: toSlideIndex(0),
-        sections: [{ speaker: "Narrator", prompt: "almost whispering", text: "First" }],
+        sections: [
+          {
+            speaker: "Narrator",
+            prompt: "almost whispering",
+            text: "First",
+            playAcrossSlides: false,
+          },
+        ],
       },
     ]);
 
@@ -454,8 +487,13 @@ describe("NarrationPreparation inline prompts", () => {
         slideIndex: toSlideIndex(1),
         sectionIndex: 1,
         sections: [
-          { speaker: "Narrator", text: "First" },
-          { speaker: "", prompt: "wearily", text: "Second sentence and more" },
+          { speaker: "Narrator", text: "First", playAcrossSlides: false },
+          {
+            speaker: "",
+            prompt: "wearily",
+            text: "Second sentence and more",
+            playAcrossSlides: false,
+          },
         ],
         text: "Second sentence",
         speakerChoice: { kind: "effective" },
@@ -472,15 +510,25 @@ describe("NarrationPreparation inline prompts", () => {
         {
           slideIndex: toSlideIndex(2),
           sections: [
-            { speaker: "Narrator", text: "First" },
-            { speaker: "", text: "   " },
-            { speaker: "", text: "Third" },
+            { speaker: "Narrator", text: "First", playAcrossSlides: false },
+            { speaker: "", text: "   ", playAcrossSlides: false },
+            { speaker: "", text: "Third", playAcrossSlides: false },
           ],
         },
       ]),
     ).resolves.toEqual([
-      { slideIndex: 2, sectionIndex: 0, audioData: new Uint8Array([1, 2, 3]), playAcrossSlides: false },
-      { slideIndex: 2, sectionIndex: 2, audioData: new Uint8Array([1, 2, 3]), playAcrossSlides: false },
+      {
+        slideIndex: 2,
+        sectionIndex: 0,
+        audioData: new Uint8Array([1, 2, 3]),
+        playAcrossSlides: false,
+      },
+      {
+        slideIndex: 2,
+        sectionIndex: 2,
+        audioData: new Uint8Array([1, 2, 3]),
+        playAcrossSlides: false,
+      },
     ]);
     expect(generateSpeech.mock.calls.map(([text]) => text)).toEqual(["First", "Third"]);
   });

@@ -131,7 +131,7 @@ const sameSection = (edited: NarrationSection, saved: NarrationSection) =>
   edited.text === saved.text &&
   edited.speaker === saved.speaker &&
   (edited.prompt || "") === (saved.prompt || "") &&
-  (edited.playAcrossSlides ?? false) === (saved.playAcrossSlides ?? false) &&
+  edited.playAcrossSlides === saved.playAcrossSlides &&
   FORMAT_KEYS.every((key) => (edited.format?.[key] || "") === (saved.format?.[key] || ""));
 
 const sectionId = (number: number): SectionId => `section-${number}` as SectionId;
@@ -525,7 +525,12 @@ export class SlideNoteEditor {
       return this;
     }
 
-    const added: EditorSection = { id: sectionId(mintedSectionCount), speaker: "", text: "" };
+    const added: EditorSection = {
+      id: sectionId(mintedSectionCount),
+      speaker: "",
+      text: "",
+      playAcrossSlides: false,
+    };
     const appended = this.#withSlideSections(this.#activeListOffset, (sections) => [
       ...sections,
       added,
@@ -702,15 +707,12 @@ export class SlideNoteEditor {
       );
       const separatorBefore = section.format?.separatorBefore;
       // Playback is not note syntax, so formatting drops it.
-      const playback =
-        section.playAcrossSlides === undefined
-          ? {}
-          : { playAcrossSlides: section.playAcrossSlides };
+      const { playAcrossSlides } = section;
       return [
         separatorBefore === undefined
-          ? { ...head!, ...playback }
+          ? { ...head!, playAcrossSlides }
           : // Formatting a section alone omits the separator that preceded it.
-            { ...head!, ...playback, format: { ...head!.format, separatorBefore } },
+            { ...head!, playAcrossSlides, format: { ...head!.format, separatorBefore } },
         ...split,
       ];
     };

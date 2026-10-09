@@ -124,9 +124,15 @@ it("formats the submitted structured sections only as PowerPoint takes them", as
             speaker: "Narrator",
             prompt: "wearily",
             text: "First\n---\nstill the first section",
+            playAcrossSlides: false,
             format: { speakerPrefix: "  [ ", speakerSuffix: " ]  ", promptPrefix: "[p: " },
           },
-          { speaker: "", text: "Second", format: { separatorBefore: "\n-----\n" } },
+          {
+            speaker: "",
+            text: "Second",
+            playAcrossSlides: false,
+            format: { separatorBefore: "\n-----\n" },
+          },
         ],
       },
     ],
@@ -173,7 +179,7 @@ it("asks PowerPoint for each section's submitted playback, which speech never se
       { speaker: "Narrator", text: "First", playAcrossSlides: true },
       { speaker: "", text: " ", playAcrossSlides: true },
       { speaker: "", text: "Third", playAcrossSlides: false },
-      { speaker: "", text: "Fourth" },
+      { speaker: "", text: "Fourth", playAcrossSlides: false },
       { speaker: "", text: "Fifth", playAcrossSlides: true },
     ],
   } as never);
@@ -199,7 +205,8 @@ it("asks PowerPoint for each section's submitted playback, which speech never se
 });
 
 describe("saving removes obsolete section audio", () => {
-  const narrated = (...texts: string[]) => texts.map((text) => ({ speaker: "Narrator", text }));
+  const narrated = (...texts: string[]) =>
+    texts.map((text) => ({ speaker: "Narrator", text, playAcrossSlides: false }));
 
   it.each([
     {
