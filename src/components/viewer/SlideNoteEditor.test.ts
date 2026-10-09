@@ -57,7 +57,7 @@ describe("opening an editing session", () => {
           slideIndex: at(0),
           image: "slide-1.png",
           src: "slide-1",
-          sections: [{ speaker: "Bob", text: "Parsed" }],
+          sections: [{ speaker: "Bob", text: "Parsed", playAcrossSlides: false }],
         },
       ],
       speakers,
@@ -189,9 +189,15 @@ describe("handing sections onward", () => {
       {
         speaker: "Alice",
         text: "First narration",
+        playAcrossSlides: false,
         format: { speakerPrefix: "[", speakerSuffix: "]" },
       },
-      { speaker: "", text: "Second section", format: { separatorBefore: "\n---\n" } },
+      {
+        speaker: "",
+        text: "Second section",
+        playAcrossSlides: false,
+        format: { separatorBefore: "\n---\n" },
+      },
     ]);
     expect(editor.narrationSections.some((section) => "id" in section)).toBe(false);
   });
@@ -380,7 +386,12 @@ describe("choosing Play Across Slides", () => {
           ...slide(at(0), "[Alice]\nGreeting\n---\nSecond", []),
           sections: [
             { speaker: "", text: "[Alice]\nGreeting", playAcrossSlides: true },
-            { speaker: "", text: "Second", format: { separatorBefore: "---" } },
+            {
+              speaker: "",
+              text: "Second",
+              format: { separatorBefore: "---" },
+              playAcrossSlides: false,
+            },
           ],
         },
       ],
@@ -408,7 +419,7 @@ describe("choosing Play Across Slides", () => {
 
     expect(snapshot.slides[0]?.sections.map((section) => section.playAcrossSlides)).toEqual([
       true,
-      undefined,
+      false,
     ]);
     expect(saved.isSlideDirty(at(0))).toBe(true);
     expect(saved.setSectionPlayAcrossSlides(second!.id, false).isSlideDirty(at(0))).toBe(false);

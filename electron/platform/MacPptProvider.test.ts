@@ -132,18 +132,6 @@ describe("MacPptProvider native slide numbers", () => {
     );
   });
 
-  it("names the 1-based slide numbers the remove-audio macro expects", async () => {
-    const provider = new MacPptProvider();
-    let params = "";
-    succeedAppleScript(() => {
-      params = fs.readFileSync(officeContainerPath("remove_audio_params.txt"), "utf8");
-    });
-
-    await provider.removeAudio("/presentations/deck.pptx", [toSlideIndex(0), toSlideIndex(2)]);
-
-    expect(params).toBe("/presentations/deck.pptx|1,3");
-  });
-
   it("starts the slideshow at the 1-based slide number", async () => {
     const provider = new MacPptProvider();
     succeedAppleScript();
@@ -546,6 +534,68 @@ describe("MacPptProvider.insertAudio", () => {
     insertAudioMacroReports(report);
 
     const result = await provider.insertAudio(deck, firstAndThirdSlideAudio);
+
+    expect(result).toEqual({ success: false, message: expect.stringMatching(message) as unknown });
+  });
+});
+
+describe("MacPptProvider.removeAudio", () => {
+  const deck = "/presentations/deck.pptx";
+  const firstAndThirdSlides = [toSlideIndex(0), toSlideIndex(2)];
+
+  /**
+   * Stands in for the RemoveAudio macro: the provider learns the outcome only
+   * from the report the macro writes to the result path named in its params.
+   */
+  function removeAudioMacroReports(report: string | undefined) {
+    let params = "";
+    succeedAppleScript(() => {
+      params = fs.readFileSync(officeContainerPath("remove_audio_params.txt"), "utf8");
+      const [, , resultPath] = params.split("|");
+      if (report !== undefined) {
+        fs.writeFileSync(resultPath!, report);
+      }
+    });
+    return () => params;
+  }
+
+  it("succeeds once the macro reports no section audio left on any 1-based slide number", async () => {
+    const provider = new MacPptProvider();
+    const params = removeAudioMacroReports("slide|1|\r\nslide|3|\r\ndone\r\n");
+
+    const result = await provider.removeAudio(deck, firstAndThirdSlides);
+
+    expect(result).toEqual({ success: true });
+    expect(params().split("|").slice(0, 2)).toEqual([deck, "1,3"]);
+  });
+
+  it.each([
+    { problem: "writes no report", report: undefined, message: /did not report/ },
+    {
+      problem: "stops before finishing",
+      report: "slide|1|\nslide|3|\n",
+      message: /did not finish/,
+    },
+    {
+      problem: "reports an error",
+      report: "error|Presentation not found: /presentations/deck.pptx\n",
+      message: /Presentation not found/,
+    },
+    {
+      problem: "does not report a slide",
+      report: "slide|1|\ndone\n",
+      message: /slide 3/,
+    },
+    {
+      problem: "leaves section audio on a slide",
+      report: "slide|1|\nslide|3|ppt_audio_2\ndone\n",
+      message: /slide 3.*ppt_audio_2/,
+    },
+  ])("fails when the macro $problem", async ({ report, message }) => {
+    const provider = new MacPptProvider();
+    removeAudioMacroReports(report);
+
+    const result = await provider.removeAudio(deck, firstAndThirdSlides);
 
     expect(result).toEqual({ success: false, message: expect.stringMatching(message) as unknown });
   });

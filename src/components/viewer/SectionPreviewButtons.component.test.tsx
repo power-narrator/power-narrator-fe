@@ -94,8 +94,8 @@ async function renderSpeakerChoicePreview({
 }
 
 const concurrentSections: NarrationSection[] = [
-  { speaker: "First", text: "First section" },
-  { speaker: "Second", text: "Second section" },
+  { speaker: "First", text: "First section", playAcrossSlides: false },
+  { speaker: "Second", text: "Second section", playAcrossSlides: false },
 ];
 
 async function renderConcurrentSectionPreviews() {
@@ -133,6 +133,7 @@ const liveSection: NarrationSection = {
   speaker: "Narrator",
   prompt: "wearily",
   text: "Stale section text",
+  playAcrossSlides: false,
 };
 
 /**
@@ -213,8 +214,8 @@ test("previews the whole live notes editor when nothing is selected", async () =
 test("an effective preview derives its highlighted speaker from slide notes", async () => {
   const { previewRequests, screen } = await renderSpeakerChoicePreview({
     sections: [
-      { speaker: "Narrator", text: "First" },
-      { speaker: "", text: "Inherited" },
+      { speaker: "Narrator", text: "First", playAcrossSlides: false },
+      { speaker: "", text: "Inherited", playAcrossSlides: false },
     ],
     sectionIndex: 1,
   });
@@ -241,8 +242,8 @@ test("an effective preview derives its highlighted speaker from slide notes", as
 test("an effective preview remembers the inherited speaker after playback", async () => {
   const { audioElements, previewRequests, screen } = await renderSpeakerChoicePreview({
     sections: [
-      { speaker: "Narrator", text: "First" },
-      { speaker: "", text: "Inherited" },
+      { speaker: "Narrator", text: "First", playAcrossSlides: false },
+      { speaker: "", text: "Inherited", playAcrossSlides: false },
     ],
     sectionIndex: 1,
     captureAudio: true,
@@ -268,7 +269,9 @@ test("an effective preview remembers the inherited speaker after playback", asyn
 });
 
 test("an explicit Default preview remains a temporary override", async () => {
-  const sections: NarrationSection[] = [{ speaker: "Narrator", text: "Stored narration" }];
+  const sections: NarrationSection[] = [
+    { speaker: "Narrator", text: "Stored narration", playAcrossSlides: false },
+  ];
   const { previewRequests, screen } = await renderSpeakerChoicePreview({ sections });
 
   await screen.getByRole("button", { name: "Default" }).click();
@@ -276,12 +279,14 @@ test("an explicit Default preview remains a temporary override", async () => {
   await vi.waitFor(() =>
     expect(previewRequests).toEqual([
       expect.objectContaining({
-        sections: [{ speaker: "Narrator", text: "Stored narration" }],
+        sections: [{ speaker: "Narrator", text: "Stored narration", playAcrossSlides: false }],
         speakerChoice: { kind: "default" },
       }),
     ]),
   );
-  expect(sections).toEqual([{ speaker: "Narrator", text: "Stored narration" }]);
+  expect(sections).toEqual([
+    { speaker: "Narrator", text: "Stored narration", playAcrossSlides: false },
+  ]);
 });
 
 test("stopping a pending preview suppresses its late audio result", async () => {
@@ -304,7 +309,7 @@ test("stopping a pending preview suppresses its late audio result", async () => 
         id="1-0"
         slideIndex={toSlideIndex(0)}
         sectionIndex={0}
-        sections={[{ speaker: "Narrator", text: "Delayed preview" }]}
+        sections={[{ speaker: "Narrator", text: "Delayed preview", playAcrossSlides: false }]}
         mappings={{ Narrator: { voice: narratorVoice } }}
         onFocus={() => {}}
       />
@@ -378,7 +383,7 @@ test("creates MP3 playback for a narration preview", async () => {
         id="1-0"
         slideIndex={toSlideIndex(0)}
         sectionIndex={0}
-        sections={[{ speaker: "Narrator", text: "Local narration" }]}
+        sections={[{ speaker: "Narrator", text: "Local narration", playAcrossSlides: false }]}
         mappings={{ Narrator: { voice: narratorVoice } }}
         onFocus={() => {}}
       />
@@ -394,7 +399,7 @@ test("creates MP3 playback for a narration preview", async () => {
 test("surfaces a contextual narration-preparation failure and stays ready to retry", async () => {
   const alerted = vi.spyOn(window, "alert").mockImplementation(() => {});
   const { screen } = await renderSpeakerChoicePreview({
-    sections: [{ speaker: "Narrator", text: "Unnarratable" }],
+    sections: [{ speaker: "Narrator", text: "Unnarratable", playAcrossSlides: false }],
     mappings: { Narrator: {} },
     respond: () =>
       Promise.reject(

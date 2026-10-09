@@ -53,8 +53,8 @@ it("narrates a preview from the structured sections the request carried", async 
     // given: formatting and reparsing them would split the first section and
     // move the previewed one out from under its position.
     sections: [
-      { speaker: "Narrator", text: "First\n---\nstill the first section" },
-      { speaker: "", prompt: "wearily", text: "Second" },
+      { speaker: "Narrator", text: "First\n---\nstill the first section", playAcrossSlides: false },
+      { speaker: "", prompt: "wearily", text: "Second", playAcrossSlides: false },
     ],
     text: "Second",
     speakerChoice: { kind: "effective" },
