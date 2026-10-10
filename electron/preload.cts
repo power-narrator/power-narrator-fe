@@ -20,6 +20,7 @@ import type {
   SaveAllRunObserver,
   SaveAllRunProgress,
   SaveAllRunResult,
+  SaveAllRunRouting,
   NarrationPreviewResult,
   PreviewNarrationRequest,
 } from "../shared/types/narration.js";
@@ -57,7 +58,7 @@ const electronAPI = {
         ...payload,
         runId,
         progressChannel,
-      })) as SaveAllRunResult;
+      } satisfies NarratedPresentationSaveRequest & SaveAllRunRouting)) as SaveAllRunResult;
     } finally {
       active = false;
       ipcRenderer.removeListener(progressChannel, listener);

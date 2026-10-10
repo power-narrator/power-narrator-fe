@@ -1,7 +1,7 @@
 import type { IpcMain } from "electron";
 import type {
   NarratedPresentationSaveRequest,
-  SaveAllRunChannels,
+  SaveAllRunRouting,
   SaveAllRunResult,
 } from "../../shared/types/narration.js";
 import {
@@ -11,7 +11,7 @@ import {
 import type { SaveAllRunLifecycle } from "./registerNarrationIpc.js";
 import { resolvePresentationSaveTarget } from "./resolvePresentationSaveTarget.js";
 
-type NarratedPresentationSaveIpcRequest = NarratedPresentationSaveRequest & SaveAllRunChannels;
+type NarratedPresentationSaveIpcRequest = NarratedPresentationSaveRequest & SaveAllRunRouting;
 
 type ActiveRun = { runId: number; cancellation: SaveAllRunCancellation };
 
