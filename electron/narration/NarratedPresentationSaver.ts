@@ -19,7 +19,6 @@ import {
 
 type SavePowerPoint = Pick<PptProvider, "saveNotes" | "insertAudio" | "removeAudio">;
 
-/** A latch the run reads at each safe boundary; once requested it stays requested. */
 export class SaveAllRunCancellation {
   #requested = false;
 
@@ -64,10 +63,6 @@ export class NarratedPresentationSaver {
   }
 
   /**
-   * A save-all run: one complete slide at a time, in request order. A slide is
-   * written only once all of its sections have been synthesized, and no later
-   * slide starts before it is saved.
-   *
    * Cancellation is honoured before a slide starts generating and before its
    * save sequence starts; a slide already being saved finishes its writes, and
    * the run then ends cancelled even when that slide was the last.
@@ -154,7 +149,6 @@ async function synthesizeSlide(slide: PlannedNarrationSlide): Promise<Synthesize
   }
 }
 
-/** A `partial` failure means the slide's notes were written but its audio was not. */
 async function commitSlide(
   powerpoint: SavePowerPoint,
   filePath: string,
