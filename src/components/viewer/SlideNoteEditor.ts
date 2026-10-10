@@ -706,14 +706,13 @@ export class SlideNoteEditor {
         speakerNames,
       );
       const separatorBefore = section.format?.separatorBefore;
-      // Playback is not note syntax, so formatting drops it.
       const { playAcrossSlides } = section;
       return [
         separatorBefore === undefined
           ? { ...head!, playAcrossSlides }
           : // Formatting a section alone omits the separator that preceded it.
             { ...head!, playAcrossSlides, format: { ...head!.format, separatorBefore } },
-        ...split,
+        ...split.map((parsed) => ({ ...parsed, playAcrossSlides: false })),
       ];
     };
     const rereadSlide = (slide: EditorSlide): EditorSlide => ({

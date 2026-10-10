@@ -12,7 +12,10 @@ import { NarrationPreparation } from "./NarrationPreparation.js";
 import { NarratedPresentationSaver } from "./NarratedPresentationSaver.js";
 
 const sections = (notes: string, knownSpeakers: string[] = ["Narrator"]) =>
-  parseNarrationSections(notes, knownSpeakers);
+  parseNarrationSections(notes, knownSpeakers).map((section) => ({
+    ...section,
+    playAcrossSlides: false,
+  }));
 
 const narratorVoice: Voice = {
   provider: "gcp",

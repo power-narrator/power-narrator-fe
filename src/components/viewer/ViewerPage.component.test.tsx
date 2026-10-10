@@ -20,7 +20,10 @@ function loadedWith(notes: string, knownSpeakers: readonly string[] = []): Slide
     slideIndex: at(0),
     image: "slide-one.png",
     src: "slide-one",
-    sections: parseNarrationSections(notes, knownSpeakers),
+    sections: parseNarrationSections(notes, knownSpeakers).map((section) => ({
+      ...section,
+      playAcrossSlides: false,
+    })),
   };
 }
 

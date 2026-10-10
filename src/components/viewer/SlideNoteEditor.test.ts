@@ -26,7 +26,10 @@ function slide(
     slideIndex,
     image: `slide-${slideNumber}.png`,
     src: `slide-${slideNumber}`,
-    sections: parseNarrationSections(notes, knownSpeakers),
+    sections: parseNarrationSections(notes, knownSpeakers).map((section) => ({
+      ...section,
+      playAcrossSlides: false,
+    })),
   };
 }
 

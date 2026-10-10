@@ -7,12 +7,10 @@ const SECTION_DIVIDER_PATTERN = /^[ \t]*-{3,}[ \t]*(?:\n)?$/;
 const BRACKETED_LINE_PATTERN = /^((?:[ \t]*\n)*[ \t]*)\[([^\]]*)\]([ \t]*)(?:\n|$)/;
 const SAME_LINE_PADDING = { leading: /^[ \t]*/, trailing: /[ \t]*$/ };
 
-export type NarrationSection = {
+export type ParsedNarrationSection = {
   speaker: string;
   prompt?: string;
   text: string;
-  /** Whether the section's audio continues across slides. */
-  playAcrossSlides: boolean;
   format?: {
     separatorBefore?: string;
     speakerPrefix?: string;
@@ -21,6 +19,8 @@ export type NarrationSection = {
     promptSuffix?: string;
   };
 };
+
+export type NarrationSection = ParsedNarrationSection & { playAcrossSlides: boolean };
 
 type RawNarrationSection = {
   separatorBefore?: string;
@@ -90,7 +90,7 @@ function splitPadding(text: string, padding: { leading: RegExp; trailing: RegExp
   };
 }
 
-function readSpeaker(line: BracketedLine): Pick<NarrationSection, "speaker" | "format"> {
+function readSpeaker(line: BracketedLine): Pick<ParsedNarrationSection, "speaker" | "format"> {
   const { leading, trailing, value } = splitPadding(line.content, SAME_LINE_PADDING);
 
   return {
@@ -102,7 +102,7 @@ function readSpeaker(line: BracketedLine): Pick<NarrationSection, "speaker" | "f
   };
 }
 
-function readPrompt(line: BracketedLine): Pick<NarrationSection, "prompt" | "format"> | null {
+function readPrompt(line: BracketedLine): Pick<ParsedNarrationSection, "prompt" | "format"> | null {
   const marker = line.content.match(PROMPT_MARKER_PATTERN);
   if (!marker) {
     return null;
@@ -123,11 +123,11 @@ function readPrompt(line: BracketedLine): Pick<NarrationSection, "prompt" | "for
 function parseSection(
   rawSection: RawNarrationSection,
   knownSpeakers: ReadonlySet<string>,
-): NarrationSection {
+): ParsedNarrationSection {
   let remaining = rawSection.text;
   let speaker = "";
   let prompt: string | undefined;
-  let format: NarrationSection["format"] = rawSection.separatorBefore
+  let format: ParsedNarrationSection["format"] = rawSection.separatorBefore
     ? { separatorBefore: rawSection.separatorBefore }
     : {};
 
@@ -151,7 +151,6 @@ function parseSection(
     speaker,
     ...(prompt ? { prompt } : {}),
     text: remaining,
-    playAcrossSlides: false,
     ...(format && Object.keys(format).length > 0 ? { format } : {}),
   };
 }
@@ -159,13 +158,13 @@ function parseSection(
 export const parseNarrationSections = (
   text: string,
   knownSpeakers: Iterable<string>,
-): NarrationSection[] => {
+): ParsedNarrationSection[] => {
   const names = new Set(knownSpeakers);
   return splitRawSections(normalizeNotes(text)).map((section) => parseSection(section, names));
 };
 
 export const getEffectiveSpeaker = (
-  sections: readonly Pick<NarrationSection, "speaker">[],
+  sections: readonly Pick<ParsedNarrationSection, "speaker">[],
   sectionIndex: number,
 ): string => {
   for (let candidateIndex = sectionIndex; candidateIndex >= 0; candidateIndex -= 1) {
@@ -186,7 +185,7 @@ function withMarkerSpacing(prefix: string, prompt: string) {
   return { prefix: `${prefix} `, prompt: prompt.slice(1) };
 }
 
-export const formatNarrationSections = (sections: readonly NarrationSection[]): string =>
+export const formatNarrationSections = (sections: readonly ParsedNarrationSection[]): string =>
   sections.reduce((notes, section, sectionIndex) => {
     const separator =
       sectionIndex > 0 ? section.format?.separatorBefore || DEFAULT_SECTION_SEPARATOR : "";
