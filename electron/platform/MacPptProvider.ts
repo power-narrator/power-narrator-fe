@@ -203,6 +203,21 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     });
   }
 
+  private async triggerMacro(
+    macroName: string,
+    filePath: string,
+    paramsFileName: string,
+    params: string,
+  ): Promise<AppleScriptResult> {
+    const paramsPath = path.join(this.getOfficeContainerPath(), paramsFileName);
+    try {
+      fs.writeFileSync(paramsPath, params, "utf8");
+      return await this.runAppleScriptJson("trigger-macro.applescript", [macroName, filePath]);
+    } finally {
+      cleanupPaths(paramsPath);
+    }
+  }
+
   private focusApp(): void {
     const [firstWindow] = BrowserWindow.getAllWindows();
     if (firstWindow) {
@@ -312,15 +327,16 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
 
   async readAllSlideNotes(filePath: string): Promise<ReadAllSlideNotesResult> {
     const officeContainer = this.getOfficeContainerPath();
-    const paramsPath = path.join(officeContainer, "export_all_notes_params.txt");
-    const outputPath = path.join(officeContainer, `export_all_notes_${Date.now()}.txt`);
+    const outputPath = path.join(officeContainer, "export_all_notes.txt");
 
     try {
-      fs.writeFileSync(paramsPath, `${filePath}|${outputPath}`, "utf8");
-      const scriptResult = await this.runAppleScriptJson("trigger-macro.applescript", [
+      cleanupPaths(outputPath);
+      const scriptResult = await this.triggerMacro(
         "ExportAllSlideNotes",
         filePath,
-      ]);
+        "export_all_notes_params.txt",
+        `${filePath}|${outputPath}`,
+      );
       if (!scriptResult.success) {
         return { success: false, message: scriptResult.message || "Failed to export slide notes." };
       }
@@ -330,25 +346,22 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     } catch (e: unknown) {
       return { success: false, message: getErrorMessage(e) };
     } finally {
-      cleanupPaths(paramsPath, outputPath);
+      cleanupPaths(outputPath);
     }
   }
 
   async readSlideNotes(filePath: string, slideIndex: SlideIndex): Promise<ReadSlideNotesResult> {
     const officeContainer = this.getOfficeContainerPath();
-    const paramsPath = path.join(officeContainer, "export_slide_notes_params.txt");
-    const outputPath = path.join(officeContainer, `export_slide_notes_${Date.now()}.txt`);
+    const outputPath = path.join(officeContainer, "export_slide_notes.txt");
 
     try {
-      fs.writeFileSync(
-        paramsPath,
-        `${filePath}|${slideNumberOf(slideIndex)}|${outputPath}`,
-        "utf8",
-      );
-      const scriptResult = await this.runAppleScriptJson("trigger-macro.applescript", [
+      cleanupPaths(outputPath);
+      const scriptResult = await this.triggerMacro(
         "ExportSlideNotes",
         filePath,
-      ]);
+        "export_slide_notes_params.txt",
+        `${filePath}|${slideNumberOf(slideIndex)}|${outputPath}`,
+      );
       if (!scriptResult.success) {
         return { success: false, message: scriptResult.message || "Failed to export slide notes." };
       }
@@ -358,7 +371,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     } catch (e: unknown) {
       return { success: false, message: getErrorMessage(e) };
     } finally {
-      cleanupPaths(paramsPath, outputPath);
+      cleanupPaths(outputPath);
     }
   }
 
@@ -367,16 +380,17 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     slideIndices: readonly SlideIndex[],
   ): Promise<SectionAudioPlaybackResult> {
     const officeContainer = this.getOfficeContainerPath();
-    const paramsPath = path.join(officeContainer, "export_audio_playback_params.txt");
-    const outputPath = path.join(officeContainer, `export_audio_playback_${Date.now()}.txt`);
+    const outputPath = path.join(officeContainer, "export_audio_playback.txt");
     const slideNumbers = slideIndices.map(slideNumberOf);
 
     try {
-      fs.writeFileSync(paramsPath, `${filePath}|${slideNumbers.join(",")}|${outputPath}`, "utf8");
-      const scriptResult = await this.runAppleScriptJson("trigger-macro.applescript", [
+      cleanupPaths(outputPath);
+      const scriptResult = await this.triggerMacro(
         "ExportSectionAudioPlayback",
         filePath,
-      ]);
+        "export_audio_playback_params.txt",
+        `${filePath}|${slideNumbers.join(",")}|${outputPath}`,
+      );
       if (!scriptResult.success) {
         return {
           success: false,
@@ -391,7 +405,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     } catch (e: unknown) {
       return { success: false, message: getErrorMessage(e) };
     } finally {
-      cleanupPaths(paramsPath, outputPath);
+      cleanupPaths(outputPath);
     }
   }
 
@@ -439,7 +453,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       return { success: false, message: "Could not create audio directory in Office container." };
     }
 
-    const paramsPath = path.join(officeContainer, "insert_audio_params.txt");
     const resultPath = path.join(officeContainer, "insert_audio_result.txt");
 
     try {
@@ -452,16 +465,12 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       });
 
       cleanupPaths(resultPath);
-      fs.writeFileSync(
-        paramsPath,
-        formatInsertAudioParams(filePath, resultPath, stagedAudio),
-        "utf8",
-      );
-
-      const scriptResult = await this.runAppleScriptJson("trigger-macro.applescript", [
+      const scriptResult = await this.triggerMacro(
         "InsertAudio",
         filePath,
-      ]);
+        "insert_audio_params.txt",
+        formatInsertAudioParams(filePath, resultPath, stagedAudio),
+      );
       if (!scriptResult.success) {
         return { success: false, message: scriptResult.message || "Failed to insert audio." };
       }
@@ -475,24 +484,23 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     } catch (e: unknown) {
       return { success: false, message: getErrorMessage(e) };
     } finally {
-      cleanupPaths(paramsPath, resultPath, audioSessionDir);
+      cleanupPaths(resultPath, audioSessionDir);
     }
   }
 
   async removeAudio(filePath: string, slideIndices: SlideIndex[]): Promise<BasicPptResult> {
     const officeContainer = this.getOfficeContainerPath();
-    const paramsPath = path.join(officeContainer, "remove_audio_params.txt");
     const resultPath = path.join(officeContainer, "remove_audio_result.txt");
 
     try {
       const slideNumbers = slideIndices.map(slideNumberOf);
       cleanupPaths(resultPath);
-      fs.writeFileSync(paramsPath, `${filePath}|${slideNumbers.join(",")}|${resultPath}`, "utf8");
-
-      const scriptResult = await this.runAppleScriptJson("trigger-macro.applescript", [
+      const scriptResult = await this.triggerMacro(
         "RemoveAudio",
         filePath,
-      ]);
+        "remove_audio_params.txt",
+        `${filePath}|${slideNumbers.join(",")}|${resultPath}`,
+      );
       if (!scriptResult.success) {
         return { success: false, message: scriptResult.message || "Failed to remove audio." };
       }
@@ -506,7 +514,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     } catch (e: unknown) {
       return { success: false, message: getErrorMessage(e) };
     } finally {
-      cleanupPaths(paramsPath, resultPath);
+      cleanupPaths(resultPath);
     }
   }
 
@@ -521,15 +529,13 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     const dataPath = path.join(officeContainer, `notes_data_${Date.now()}.txt`);
     fs.writeFileSync(dataPath, dataContent, "utf8");
 
-    const paramsPath = path.join(officeContainer, "update_notes_params.txt");
-    const paramsContent = `${filePath}|${dataPath}`;
-    fs.writeFileSync(paramsPath, paramsContent, "utf8");
-
     try {
-      const scriptResult = await this.runAppleScriptJson("trigger-macro.applescript", [
+      const scriptResult = await this.triggerMacro(
         "UpdateNotes",
         filePath,
-      ]);
+        "update_notes_params.txt",
+        `${filePath}|${dataPath}`,
+      );
       if (!scriptResult.success) {
         return { success: false, message: scriptResult.message || "Failed to update notes." };
       }
@@ -537,7 +543,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       this.focusApp();
       return { success: true };
     } finally {
-      cleanupPaths(dataPath, paramsPath);
+      cleanupPaths(dataPath);
     }
   }
 
