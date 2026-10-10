@@ -15,11 +15,6 @@ type ActiveRun = { cancelRequested: boolean; cancel: (() => void) | null };
 const IDLE: SaveAllRunState = { stage: "idle" };
 const STARTED: SaveAllRunState = { stage: "running", progress: null, cancelling: false };
 
-/**
- * The author-facing lifecycle of a save-all run: confirmation first, then a
- * blocking progress display for as long as the run's work is outstanding.
- * Cancelling is latched: once asked, the run stays cancelling until it settles.
- */
 export function useSaveAllRun() {
   const [state, setState] = useState<SaveAllRunState>(IDLE);
   const answerConfirmation = useRef<((confirmed: boolean) => void) | null>(null);

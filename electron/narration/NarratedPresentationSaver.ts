@@ -62,11 +62,6 @@ export class NarratedPresentationSaver {
     return commitSlide(prepared.powerpoint, filePath, planned!, synthesized.audio);
   }
 
-  /**
-   * Cancellation is honoured before a slide starts generating and before its
-   * save sequence starts; a slide already being saved finishes its writes, and
-   * the run then ends cancelled even when that slide was the last.
-   */
   async savePresentation(
     request: NarratedPresentationSaveRequest,
     onProgress?: (progress: SaveAllRunProgress) => void,
