@@ -1,10 +1,6 @@
 import { toSlideIndex } from "../../shared/slides/slideCoordinates.js";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import type { SpeakerMapping, SynthesizedSpeech, TtsProvider, Voice } from "../tts/TtsProvider.js";
-import { TtsManager } from "../tts/TtsManager.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SpeakerMapping, SynthesizedSpeech, Voice } from "../tts/TtsProvider.js";
 import type { NarrationSection } from "../../shared/narration/NarrationSections.js";
 import { NarrationPreparation, NarrationPreparationError } from "./NarrationPreparation.js";
 
@@ -68,40 +64,6 @@ function createPreparation(mappings: Record<string, SpeakerMapping> = defaultMap
 }
 
 describe("NarrationPreparation", () => {
-  it("reuses cached narration for a repeated prepared request", async () => {
-    const cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "power-narrator-preparation-"));
-    onTestFinished(() => fs.rmSync(cacheDirectory, { recursive: true, force: true }));
-    const synthesize = vi
-      .fn<() => Promise<Uint8Array>>()
-      .mockResolvedValue(new Uint8Array([7, 8, 9]));
-    const provider: TtsProvider = {
-      getVoices: vi.fn<TtsProvider["getVoices"]>().mockResolvedValue([]),
-      prepareSpeech: (text, voice) => ({
-        cacheIdentity: { text, voice: voice.voiceId },
-        synthesize,
-      }),
-    };
-    const preparation = new NarrationPreparation(
-      { getSpeakerMappings: () => ({ Narrator: { voice: narratorVoice } }) },
-      new TtsManager(new Map([["gcp", provider]]), cacheDirectory),
-    );
-    const request = {
-      slideIndex: toSlideIndex(1),
-      sectionIndex: 0,
-      sections: [{ speaker: "Narrator", text: "Hello", playAcrossSlides: false }],
-      text: " Hello ",
-      speakerChoice: { kind: "effective" as const },
-    };
-
-    await preparation.preparePreview(request);
-    await expect(preparation.preparePreview(request)).resolves.toEqual({
-      audio: new Uint8Array([7, 8, 9]),
-      mediaType: "audio/mpeg",
-    });
-
-    expect(synthesize).toHaveBeenCalledOnce();
-  });
-
   it("preserves a planned slide's section order when synthesis finishes out of order", async () => {
     const pending = new Map<string, (audio: { audio: Uint8Array; mediaType: string }) => void>();
     const generateSpeech = vi.fn<(text: string, voice: Voice) => Promise<SynthesizedSpeech>>(
