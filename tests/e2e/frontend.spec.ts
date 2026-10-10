@@ -245,13 +245,6 @@ test.describe("PPT Viewer UI Workflows", () => {
     await cancel.click();
     await expect(progress).toContainText("Cancelling...");
     await expect(cancel).toBeDisabled();
-    await win.keyboard.press("Escape");
-    const closeAttempts = await observeCloseAttempts(app);
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.close();
-    });
-    await expect.poll(closeAttempts).toBe(1);
-    await expect(progress).toBeVisible();
 
     await releaseHeldNarrationWork(app);
     await expect(progress).toBeHidden();
@@ -475,32 +468,51 @@ test.describe("PPT Viewer UI Workflows", () => {
         }),
     },
   ]) {
-    test(`keeps the ${closeCase.name} open while a save-all run is active`, async ({
-      app,
-      win,
-    }) => {
-      await holdNarrationWork(app, ["speech"]);
-      await startSaveAll(win);
-      await expect.poll(() => getHeldNarrationWork(app)).toHaveLength(1);
+    for (const phase of [
+      { name: "generating", work: "speech", label: "Generating narration..." },
+      { name: "saving", work: "saveNotes", label: "Saving to PowerPoint..." },
+      { name: "cancelling", work: "speech", label: "Cancelling..." },
+    ] as const) {
+      test(`keeps the ${closeCase.name} open while a save-all run is ${phase.name}`, async ({
+        app,
+        win,
+      }) => {
+        await holdNarrationWork(app, [phase.work]);
+        await startSaveAll(win);
+        await expect
+          .poll(() => getHeldNarrationWork(app))
+          .toEqual([
+            { kind: phase.work, label: phase.work === "speech" ? MOCK_SLIDES[0]!.notes : "0" },
+          ]);
+        const progress = saveAllProgress(win);
+        if (phase.name === "cancelling") {
+          await progress.getByRole("button", { name: "Cancel", exact: true }).click();
+        }
+        await expect(progress).toContainText(phase.label);
 
-      const closeAttempts = await observeCloseAttempts(app);
-      await closeCase.attempt(app);
-      await expect.poll(closeAttempts).toBe(1);
-      await holdNarrationWork(app, []);
-      await releaseHeldNarrationWork(app);
-      await expect(saveAllProgress(win)).toBeHidden();
+        await win.keyboard.press("Escape");
+        await expect(progress).toBeVisible();
+        await win.mouse.click(5, 5);
+        await expect(progress).toBeVisible();
 
-      expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(
-        1,
-      );
-      expect(await getDiscardConfirmationCalls(app)).toEqual([]);
+        const closeAttempts = await observeCloseAttempts(app);
+        await closeCase.attempt(app);
+        await expect.poll(closeAttempts).toBe(1);
+        await expect(progress).toBeVisible();
+        expect(await getDiscardConfirmationCalls(app)).toEqual([]);
 
-      await notesEditor(win).fill("Dirty after the run");
-      await closeCase.attempt(app);
-      await expect
-        .poll(() => getDiscardConfirmationCalls(app))
-        .toEqual([expect.objectContaining({ message: "Discard unsaved narration changes?" })]);
-    });
+        await holdNarrationWork(app, []);
+        await releaseHeldNarrationWork(app);
+        await expect(progress).toBeHidden();
+        await expect(notesEditor(win)).toBeEditable();
+
+        await notesEditor(win).fill("Dirty after the run");
+        await closeCase.attempt(app);
+        await expect
+          .poll(() => getDiscardConfirmationCalls(app))
+          .toEqual([expect.objectContaining({ message: "Discard unsaved narration changes?" })]);
+      });
+    }
 
     test(`warns when the ${closeCase.name} closes while narration edits are dirty`, async ({
       app,
