@@ -63,9 +63,14 @@ export const DETERMINISTIC_MP3_BYTES = [
 
 /** What the PowerPoint load seam hands the renderer, in place of raw note text. */
 const MOCK_STRUCTURED_SLIDES: StructuredSlide[] = MOCK_SLIDES.map(
-  ({ notes, sectionsPlayingAcrossSlides: _playback, ...slide }) => ({
+  ({ notes, sectionsPlayingAcrossSlides, ...slide }) => ({
     ...slide,
-    sections: parseNarrationSections(notes, Object.keys(MOCK_MAPPINGS)),
+    sections: parseNarrationSections(notes, Object.keys(MOCK_MAPPINGS)).map(
+      (section, sectionIndex) => ({
+        ...section,
+        playAcrossSlides: sectionsPlayingAcrossSlides.has(sectionIndex),
+      }),
+    ),
   }),
 );
 

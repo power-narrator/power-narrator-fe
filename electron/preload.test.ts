@@ -22,6 +22,12 @@ import {
   parseNarrationSections,
 } from "../shared/narration/NarrationSections.js";
 
+const sectionsOf = (notes: string, knownSpeakers: string[]) =>
+  parseNarrationSections(notes, knownSpeakers).map((section) => ({
+    ...section,
+    playAcrossSlides: false,
+  }));
+
 type PrepareNarrationPreview = (
   payload: PreviewNarrationRequest,
 ) => Promise<NarrationPreviewResult>;
@@ -138,7 +144,7 @@ it("carries structured slide-note sections across the preview channel", async ()
   await electron.state.exposedApi!.prepareNarrationPreview({
     slideIndex: toSlideIndex(0),
     sectionIndex: 1,
-    sections: parseNarrationSections(notes, ["Narrator"]),
+    sections: sectionsOf(notes, ["Narrator"]),
     text: "Second",
     speakerChoice: { kind: "effective" },
   });
@@ -162,7 +168,7 @@ it("carries structured slide-note sections across the narrated presentation save
       slides: [
         {
           slideIndex: toSlideIndex(0),
-          sections: parseNarrationSections(notes, ["Narrator", "Guest"]),
+          sections: sectionsOf(notes, ["Narrator", "Guest"]),
         },
       ],
     },
@@ -184,7 +190,7 @@ it("carries structured slides back across the load channel with their slide indi
         slideIndex: slideIndexFromOneBased(4),
         image: "slide-4.png",
         src: "app://slide-4.png",
-        sections: parseNarrationSections(notes, ["Narrator"]),
+        sections: sectionsOf(notes, ["Narrator"]),
       },
     ],
   } satisfies StructuredSlidesResult);
@@ -251,7 +257,7 @@ it("carries a reloaded structured slide back across the reload channel", async (
       slideIndex: slideIndexFromOneBased(2),
       image: "slide-2.png",
       src: "app://slide-2.png",
-      sections: parseNarrationSections(notes, ["Narrator"]),
+      sections: sectionsOf(notes, ["Narrator"]),
     },
   } satisfies StructuredSlideResult);
 
