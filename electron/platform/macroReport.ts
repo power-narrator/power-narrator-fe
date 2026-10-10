@@ -15,14 +15,9 @@ export function fail(message: string): ErrorResult {
 
 export type AudioMacroReport = {
   records: string[][];
-  sectionAudioLeft: ReadonlyMap<SlideNumber, readonly string[]>;
+  sectionAudioBySlide: ReadonlyMap<SlideNumber, readonly string[]>;
 };
 
-/**
- * Reads a `kind|...` report from the InsertAudio or RemoveAudio macro. Both end
- * with `done`, fail with `error|message`, and list the section audio left on
- * each saved slide as `slide|slideNumber|names`.
- */
 export function readAudioMacroReport(
   report: string | undefined,
   action: string,
@@ -43,30 +38,29 @@ export function readAudioMacroReport(
     return fail(`PowerPoint did not finish ${action}.`);
   }
 
-  const sectionAudioLeft = new Map<SlideNumber, string[]>();
+  const sectionAudioBySlide = new Map<SlideNumber, string[]>();
   for (const [kind, slideText = "", names] of records) {
     const slideNumber = readSlideNumber(slideText);
     if (kind === "slide" && slideNumber !== undefined) {
-      sectionAudioLeft.set(slideNumber, names ? names.split(",") : []);
+      sectionAudioBySlide.set(slideNumber, names ? names.split(",") : []);
     }
   }
 
-  return { success: true, records, sectionAudioLeft };
+  return { success: true, records, sectionAudioBySlide };
 }
 
-/** Fails unless each saved slide is left with exactly its expected section audio. */
-export function checkSectionAudioLeft(
-  sectionAudioLeft: AudioMacroReport["sectionAudioLeft"],
+export function checkSectionAudioBySlide(
+  sectionAudioBySlide: AudioMacroReport["sectionAudioBySlide"],
   expectedBySlide: ReadonlyMap<SlideNumber, readonly string[]>,
 ): BasicPptResult {
   for (const [slideNumber, expected] of expectedBySlide) {
-    const remaining = sectionAudioLeft.get(slideNumber);
-    if (remaining === undefined) {
+    const actual = sectionAudioBySlide.get(slideNumber);
+    if (actual === undefined) {
       return fail(`PowerPoint did not report the section audio left on slide ${slideNumber}.`);
     }
-    if (remaining.toSorted().join(",") !== expected.toSorted().join(",")) {
+    if (actual.toSorted().join(",") !== expected.toSorted().join(",")) {
       return fail(
-        `Section audio on slide ${slideNumber} is ${remaining.join(",") || "missing"} instead of ${expected.join(",") || "none"}.`,
+        `Section audio on slide ${slideNumber} is ${actual.join(",") || "missing"} instead of ${expected.join(",") || "none"}.`,
       );
     }
   }
