@@ -20,7 +20,8 @@ import {
 } from "../../../shared/narration/NarrationSections";
 import { slideNumberOf, type SlideIndex } from "../../../shared/slides/slideCoordinates";
 import { DEFAULT_SPEAKER_VALUE, toSynthesisSpeaker } from "../../../shared/narration/speaker";
-import { SpeakerPrompt } from "../SpeakerPrompt";
+import { SpeakerPromptField, SpeakerPromptToggle } from "../SpeakerPrompt";
+import { useSpeakerPrompt } from "../useSpeakerPrompt";
 import type { EditorSection, SectionId } from "./SlideNoteEditor";
 import type { SectionTextareas } from "./useSectionTextareas";
 
@@ -60,6 +61,73 @@ function SectionTextEditor({ label, value, onChange, onFocus, assignRef }: Secti
       autosize
       minRows={1}
     />
+  );
+}
+
+type SectionHeaderProps = {
+  sectionLabel: string;
+  section: EditorSection;
+  speakerOptions: ReturnType<typeof getSpeakerOptions>;
+  speakerPlaceholder: string;
+  supportsPrompt: boolean | undefined;
+  onSpeakerChange: (speaker: string | null) => void;
+  onPromptChange: (prompt: string | undefined) => void;
+  onPlayAcrossSlidesChange: (playAcrossSlides: boolean) => void;
+  onDelete: () => void;
+};
+
+function SectionHeader({
+  sectionLabel,
+  section,
+  speakerOptions,
+  speakerPlaceholder,
+  supportsPrompt,
+  onSpeakerChange,
+  onPromptChange,
+  onPlayAcrossSlidesChange,
+  onDelete,
+}: SectionHeaderProps) {
+  const prompt = useSpeakerPrompt({
+    speakerLabel: sectionLabel,
+    value: section.prompt,
+    supportsPrompt,
+    onChange: onPromptChange,
+  });
+
+  return (
+    <Stack gap="xs" p="xs">
+      <Group justify="space-between">
+        <Group gap="xs">
+          <Select
+            aria-label={`Speaker for ${sectionLabel}`}
+            data={speakerOptions}
+            value={section.speaker}
+            onChange={onSpeakerChange}
+            size="xs"
+            placeholder={speakerPlaceholder}
+            allowDeselect
+          />
+          <SpeakerPromptToggle prompt={prompt} />
+          <Checkbox
+            aria-label={`Play across slides for ${sectionLabel}`}
+            label="Play Across Slides"
+            checked={section.playAcrossSlides}
+            onChange={(event) => onPlayAcrossSlidesChange(event.currentTarget.checked)}
+            size="xs"
+          />
+        </Group>
+        <Button
+          aria-label={`Remove ${sectionLabel}`}
+          variant="subtle"
+          color="red"
+          size="xs"
+          onClick={onDelete}
+        >
+          Remove Section
+        </Button>
+      </Group>
+      <SpeakerPromptField prompt={prompt} />
+    </Stack>
   );
 }
 
@@ -104,52 +172,21 @@ export function NotesSectionList({
                 key={section.id}
                 bdrs="4"
               >
-                <Group p="xs">
-                  <SpeakerPrompt
-                    speakerLabel={sectionLabel}
-                    value={section.prompt}
-                    supportsPrompt={
-                      mappings[toSynthesisSpeaker(effectiveSpeaker).mappingKey]?.voice
-                        ?.supportsPrompt
-                    }
-                    onChange={(prompt) => onSectionPromptChange(section.id, prompt)}
-                    rowContent={{
-                      leading: (
-                        <Select
-                          aria-label={`Speaker for ${sectionLabel}`}
-                          data={speakerOptions}
-                          value={section.speaker}
-                          onChange={(value) => onSpeakerChange(section.id, value)}
-                          size="xs"
-                          placeholder={placeholder}
-                          allowDeselect
-                        />
-                      ),
-                      afterPrompt: (
-                        <Checkbox
-                          aria-label={`Play across slides for ${sectionLabel}`}
-                          label="Play Across Slides"
-                          checked={section.playAcrossSlides}
-                          onChange={(event) =>
-                            onSectionPlayAcrossSlidesChange(section.id, event.currentTarget.checked)
-                          }
-                          size="xs"
-                        />
-                      ),
-                      trailing: (
-                        <Button
-                          aria-label={`Remove ${sectionLabel}`}
-                          variant="subtle"
-                          color="red"
-                          size="xs"
-                          onClick={() => onDeleteSection(section.id)}
-                        >
-                          Remove Section
-                        </Button>
-                      ),
-                    }}
-                  />
-                </Group>
+                <SectionHeader
+                  sectionLabel={sectionLabel}
+                  section={section}
+                  speakerOptions={speakerOptions}
+                  speakerPlaceholder={placeholder}
+                  supportsPrompt={
+                    mappings[toSynthesisSpeaker(effectiveSpeaker).mappingKey]?.voice?.supportsPrompt
+                  }
+                  onSpeakerChange={(speaker) => onSpeakerChange(section.id, speaker)}
+                  onPromptChange={(prompt) => onSectionPromptChange(section.id, prompt)}
+                  onPlayAcrossSlidesChange={(playAcrossSlides) =>
+                    onSectionPlayAcrossSlidesChange(section.id, playAcrossSlides)
+                  }
+                  onDelete={() => onDeleteSection(section.id)}
+                />
                 <Divider />
                 <SectionPreviewButtons
                   id={section.id}
