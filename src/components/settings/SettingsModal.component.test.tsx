@@ -246,7 +246,9 @@ test("refuses the reserved default speaker key as a new alias", async () => {
 
   await addMapping(screen, "_default_", /Aoede/);
 
-  await expect.element(screen.getByText('"_default_" is reserved for the default voice')).toBeVisible();
+  await expect
+    .element(screen.getByText('"_default_" is reserved for the default voice'))
+    .toBeVisible();
   await expect.element(screen.getByRole("combobox", { name: "Voice for Default" })).toHaveValue("");
   await expect.element(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 });
