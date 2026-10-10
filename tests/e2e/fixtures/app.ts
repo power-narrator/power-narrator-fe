@@ -110,7 +110,7 @@ export type HeldWork = { kind: HeldWorkKind; label: string };
 
 type HeldWorkControl = {
   holding: HeldWorkKind[];
-  pending: Array<HeldWork & { release: () => void; fail: (message: string) => void }>;
+  pending: Array<HeldWork & { release: () => void }>;
 };
 
 type MainGlobals = typeof globalThis & {
@@ -175,15 +175,11 @@ async function installMockIpcHandlers(app: ElectronApplication) {
 
       const settle = <T>(kind: HeldWorkKind, label: string, value: T): Promise<T> =>
         globals.__heldWork.holding.includes(kind)
-          ? new Promise<T>((resolve, reject) => {
+          ? new Promise<T>((resolve) => {
               globals.__heldWork.pending.push({
                 kind,
                 label,
                 release: () => resolve(value),
-                fail: (message) =>
-                  kind === "speech"
-                    ? reject(new Error(message))
-                    : resolve({ success: false, message } as T),
               });
             })
           : Promise.resolve(value);
@@ -341,12 +337,6 @@ export const getVideoDestinationRequests = (app: ElectronApplication) =>
 export const getGeneratedVideoCalls = (app: ElectronApplication) =>
   readProbe(app, "generatedVideos");
 
-export function declineVideoDestination(app: ElectronApplication) {
-  return app.evaluate(() => {
-    (globalThis as MainGlobals).__videoDestination = null;
-  });
-}
-
 export function holdNarrationWork(app: ElectronApplication, kinds: HeldWorkKind[]) {
   return app.evaluate((_, heldKinds) => {
     (globalThis as MainGlobals).__heldWork.holding = heldKinds;
@@ -365,21 +355,6 @@ export function releaseHeldNarrationWork(app: ElectronApplication) {
       work.release();
     }
   });
-}
-
-/**
- * Fails one held request: speech rejects, a PowerPoint write reports failure.
- * Other held requests stay held.
- */
-export function failHeldNarrationWork(app: ElectronApplication, work: HeldWork, message: string) {
-  return app.evaluate(
-    (_, { kind, label, failure }) => {
-      const pending = (globalThis as MainGlobals).__heldWork.pending;
-      const index = pending.findIndex((held) => held.kind === kind && held.label === label);
-      pending.splice(index, 1)[0]!.fail(failure);
-    },
-    { ...work, failure: message },
-  );
 }
 
 function allowDiscardingNarrationChanges(app: ElectronApplication) {

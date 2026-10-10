@@ -1,6 +1,9 @@
 import { MantineProvider } from "@mantine/core";
+import "@mantine/core/styles.css";
+import "@gfazioli/mantine-split-pane/styles.css";
 import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
+import { userEvent } from "vitest/browser";
 import {
   formatNarrationSections,
   parseNarrationSections,
@@ -9,6 +12,7 @@ import type {
   NarratedSaveResult,
   PreviewNarrationRequest,
   SaveAllRunResult,
+  SaveAllRunCallbacks,
 } from "../../../shared/types/narration";
 import { AudioProvider } from "../../context/AudioContext";
 import { toSlideIndex, type SlideIndex } from "../../../shared/slides/slideCoordinates";
@@ -291,23 +295,125 @@ async function startGenerateVideo(screen: Awaited<ReturnType<typeof renderViewer
   await screen.getByRole("button", { name: "Save and Generate", exact: true }).click();
 }
 
-test("fills the progress bar on the final slide once every slide has saved", async () => {
-  const saveNarratedPresentation = vi.fn<typeof window.electronAPI.saveNarratedPresentation>(
-    (_request, { onProgress }) => {
-      onProgress({ slideIndex: at(0), completedSlides: 1, totalSlides: 1, phase: "saving" });
-      return new Promise<SaveAllRunResult>(() => {});
-    },
-  );
-  installElectronApi({ saveNarratedPresentation });
-  const { screen } = await renderViewer();
+test.each([
+  ["Save All Slides", "Save all slides?"],
+  ["Generate Video", "Generate video?"],
+])("asks before %s and keeps edits when confirmation is declined", async (action, title) => {
+  const api = installElectronApi();
+  const { screen, onBack } = await renderViewer();
+  const editor = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });
+  await editor.fill("Kept after declining");
+  await screen.getByRole("button", { name: action, exact: true }).click();
 
+  const confirmation = screen.getByRole("dialog", { name: title });
+  await expect.element(confirmation.getByText(/may take some time/)).toBeVisible();
+  await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+
+  await expect.element(confirmation).not.toBeInTheDocument();
+  await expect.element(editor).toHaveValue("Kept after declining");
+  await expect.element(screen.getByRole("button", { name: action, exact: true })).toBeEnabled();
+  expect(api.saveNarratedPresentation).not.toHaveBeenCalled();
+  expect(api.getVideoSavePath).not.toHaveBeenCalled();
+  expect(api.generateVideo).not.toHaveBeenCalled();
+  await screen.getByRole("button", { name: "Back", exact: false }).click();
+  expect(api.confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
+  expect(onBack).not.toHaveBeenCalled();
+});
+
+test("shows each save-all phase and fills progress before reporting completion", async () => {
+  let callbacks: SaveAllRunCallbacks;
+  let finishRun: (result: SaveAllRunResult) => void;
+  installElectronApi({
+    saveNarratedPresentation: vi.fn<typeof window.electronAPI.saveNarratedPresentation>(
+      (_request, progressCallbacks) => {
+        callbacks = progressCallbacks;
+        return new Promise<SaveAllRunResult>((resolve) => (finishRun = resolve));
+      },
+    ),
+  });
+  const secondSlide: Slide = { ...loadedSlide, slideIndex: at(1), image: "slide-two.png" };
+  const { screen, onBack } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
+  await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Saved narration");
   await startSaveAll(screen);
 
   const progress = screen.getByRole("dialog", { name: "Saving all slides" });
-  await expect.element(progress.getByText("Slide 1 of 1")).toBeVisible();
-  await expect
-    .element(progress.getByRole("progressbar", { name: "Save all progress" }))
-    .toHaveAttribute("aria-valuenow", "100");
+  await expect.element(progress.getByText("Checking narration...")).toBeVisible();
+  const progressBar = progress.getByRole("progressbar", { name: "Save all progress" });
+  callbacks!.onProgress({
+    slideIndex: at(0),
+    completedSlides: 0,
+    totalSlides: 2,
+    phase: "generating",
+  });
+  await expect.element(progress.getByText("Slide 1 of 2")).toBeVisible();
+  await expect.element(progress.getByText("Generating narration...")).toBeVisible();
+  await expect.element(progressBar).toHaveAttribute("aria-valuenow", "0");
+  callbacks!.onProgress({ slideIndex: at(0), completedSlides: 0, totalSlides: 2, phase: "saving" });
+  await expect.element(progress.getByText("Saving to PowerPoint...")).toBeVisible();
+  callbacks!.onProgress({
+    slideIndex: at(1),
+    completedSlides: 1,
+    totalSlides: 2,
+    phase: "generating",
+  });
+  await expect.element(progress.getByText("Slide 2 of 2")).toBeVisible();
+  await expect.element(progressBar).toHaveAttribute("aria-valuenow", "50");
+  callbacks!.onProgress({ slideIndex: at(1), completedSlides: 2, totalSlides: 2, phase: "saving" });
+  await expect.element(progress.getByText("Slide 2 of 2")).toBeVisible();
+  await expect.element(progressBar).toHaveAttribute("aria-valuenow", "100");
+
+  finishRun!({ outcome: { success: true }, savedNoteSlides: [at(0), at(1)] });
+  await expect.element(progress).not.toBeInTheDocument();
+  await expect.element(screen.getByText("Saved slides!")).toBeVisible();
+  await screen.getByRole("button", { name: "Back", exact: false }).click();
+  expect(onBack).toHaveBeenCalledOnce();
+});
+
+test.each([
+  ["checking", "Checking narration..."],
+  ["generating", "Generating narration..."],
+  ["saving", "Saving to PowerPoint..."],
+  ["cancelling", "Cancelling..."],
+] as const)("keeps the modal and viewer locked while %s", async (phase, label) => {
+  let finishRun: (result: SaveAllRunResult) => void;
+  const cancel = vi.fn<() => void>();
+  installElectronApi({
+    saveNarratedPresentation: vi.fn<typeof window.electronAPI.saveNarratedPresentation>(
+      (_request, { onProgress, onCancellable }) => {
+        onCancellable(cancel);
+        if (phase !== "checking") {
+          onProgress({
+            slideIndex: at(0),
+            completedSlides: 0,
+            totalSlides: 1,
+            phase: phase === "saving" ? "saving" : "generating",
+          });
+        }
+        return new Promise<SaveAllRunResult>((resolve) => (finishRun = resolve));
+      },
+    ),
+  });
+  const { screen } = await renderViewer();
+  const editor = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });
+  await editor.fill("Submitted narration");
+  await startSaveAll(screen);
+  const progress = screen.getByRole("dialog", { name: "Saving all slides" });
+  if (phase === "cancelling") {
+    await progress.getByRole("button", { name: "Cancel", exact: true }).click();
+  }
+  await expect.element(progress.getByText(label)).toBeVisible();
+
+  await userEvent.keyboard("{Escape}");
+  await expect.element(progress).toBeVisible();
+  await userEvent.click(document.elementFromPoint(5, 5)!, { position: { x: 5, y: 5 } });
+  await expect.element(progress).toBeVisible();
+  await userEvent.keyboard("{Control>}z{/Control}typed while saving");
+  await expect.element(editor).toHaveValue("Submitted narration");
+
+  finishRun!({ outcome: { success: false, stage: "cancelled" }, savedNoteSlides: [] });
+  await expect.element(progress).not.toBeInTheDocument();
+  await editor.fill("Editable again");
+  await expect.element(editor).toHaveValue("Editable again");
 });
 
 test("treats the slides the run reported complete as saved when the run request fails", async () => {
@@ -384,68 +490,241 @@ test("shows Cancelling... after Cancel and keeps unsaved edits once the run stop
   expect(onBack).not.toHaveBeenCalled();
 });
 
-test("alerts that a slide's notes saved without its audio and treats those notes as saved", async () => {
-  const saveNarratedPresentation = vi.fn<typeof window.electronAPI.saveNarratedPresentation>(() =>
-    Promise.resolve({
-      outcome: { success: false, stage: "powerpoint", partial: true, message: "media rejected" },
-      savedNoteSlides: [at(0)],
-      failedSlideIndex: at(0),
-    }),
-  );
-  installElectronApi({ saveNarratedPresentation });
-  const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
-  const { screen, onBack } = await renderViewer();
+test.each([
+  ["Save All", startSaveAll],
+  ["Generate Video", startGenerateVideo],
+])(
+  "%s reports partial audio failure and reconciles only persisted notes",
+  async (_action, start) => {
+    const api = installElectronApi({
+      saveNarratedPresentation: vi.fn<typeof window.electronAPI.saveNarratedPresentation>(() =>
+        Promise.resolve({
+          outcome: {
+            success: false,
+            stage: "powerpoint",
+            partial: true,
+            message: "media rejected",
+          },
+          savedNoteSlides: [at(0)],
+          failedSlideIndex: at(0),
+        }),
+      ),
+    });
+    const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
+    const secondSlide: Slide = { ...loadedSlide, slideIndex: at(1), image: "slide-two.png" };
+    const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
+    await screen
+      .getByRole("textbox", { name: "Slide 1 section 1 notes" })
+      .fill("Saved without audio");
+    await screen.getByRole("button", { name: "Slide 2", exact: true }).click();
+    const secondEditor = screen.getByRole("textbox", { name: "Slide 2 section 1 notes" });
+    await secondEditor.fill("Later unsaved notes");
+    await start(screen);
 
-  await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Edited narration");
-  await startSaveAll(screen);
+    await vi.waitFor(() =>
+      expect(alert).toHaveBeenCalledWith(
+        "Save error on slide 1: its notes were saved, but its narration audio was not fully saved, so the slide's notes and audio may not match. media rejected Later slides were not changed.",
+      ),
+    );
+    await expect
+      .element(screen.getByRole("dialog", { name: "Saving all slides" }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("button", { name: "Generate Video", exact: true }))
+      .toBeEnabled();
+    expect(api.getVideoSavePath).not.toHaveBeenCalled();
+    expect(api.generateVideo).not.toHaveBeenCalled();
+    await expect.element(secondEditor).toHaveValue("Later unsaved notes");
+    await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+    expect(api.confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
+    expect(api.reloadSlide).not.toHaveBeenCalled();
+    await screen.getByRole("button", { name: "Slide 1", exact: true }).click();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }))
+      .toHaveValue("Saved without audio");
+    await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+    await vi.waitFor(() => expect(api.reloadSlide).toHaveBeenCalledOnce());
+    expect(api.confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
+  },
+);
+
+test("skips destination selection and rendering after a synthesis failure", async () => {
+  const api = installElectronApi({
+    saveNarratedPresentation: vi.fn<typeof window.electronAPI.saveNarratedPresentation>(() =>
+      Promise.resolve({
+        outcome: {
+          success: false,
+          stage: "synthesis",
+          partial: false,
+          message:
+            'Narration synthesis failed for slide 2, section 1, speaker "Default": quota exhausted.',
+        },
+        savedNoteSlides: [at(0)],
+        failedSlideIndex: at(1),
+      }),
+    ),
+  });
+  const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
+  const secondSlide: Slide = { ...loadedSlide, slideIndex: at(1), image: "slide-two.png" };
+  const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
+  await screen
+    .getByRole("textbox", { name: "Slide 1 section 1 notes" })
+    .fill("Earlier saved notes");
+  await screen.getByRole("button", { name: "Slide 2", exact: true }).click();
+  const secondEditor = screen.getByRole("textbox", { name: "Slide 2 section 1 notes" });
+  await secondEditor.fill("Retained after synthesis failure");
+  await startGenerateVideo(screen);
 
   await vi.waitFor(() =>
     expect(alert).toHaveBeenCalledWith(
-      "Save error on slide 1: its notes were saved, but its narration audio was not fully saved, so the slide's notes and audio may not match. media rejected Later slides were not changed.",
+      'Save error: Narration synthesis failed for slide 2, section 1, speaker "Default": quota exhausted. Earlier slides remain saved.',
     ),
   );
+  await expect
+    .element(screen.getByRole("button", { name: "Generate Video", exact: true }))
+    .toBeEnabled();
+  expect(api.getVideoSavePath).not.toHaveBeenCalled();
+  expect(api.generateVideo).not.toHaveBeenCalled();
+  await expect.element(secondEditor).toHaveValue("Retained after synthesis failure");
+  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+  expect(api.confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
+  expect(api.reloadSlide).not.toHaveBeenCalled();
+  await screen.getByRole("button", { name: "Slide 1", exact: true }).click();
+  await expect
+    .element(screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }))
+    .toHaveValue("Earlier saved notes");
+  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+  await vi.waitFor(() => expect(api.reloadSlide).toHaveBeenCalledOnce());
+  expect(api.confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
+});
+
+test.each(["generating", "saving"] as const)(
+  "skips video rendering when preparation is cancelled during %s",
+  async (phase) => {
+    let finishRun: (result: SaveAllRunResult) => void;
+    const cancel = vi.fn<() => void>();
+    const api = installElectronApi({
+      saveNarratedPresentation: vi.fn<typeof window.electronAPI.saveNarratedPresentation>(
+        (_request, { onProgress, onCancellable }) => {
+          onCancellable(cancel);
+          onProgress({ slideIndex: at(0), completedSlides: 0, totalSlides: 2, phase });
+          return new Promise<SaveAllRunResult>((resolve) => (finishRun = resolve));
+        },
+      ),
+    });
+    const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
+    const secondSlide: Slide = { ...loadedSlide, slideIndex: at(1), image: "slide-two.png" };
+    const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
+    const firstEditor = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });
+    await firstEditor.fill("Kept after cancelling video");
+    await screen.getByRole("button", { name: "Slide 2", exact: true }).click();
+    await screen
+      .getByRole("textbox", { name: "Slide 2 section 1 notes" })
+      .fill("Later unsaved notes");
+    await screen.getByRole("button", { name: "Slide 1", exact: true }).click();
+    await startGenerateVideo(screen);
+    const progress = screen.getByRole("dialog", { name: "Saving all slides" });
+    await expect
+      .element(
+        progress.getByText(
+          phase === "generating" ? "Generating narration..." : "Saving to PowerPoint...",
+        ),
+      )
+      .toBeVisible();
+    await progress.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect.element(progress.getByText("Cancelling...")).toBeVisible();
+    await expect
+      .element(progress.getByRole("button", { name: "Cancel", exact: true }))
+      .toBeDisabled();
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(api.getVideoSavePath).not.toHaveBeenCalled();
+    expect(api.generateVideo).not.toHaveBeenCalled();
+
+    finishRun!({
+      outcome: { success: false, stage: "cancelled" },
+      savedNoteSlides: phase === "saving" ? [at(0)] : [],
+    });
+    await expect.element(progress).not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("button", { name: "Generate Video", exact: true }))
+      .toBeEnabled();
+    expect(api.getVideoSavePath).not.toHaveBeenCalled();
+    expect(api.generateVideo).not.toHaveBeenCalled();
+    expect(alert).not.toHaveBeenCalled();
+    await expect.element(firstEditor).toHaveValue("Kept after cancelling video");
+    await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+    await vi.waitFor(() =>
+      expect(api.reloadSlide).toHaveBeenCalledTimes(phase === "saving" ? 1 : 0),
+    );
+    expect(api.confirmDiscardNarrationChanges).toHaveBeenCalledTimes(phase === "saving" ? 0 : 1);
+    await screen.getByRole("button", { name: "Slide 2", exact: true }).click();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Slide 2 section 1 notes" }))
+      .toHaveValue("Later unsaved notes");
+    await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+    expect(api.confirmDiscardNarrationChanges).toHaveBeenCalledTimes(phase === "saving" ? 1 : 2);
+  },
+);
+
+test("keeps saved edits and skips rendering when the video destination is declined", async () => {
+  const api = installElectronApi({
+    getVideoSavePath: vi.fn<typeof window.electronAPI.getVideoSavePath>(() =>
+      Promise.resolve(null),
+    ),
+  });
+  const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
+  const { screen, onBack } = await renderViewer();
+  const editor = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });
+  await editor.fill("Saved before declining destination");
+  await startGenerateVideo(screen);
+
+  await expect
+    .element(screen.getByRole("button", { name: "Generate Video", exact: true }))
+    .toBeEnabled();
+  expect(api.getVideoSavePath).toHaveBeenCalledOnce();
+  expect(api.generateVideo).not.toHaveBeenCalled();
+  expect(alert).not.toHaveBeenCalled();
+  await expect.element(editor).toHaveValue("Saved before declining destination");
   await screen.getByRole("button", { name: "Back", exact: false }).click();
+  expect(api.confirmDiscardNarrationChanges).not.toHaveBeenCalled();
   expect(onBack).toHaveBeenCalledOnce();
 });
 
-test("does not generate video when the narrated save fails", async () => {
-  const saveNarratedPresentation = vi.fn<typeof window.electronAPI.saveNarratedPresentation>(() =>
-    Promise.resolve({
-      outcome: {
-        success: false,
-        stage: "synthesis",
-        partial: false,
-        message: "Synthesis failed",
+test("requests a video destination only after full save success, then renders", async () => {
+  let finishRun: (result: SaveAllRunResult) => void;
+  const api = installElectronApi({
+    saveNarratedPresentation: vi.fn<typeof window.electronAPI.saveNarratedPresentation>(
+      (_request, { onProgress }) => {
+        onProgress({ slideIndex: at(1), completedSlides: 1, totalSlides: 2, phase: "saving" });
+        return new Promise<SaveAllRunResult>((resolve) => (finishRun = resolve));
       },
-      savedNoteSlides: [],
-    }),
-  );
-  const generateVideo = vi.fn<typeof window.electronAPI.generateVideo>(() =>
-    Promise.resolve({ success: true as const, outputPath: "video.mp4" }),
-  );
-  installElectronApi({ saveNarratedPresentation, generateVideo });
-  vi.spyOn(window, "alert").mockImplementation(() => {});
-  const { screen } = await renderViewer();
-
-  await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Edited narration");
+    ),
+  });
+  const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
+  const secondSlide: Slide = { ...loadedSlide, slideIndex: at(1), image: "slide-two.png" };
+  const { screen, onBack } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
+  await screen
+    .getByRole("textbox", { name: "Slide 1 section 1 notes" })
+    .fill("Saved before rendering");
   await startGenerateVideo(screen);
-  await vi.waitFor(() => expect(saveNarratedPresentation).toHaveBeenCalledOnce());
+  const progress = screen.getByRole("dialog", { name: "Saving all slides" });
+  await expect.element(progress.getByText("Slide 2 of 2")).toBeVisible();
+  expect(api.getVideoSavePath).not.toHaveBeenCalled();
+  expect(api.generateVideo).not.toHaveBeenCalled();
 
-  expect(generateVideo).not.toHaveBeenCalled();
-});
-
-test("generates video after a successful narrated save", async () => {
-  const generateVideo = vi.fn<typeof window.electronAPI.generateVideo>(() =>
-    Promise.resolve({ success: true as const, outputPath: "video.mp4" }),
+  finishRun!({ outcome: { success: true }, savedNoteSlides: [at(0), at(1)] });
+  await vi.waitFor(() =>
+    expect(alert).toHaveBeenCalledWith("Video generated successfully at: video.mp4"),
   );
-  installElectronApi({ generateVideo });
-  vi.spyOn(window, "alert").mockImplementation(() => {});
-  const { screen } = await renderViewer();
-
-  await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Edited narration");
-  await startGenerateVideo(screen);
-
-  await vi.waitFor(() => expect(generateVideo).toHaveBeenCalledOnce());
+  expect(api.getVideoSavePath).toHaveBeenCalledOnce();
+  expect(api.generateVideo).toHaveBeenCalledWith({
+    filePath: "presentation.pptx",
+    videoOutputPath: "video.mp4",
+  });
+  await expect.element(progress).not.toBeInTheDocument();
+  await screen.getByRole("button", { name: "Back", exact: false }).click();
+  expect(api.confirmDiscardNarrationChanges).not.toHaveBeenCalled();
+  expect(onBack).toHaveBeenCalledOnce();
 });
 
 test("reports a slide playback failure", async () => {
