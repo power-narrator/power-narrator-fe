@@ -183,13 +183,13 @@ export function ViewerPage({
     } catch (error: unknown) {
       // The run saves slides one at a time in submitted order, so only those
       // its progress reported complete are known to be written.
-      editor.saveSucceeded(
+      editor.markSaved(
         snapshot,
         submitted.slice(0, completedSlides).map((slide) => slide.slideIndex),
       );
       throw error;
     }
-    editor.saveSucceeded(snapshot, result.savedNoteSlides);
+    editor.markSaved(snapshot, result.savedNoteSlides);
     if (!result.outcome.success) {
       reportSaveAllFailure(result);
       return false;
@@ -270,7 +270,7 @@ export function ViewerPage({
           return;
         }
 
-        editor.saveSucceeded(snapshot);
+        editor.markSaved(snapshot);
         command.showOutcome("Saved slides!");
       },
       (error) => alertError("Save error", error),
