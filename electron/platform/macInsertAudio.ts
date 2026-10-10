@@ -1,6 +1,11 @@
 import { slideNumberOf, type SlideNumber } from "../../shared/slides/slideCoordinates.js";
 import { buildPptAudioShapeName } from "./helpers.js";
-import { checkSectionAudioLeft, fail, isIntegerText, readAudioMacroReport } from "./macroReport.js";
+import {
+  checkSectionAudioBySlide,
+  fail,
+  isIntegerText,
+  readAudioMacroReport,
+} from "./macroReport.js";
 import { playsAcrossSlides } from "./sectionAudioPlayback.js";
 import type { BasicPptResult, SlideAudioEntry } from "./types.js";
 
@@ -9,13 +14,10 @@ export type StagedSlideAudio = {
   audioPath: string;
 };
 
+/** PowerPoint's Play Across Slides checkbox uses 999 when enabled and 0 when disabled. */
 const PLAY_ACROSS_SLIDES_SPAN = 999;
 
-/**
- * The InsertAudio macro reads a `presentation|result` header, then one
- * `slideNumber|audioPath|playAcrossSlides` line per section audio, the flag
- * written as 1 or 0. New per-section fields are appended to the section line.
- */
+/** Input to the InsertAudio macro, which parses by position: append new per-section fields. */
 export function formatInsertAudioParams(
   filePath: string,
   resultPath: string,
@@ -28,11 +30,6 @@ export function formatInsertAudioParams(
   return `${filePath}|${resultPath}\n${sectionLines.join("")}`;
 }
 
-/**
- * Whether the playback PowerPoint read back from the inserted audio, as
- * `stopAfterSlides|playOnEntry|pauseAnimation` with 1 or 0 flags, is the choice
- * that was requested.
- */
 function appliedPlayback(
   [stopAfterSlides, playOnEntry, pauseAnimation]: readonly string[],
   playAcrossSlides: boolean,
@@ -47,13 +44,7 @@ function appliedPlayback(
     : !playsAcrossSlides(Number(stopAfterSlides));
 }
 
-/**
- * Checks the macro's report against the request. The report holds
- * `inserted|slideNumber|shapeName|stopAfterSlides|playOnEntry|pauseAnimation`
- * per section audio, `slide|slideNumber|names`
- * listing the section audio left on each saved slide, `error|message` on
- * failure, and a final `done`.
- */
+/** Each `inserted` record is `inserted|slideNumber|shapeName|stopAfterSlides|playOnEntry|pauseAnimation`. */
 export function checkInsertAudioReport(
   report: string | undefined,
   slidesAudio: readonly SlideAudioEntry[],
@@ -82,15 +73,9 @@ export function checkInsertAudioReport(
     expectedBySlide.set(slideNumber, [...(expectedBySlide.get(slideNumber) ?? []), shapeName]);
   }
 
-  return checkSectionAudioLeft(read.sectionAudioLeft, expectedBySlide);
+  return checkSectionAudioBySlide(read.sectionAudioBySlide, expectedBySlide);
 }
 
-/**
- * Checks the RemoveAudio macro's report, which lists the section audio left on
- * each requested slide as `slide|slideNumber|names`, `error|message` on
- * failure, and a final `done`. Every requested slide must be left without
- * section audio.
- */
 export function checkRemoveAudioReport(
   report: string | undefined,
   slideNumbers: readonly SlideNumber[],
@@ -100,8 +85,8 @@ export function checkRemoveAudioReport(
     return read;
   }
 
-  return checkSectionAudioLeft(
-    read.sectionAudioLeft,
+  return checkSectionAudioBySlide(
+    read.sectionAudioBySlide,
     new Map(slideNumbers.map((slideNumber) => [slideNumber, []])),
   );
 }
