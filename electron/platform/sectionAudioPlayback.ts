@@ -19,8 +19,8 @@ const ERROR = "###ERROR### ";
 const SECTION_AUDIO_NAME = new RegExp(`^${PPT_AUDIO_PREFIX}_([1-9]\\d*)$`);
 
 /**
- * PowerPoint's span counts the slides the audio plays over, so anything beyond
- * the current slide is what its Play Across Slides checkbox shows as enabled.
+ * The ribbon writes 0 when Play Across Slides is off and 999 when on. A span of
+ * 1 is untested and most likely stops at the current slide, so it reads as off.
  */
 export const playsAcrossSlides = (stopAfterSlides: number): boolean => stopAfterSlides > 1;
 
@@ -29,10 +29,6 @@ export const sectionsPlayingAcrossSlidesOn = (
   slideIndex: SlideIndex,
 ): SectionsPlayingAcrossSlides => playback.get(slideIndex) ?? new Set();
 
-/**
- * Reads the inspection macro's report. Each slide block lists the canonically
- * named section audio on that slide as `name<TAB>stopAfterSlides`.
- */
 export function parseSectionAudioPlaybackReport(
   report: string,
   requestedSlides: readonly SlideNumber[],
