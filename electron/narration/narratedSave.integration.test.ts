@@ -21,6 +21,8 @@ const narratorVoice: Voice = {
 
 const mappings: Record<string, SpeakerMapping> = { Narrator: { voice: narratorVoice } };
 
+const isSectionAudioName = (name: string) => /^ppt_audio_[1-9]\d*$/.test(name);
+
 let presentationPath: string;
 let temporaryDirectory: string;
 
@@ -51,7 +53,7 @@ class FakeDeck implements NarrationPowerPoint {
         .filter((entry) => entry.slideIndex === slideIndex)
         .map((entry) => `ppt_audio_${entry.sectionIndex + 1}`);
       const otherMedia = (this.media.get(slideIndex) ?? []).filter(
-        (name) => !/^ppt_audio_\d+$/.test(name),
+        (name) => !isSectionAudioName(name),
       );
       this.media.set(slideIndex, [...otherMedia, ...sectionAudio]);
     }
@@ -62,7 +64,7 @@ class FakeDeck implements NarrationPowerPoint {
     for (const slideIndex of slideIndices) {
       this.media.set(
         slideIndex,
-        (this.media.get(slideIndex) ?? []).filter((name) => !name.startsWith("ppt_audio")),
+        (this.media.get(slideIndex) ?? []).filter((name) => !isSectionAudioName(name)),
       );
     }
     return Promise.resolve({ success: true });
@@ -211,9 +213,22 @@ describe("saving removes obsolete section audio", () => {
   it.each([
     {
       change: "deleting the last section",
-      before: ["ppt_audio_1", "ppt_audio_2", "Background music"],
+      before: [
+        "ppt_audio_1",
+        "ppt_audio_2",
+        "Background music",
+        "ppt_audio_0",
+        "ppt_audio_01",
+        "ppt_audio_background",
+      ],
       sections: narrated("First"),
-      after: ["Background music", "ppt_audio_1"],
+      after: [
+        "Background music",
+        "ppt_audio_0",
+        "ppt_audio_01",
+        "ppt_audio_1",
+        "ppt_audio_background",
+      ],
     },
     {
       change: "deleting an earlier section, renumbering the survivors",
@@ -229,9 +244,15 @@ describe("saving removes obsolete section audio", () => {
     },
     {
       change: "emptying every section",
-      before: ["ppt_audio_1", "Background music"],
+      before: [
+        "ppt_audio_1",
+        "Background music",
+        "ppt_audio_0",
+        "ppt_audio_01",
+        "ppt_audio_background",
+      ],
       sections: narrated(" "),
-      after: ["Background music"],
+      after: ["Background music", "ppt_audio_0", "ppt_audio_01", "ppt_audio_background"],
     },
   ])("after $change", async ({ before, sections, after }) => {
     const deck = new FakeDeck(
