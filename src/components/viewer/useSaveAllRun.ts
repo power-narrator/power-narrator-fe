@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import type { SaveAllRunObserver, SaveAllRunProgress } from "../../../shared/types/narration";
+import type { SaveAllRunCallbacks, SaveAllRunProgress } from "../../../shared/types/narration";
 
 export type SaveAllRunPurpose = "saveAll" | "generateVideo";
 
@@ -8,7 +8,7 @@ export type SaveAllRunState =
   | { stage: "confirming"; purpose: SaveAllRunPurpose }
   | { stage: "running"; progress: SaveAllRunProgress | null; cancelling: boolean };
 
-export type SaveAllRunWork = (observer: SaveAllRunObserver) => Promise<boolean>;
+export type SaveAllRunWork = (callbacks: SaveAllRunCallbacks) => Promise<boolean>;
 
 type ActiveRun = { cancelRequested: boolean; cancel: (() => void) | null };
 
