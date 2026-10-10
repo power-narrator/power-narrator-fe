@@ -17,7 +17,7 @@ import type {
   NarratedPresentationSaveRequest,
   NarratedSaveResult,
   NarratedSlideSaveRequest,
-  SaveAllRunObserver,
+  SaveAllRunCallbacks,
   SaveAllRunProgress,
   SaveAllRunResult,
   SaveAllRunRouting,
@@ -38,7 +38,7 @@ const electronAPI = {
     ipcRenderer.invoke("save-narrated-slide", payload),
   saveNarratedPresentation: async (
     payload: NarratedPresentationSaveRequest,
-    { onProgress, onCancellable }: SaveAllRunObserver,
+    { onProgress, onCancellable }: SaveAllRunCallbacks,
   ): Promise<SaveAllRunResult> => {
     narratedPresentationRequestId += 1;
     const runId = narratedPresentationRequestId;

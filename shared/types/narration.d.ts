@@ -49,7 +49,7 @@ export type SaveAllRunProgress = {
   phase: SaveAllRunPhase;
 };
 
-export type SaveAllRunObserver = {
+export type SaveAllRunCallbacks = {
   onProgress: (progress: SaveAllRunProgress) => void;
   onCancellable: (cancel: () => void) => void;
 };

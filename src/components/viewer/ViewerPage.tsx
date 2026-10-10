@@ -3,7 +3,7 @@ import { useCallback, useLayoutEffect, useMemo } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type {
   NarratedSaveResult,
-  SaveAllRunObserver,
+  SaveAllRunCallbacks,
   SaveAllRunResult,
 } from "../../../shared/types/narration";
 import type { ActionButtonState } from "../../types/viewer";
@@ -161,7 +161,7 @@ export function ViewerPage({
     }
   };
 
-  async function commitNarratedPresentation({ onProgress, onCancellable }: SaveAllRunObserver) {
+  async function commitNarratedPresentation({ onProgress, onCancellable }: SaveAllRunCallbacks) {
     const snapshot = editor.submitSave();
     const submitted = snapshot.slides.map((slide) => ({
       slideIndex: slide.slideIndex,

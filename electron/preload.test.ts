@@ -4,7 +4,7 @@ import vm from "node:vm";
 import { expect, it, vi } from "vitest";
 import type {
   NarratedPresentationSaveRequest,
-  SaveAllRunObserver,
+  SaveAllRunCallbacks,
   SaveAllRunProgress,
   SaveAllRunResult,
   NarrationPreviewResult,
@@ -39,7 +39,7 @@ type PlaySlide = (payload: PlaySlideRequest) => Promise<BasicPptResult>;
 type RemoveAudio = (payload: RemoveAudioRequest) => Promise<BasicPptResult>;
 type SaveNarratedPresentation = (
   payload: NarratedPresentationSaveRequest,
-  observer: SaveAllRunObserver,
+  callbacks: SaveAllRunCallbacks,
 ) => Promise<SaveAllRunResult>;
 
 const electron = vi.hoisted(() => {
