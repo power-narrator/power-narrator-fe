@@ -418,7 +418,7 @@ describe("choosing Play Across Slides", () => {
       .beginSave([at(0)]);
     const newer = submitted.setSectionPlayAcrossSlides(second!.id, true);
 
-    const saved = newer.saveSucceeded(snapshot);
+    const saved = newer.markSaved(snapshot);
 
     expect(snapshot.slides[0]?.sections.map((section) => section.playAcrossSlides)).toEqual([
       true,
@@ -1127,11 +1127,8 @@ describe("saving", () => {
       // A frozen snapshot rejects the write; what matters is what is committed.
     }
 
-    expect(submitted.saveSucceeded(snapshot).isSlideDirty(at(0))).toBe(false);
-    expect(sectionTexts(submitted.saveSucceeded(snapshot))).toEqual([
-      "Submitted",
-      "Second section",
-    ]);
+    expect(submitted.markSaved(snapshot).isSlideDirty(at(0))).toBe(false);
+    expect(sectionTexts(submitted.markSaved(snapshot))).toEqual(["Submitted", "Second section"]);
   });
 
   it("commits both overlapping saves when they complete in the order submitted", () => {
@@ -1140,7 +1137,7 @@ describe("saving", () => {
     const older = editor.setSectionText(sectionId, "Older").beginSave();
     const newer = older.editor.setSectionText(sectionId, "Newer").beginSave();
 
-    const settled = newer.editor.saveSucceeded(older.snapshot).saveSucceeded(newer.snapshot);
+    const settled = newer.editor.markSaved(older.snapshot).markSaved(newer.snapshot);
 
     expect(settled.isSlideDirty(at(0))).toBe(false);
     expect(settled.hasUnsavedChanges).toBe(false);
@@ -1152,7 +1149,7 @@ describe("saving", () => {
     const older = editor.setSectionText(sectionId, "Older").beginSave();
     const newer = older.editor.setSectionText(sectionId, "Newer").beginSave();
 
-    const settled = newer.editor.saveSucceeded(newer.snapshot).saveSucceeded(older.snapshot);
+    const settled = newer.editor.markSaved(newer.snapshot).markSaved(older.snapshot);
 
     expect(settled.isSlideDirty(at(0))).toBe(false);
     expect(sectionTexts(settled)).toEqual(["Newer", "Second section"]);
@@ -1178,7 +1175,7 @@ describe("saving", () => {
     const edited = editor.setSectionText(editor.sections[0]!.id, "Rewritten");
     const { editor: submitted, snapshot } = edited.beginSave();
 
-    const saved = submitted.saveSucceeded(snapshot);
+    const saved = submitted.markSaved(snapshot);
 
     expect(saved.isSlideDirty(at(0))).toBe(false);
     expect(saved.hasUnsavedChanges).toBe(false);
@@ -1191,7 +1188,7 @@ describe("saving", () => {
     const bothEdited = onSecond.setSectionText(onSecond.sections[0]!.id, "Also rewritten");
     const { editor: submitted, snapshot } = bothEdited.beginSave();
 
-    const saved = submitted.saveSucceeded(snapshot);
+    const saved = submitted.markSaved(snapshot);
 
     expect(saved.isSlideDirty(at(0))).toBe(false);
     expect(saved.isSlideDirty(at(1))).toBe(false);
@@ -1205,7 +1202,7 @@ describe("saving", () => {
     const bothEdited = onSecond.setSectionText(onSecond.sections[0]!.id, "Also rewritten");
     const { editor: submitted, snapshot } = bothEdited.beginSave([at(0)]);
 
-    const saved = submitted.saveSucceeded(snapshot);
+    const saved = submitted.markSaved(snapshot);
 
     expect(saved.isSlideDirty(at(0))).toBe(false);
     expect(saved.isSlideDirty(at(1))).toBe(true);
@@ -1219,7 +1216,7 @@ describe("saving", () => {
     const bothEdited = onSecond.setSectionText(onSecond.sections[0]!.id, "Also rewritten");
     const { editor: submitted, snapshot } = bothEdited.beginSave();
 
-    const saved = submitted.saveSucceeded(snapshot, [at(0)]);
+    const saved = submitted.markSaved(snapshot, [at(0)]);
 
     expect(saved.isSlideDirty(at(0))).toBe(false);
     expect(saved.isSlideDirty(at(1))).toBe(true);
@@ -1232,7 +1229,7 @@ describe("saving", () => {
     const { editor: submitted, snapshot } = editor.setSectionText(sectionId, "Sent").beginSave();
     const newer = submitted.setSectionText(sectionId, "Written while saving");
 
-    const saved = newer.saveSucceeded(snapshot);
+    const saved = newer.markSaved(snapshot);
 
     expect(sectionTexts(saved)).toEqual(["Written while saving", "Second section"]);
     expect(saved.isSlideDirty(at(0))).toBe(true);
@@ -1244,7 +1241,7 @@ describe("saving", () => {
     const { editor: submitted, snapshot } = editor.setSectionText(sectionId, "Sent").beginSave();
     const newer = submitted.setSectionText(sectionId, "Written while saving");
 
-    const restored = newer.saveSucceeded(snapshot).setSectionText(sectionId, "Sent");
+    const restored = newer.markSaved(snapshot).setSectionText(sectionId, "Sent");
 
     expect(restored.isSlideDirty(at(0))).toBe(false);
     expect(restored.hasUnsavedChanges).toBe(false);
@@ -1266,7 +1263,7 @@ describe("saving", () => {
     const failed = edited.beginSave().editor;
     const retry = failed.beginSave();
 
-    expect(retry.editor.saveSucceeded(retry.snapshot).hasUnsavedChanges).toBe(false);
+    expect(retry.editor.markSaved(retry.snapshot).hasUnsavedChanges).toBe(false);
   });
 
   it("keeps the reloaded content of a slide PowerPoint replaced while the save ran", () => {
@@ -1275,7 +1272,7 @@ describe("saving", () => {
     const { editor: submitted, snapshot } = edited.beginSave([at(0)]);
     const reloaded = submitted.reloadSlide(slide(at(0), "PowerPoint replaced this"));
 
-    const saved = reloaded.saveSucceeded(snapshot);
+    const saved = reloaded.markSaved(snapshot);
 
     expect(sectionTexts(saved)).toEqual(["PowerPoint replaced this"]);
     expect(saved.isSlideDirty(at(0))).toBe(false);
@@ -1285,7 +1282,7 @@ describe("saving", () => {
     const editor = openedEditor();
     const { snapshot } = editor.beginSave([at(1)]);
 
-    const saved = editor.reloadPresentation([slide(at(0), "Only slide")]).saveSucceeded(snapshot);
+    const saved = editor.reloadPresentation([slide(at(0), "Only slide")]).markSaved(snapshot);
 
     expect(saved.slides.map((editorSlide) => editorSlide.slideIndex)).toEqual([at(0)]);
     expect(saved.hasUnsavedChanges).toBe(false);

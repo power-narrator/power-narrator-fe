@@ -773,7 +773,7 @@ export class SlideNoteEditor {
   /**
    * Advances the saved baseline of each submitted slide to the snapshot that was
    * committed, and no further. Edits made while the operation ran therefore stay
-   * dirty, and a save that never succeeds leaves its content dirty for a retry.
+   * dirty, and a slide never marked saved stays dirty for a retry.
    *
    * A slide whose baseline was set after this save was submitted keeps that
    * newer baseline, so a completed save can never reinstate content PowerPoint
@@ -783,7 +783,7 @@ export class SlideNoteEditor {
    * `savedSlides` narrows the advance to the submitted slides whose notes were
    * confirmed written when only part of the submission was saved.
    */
-  saveSucceeded(snapshot: SaveSnapshot, savedSlides?: readonly SlideIndex[]): SlideNoteEditor {
+  markSaved(snapshot: SaveSnapshot, savedSlides?: readonly SlideIndex[]): SlideNoteEditor {
     const submitted = submittedRevision.get(snapshot);
     if (submitted === undefined) {
       return this;
