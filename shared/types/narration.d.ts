@@ -54,7 +54,6 @@ export type SaveAllRunProgress = {
   phase: SaveAllRunPhase;
 };
 
-/** How the renderer follows a save-all run it started and asks to cancel it. */
 export type SaveAllRunObserver = {
   onProgress: (progress: SaveAllRunProgress) => void;
   onCancellable: (cancel: () => void) => void;

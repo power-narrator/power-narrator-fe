@@ -102,7 +102,7 @@ describe("NarrationPreparation", () => {
     expect(synthesize).toHaveBeenCalledOnce();
   });
 
-  it("returns batch audio in slide and section order regardless of synthesis order", async () => {
+  it("preserves a planned slide's section order when synthesis finishes out of order", async () => {
     const pending = new Map<string, (audio: { audio: Uint8Array; mediaType: string }) => void>();
     const generateSpeech = vi.fn<(text: string, voice: Voice) => Promise<SynthesizedSpeech>>(
       (text) =>
@@ -115,7 +115,7 @@ describe("NarrationPreparation", () => {
       { supportsProvider: () => true, generateSpeech },
     );
 
-    const batch = prepareBatch(preparation, [
+    const planned = await preparation.planSlides([
       {
         slideIndex: toSlideIndex(4),
         sections: [
@@ -128,16 +128,19 @@ describe("NarrationPreparation", () => {
         sections: [{ speaker: "Narrator", text: "One first", playAcrossSlides: false }],
       },
     ]);
-    await vi.waitFor(() => expect(pending.size).toBe(3));
+    expect(generateSpeech).not.toHaveBeenCalled();
 
-    pending.get("One first")?.({ audio: new Uint8Array([3]), mediaType: "audio/mpeg" });
-    pending.get("Five second")?.({ audio: new Uint8Array([2]), mediaType: "audio/mpeg" });
-    pending.get("Five first")?.({ audio: new Uint8Array([1]), mediaType: "audio/mpeg" });
+    const audio = planned[0]!.synthesize();
+    await vi.waitFor(() =>
+      expect(new Set(pending.keys())).toEqual(new Set(["Five first", "Five second"])),
+    );
 
-    await expect(batch).resolves.toEqual([
+    pending.get("Five second")!({ audio: new Uint8Array([2]), mediaType: "audio/mpeg" });
+    pending.get("Five first")!({ audio: new Uint8Array([1]), mediaType: "audio/mpeg" });
+
+    await expect(audio).resolves.toEqual([
       { slideIndex: 4, sectionIndex: 0, audioData: new Uint8Array([1]), playAcrossSlides: false },
       { slideIndex: 4, sectionIndex: 1, audioData: new Uint8Array([2]), playAcrossSlides: false },
-      { slideIndex: 0, sectionIndex: 0, audioData: new Uint8Array([3]), playAcrossSlides: false },
     ]);
   });
 

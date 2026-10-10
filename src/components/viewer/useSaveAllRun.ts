@@ -55,7 +55,6 @@ export function useSaveAllRun() {
     }
   }, []);
 
-  /** Resolves true only when the author confirmed and the run's work reported success. */
   const confirmAndRun = useCallback(
     async (purpose: SaveAllRunPurpose, work: SaveAllRunWork) => {
       const confirmed = await new Promise<boolean>((resolve) => {
