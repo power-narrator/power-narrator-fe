@@ -35,7 +35,7 @@ export type NarratedPresentationSaveRequest = {
   slides: readonly NarratedSlideInput[];
 };
 
-export type SaveAllRunChannels = {
+export type SaveAllRunRouting = {
   runId: number;
   progressChannel: string;
 };
