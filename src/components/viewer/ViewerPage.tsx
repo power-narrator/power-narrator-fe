@@ -59,11 +59,6 @@ function reportNarratedSaveFailure({ partial, message }: NarratedSaveFailure) {
   );
 }
 
-/**
- * Explains where a stopped save-all run left the presentation. Notes and audio
- * are separate writes, so a failure after the notes saved leaves that slide's
- * notes and audio out of step; nothing is rolled back.
- */
 function reportSaveAllFailure({ outcome, savedNoteSlides, failedSlideIndex }: SaveAllRunResult) {
   if (outcome.success || outcome.stage === "cancelled") {
     return;
@@ -166,12 +161,6 @@ export function ViewerPage({
     }
   };
 
-  /**
-   * Commits the whole presentation through the narrated save path, one complete
-   * slide at a time, and reconciles only the notes PowerPoint confirmed written.
-   * Should the run's result never arrive, the slides its progress reported
-   * complete are the only ones known to be written.
-   */
   async function commitNarratedPresentation({ onProgress, onCancellable }: SaveAllRunObserver) {
     const snapshot = editor.submitSave();
     const submitted = snapshot.slides.map((slide) => ({
@@ -192,6 +181,8 @@ export function ViewerPage({
         },
       );
     } catch (error: unknown) {
+      // The run saves slides one at a time in submitted order, so only those
+      // its progress reported complete are known to be written.
       editor.saveSucceeded(
         snapshot,
         submitted.slice(0, completedSlides).map((slide) => slide.slideIndex),

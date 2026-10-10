@@ -39,7 +39,6 @@ type SynthesizedNarrationSection<Section extends PreparedNarrationSection> = Sec
   speech: SynthesizedSpeech;
 };
 
-/** A slide whose narration passed validation and has not been synthesized yet. */
 export type PlannedNarrationSlide = NarratedSlideInput & {
   synthesize(): Promise<SlideAudioEntry[]>;
 };
@@ -81,10 +80,6 @@ export class NarrationPreparation {
     return preview!.speech;
   }
 
-  /**
-   * Validates every requested slide before any synthesis starts. Each planned
-   * slide synthesizes its own sections in parallel when asked.
-   */
   async planSlides(slides: readonly NarratedSlideInput[]): Promise<PlannedNarrationSlide[]> {
     const mappings = await this.mappingSource.getSpeakerMappings();
 

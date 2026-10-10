@@ -35,7 +35,6 @@ export type NarratedPresentationSaveRequest = {
   slides: readonly NarratedSlideInput[];
 };
 
-/** Correlates a save-all run's progress and cancellation with the run that owns them. */
 export type SaveAllRunChannels = {
   runId: number;
   progressChannel: string;
@@ -43,10 +42,6 @@ export type SaveAllRunChannels = {
 
 export type SaveAllRunPhase = "generating" | "saving";
 
-/**
- * Where a save-all run stands. `completedSlides` and `totalSlides` count the
- * run's slides and are never a slide's identity, which `slideIndex` carries.
- */
 export type SaveAllRunProgress = {
   slideIndex: SlideIndex;
   completedSlides: number;
@@ -76,6 +71,5 @@ export type SaveAllRunResult = {
   outcome: SaveAllRunOutcome;
   /** Submitted slides whose notes PowerPoint confirmed written, in run order. */
   savedNoteSlides: readonly SlideIndex[];
-  /** The slide being generated or saved when the run failed. */
   failedSlideIndex?: SlideIndex;
 };

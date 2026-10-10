@@ -341,7 +341,6 @@ export const getVideoDestinationRequests = (app: ElectronApplication) =>
 export const getGeneratedVideoCalls = (app: ElectronApplication) =>
   readProbe(app, "generatedVideos");
 
-/** Makes the video destination dialog report that the author declined to choose one. */
 export function declineVideoDestination(app: ElectronApplication) {
   return app.evaluate(() => {
     (globalThis as MainGlobals).__videoDestination = null;
@@ -360,7 +359,6 @@ export function getHeldNarrationWork(app: ElectronApplication): Promise<HeldWork
   );
 }
 
-/** Lets every currently held request finish; later requests are still held. */
 export function releaseHeldNarrationWork(app: ElectronApplication) {
   return app.evaluate(() => {
     for (const work of (globalThis as MainGlobals).__heldWork.pending.splice(0)) {

@@ -27,8 +27,7 @@ const showDiscardDialog: DiscardConfirmation = async (options, window) => {
 
 /**
  * Tracks which windows hold unsaved narration edits and blocks closing one
- * until the user confirms discarding them. A close another guard already
- * prevented is left alone, and abandons any quit in progress.
+ * until the user confirms discarding them.
  */
 export class UnsavedNarrationChanges {
   private readonly windowsWithChanges = new Set<number>();
