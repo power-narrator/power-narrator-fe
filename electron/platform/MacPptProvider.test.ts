@@ -363,9 +363,7 @@ describe("MacPptProvider section audio playback", () => {
   });
 
   it("returns focus to the app after the slide images were exported but PowerPoint fails to read the checkboxes", async () => {
-    const appWindow = { show: vi.fn<() => void>(), focus: vi.fn<() => void>() };
-    // oxlint-disable-next-line typescript/unbound-method
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([appWindow as never]);
+    const appWindow = openAppWindow();
     const provider = new MacPptProvider();
     stubSlideExport(provider, [0]);
     reportSectionAudioPlayback("###ERROR### Target presentation has no editing window\n");
