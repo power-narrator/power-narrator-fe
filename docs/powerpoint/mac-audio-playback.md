@@ -13,6 +13,7 @@ Every finding comes from automating PowerPoint itself, then saving, reopening an
 - `PickupAnimation` / `ApplyAnimation` copy an audio's animations, including its playback setting, onto a replacement. Effect order, volume, mute and geometry must be restored separately. A Play started by clicking another shape must be rebuilt.
 - Changing the checkbox changes the stored Play duration, which moves later After Previous animations. See [Saved Play duration](#saved-play-duration).
 - The checkbox is the only reliable reading of the setting; numeric getters and legacy flags disagree with it.
+- PowerPoint does not need to be the frontmost app when the audio's deck is already its active window. Switching to another deck worked only with PowerPoint in front. `DocumentWindow.Activate` and setting `ViewType` raise PowerPoint's window above other windows even when nothing changes. See [PowerPoint in the background](#powerpoint-in-the-background).
 
 Terms used below:
 
@@ -87,6 +88,26 @@ Toggling also changed these stored values:
 
 These are animation timing values, not the audio file's length. When the checkbox already matched and was not clicked, the saved state stayed exactly the same. Reading the checkbox, even many times in a row, changed nothing. Normal and Slide Sorter view were restored afterwards; text selections, multiple selections, other window layouts and slideshow mode are untested.
 
+### PowerPoint in the background
+
+These tests ran with another app frontmost.
+
+| Situation                                                                 | Result                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Target deck already PowerPoint's active window                            | Selection, the Ribbon queries, checking and unchecking, and the add-in's save and playback-read macros worked. The other app stayed in front. Changes survived reopening.                                                   |
+| Target on another slide of the active window                              | VBA navigated and selected the audio in the background.                                                                                                                                                                     |
+| Another deck active, VBA `DocumentWindow.Activate`                        | Returned without error but did not switch decks. Selecting the audio then failed with `To select a shape, its view must be active.` Calling `Application.Activate` first did not help: PowerPoint stayed in the background. |
+| Another deck active, PowerPoint brought forward by AppleScript `activate` | `DocumentWindow.Activate` switched decks and guarded selection succeeded.                                                                                                                                                   |
+
+`ActivePresentation` and `ActiveWindow` report correctly in the background, so a macro can tell whether a switch is needed before trying one. Because a failed activation reports no error, compare `ActiveWindow` with the target window before any Ribbon call.
+
+Raising a window is different from activating the app, and checks of the frontmost app miss it:
+
+- `DocumentWindow.Activate` on the already-active window, and setting `ViewType` to the view it already had, raised PowerPoint's window above other background windows. The frontmost app kept keyboard focus.
+- Navigating slides, selecting, `DoEvents`, the identity queries, the Ribbon queries, `Application.Activate` and saving did not raise it.
+- Skipping `Activate` when `ActiveWindow` was already the target, and setting the view only when it differed, avoided the raise, including when starting on another slide. Selection, the guards and the checkbox read still worked.
+- Opening a closed deck with AppleScript `open` did not activate PowerPoint.
+
 ### Saved Play duration
 
 PowerPoint stores a duration on each audio Play command. Later After Previous animations in the same sequence start after it, so their stored delays move by the same amount. In one tested slide, a 2304 ms clip moved the following delays from 375 to 2679 ms and from 1623 to 3927 ms.
@@ -128,6 +149,7 @@ Untested:
 
 - other effects on the audio, shared triggers, and other shapes' effects triggered by the audio;
 - stacking order, trims, bookmarks, fades, and replacement media shorter than the original;
+- in the background: minimized windows, two decks with the same filename, and whether skipping `Activate` removes every window raise in a full save;
 - slideshow playback. Attempts started media and advanced slides, but reading the first slide's player afterwards failed with AppleScript error -1700 whether or not the box was checked. Whether audio is actually heard across slides, how slides look, and whether custom triggers fire are unverified.
 
 ## Published API references
@@ -135,5 +157,7 @@ Untested:
 Microsoft's [Mac supported identifier list](https://learn.microsoft.com/en-us/office/vba/office-mac/idmsopowerpointmac) includes `MediaClipPlayAcrossSlides`. The [official Fluent identifier repository](https://github.com/OfficeDev/office-fluent-ui-command-identifiers/tree/b230a0df45036b2d5e8b49ebf368b3f90ada8d63) lists it as a checkbox in the Office 2016 and Microsoft 365 Current Channel PowerPoint workbooks at that revision. These listings do not guarantee every installed build behaves the same.
 
 [ExecuteMso](https://learn.microsoft.com/en-us/office/vba/api/office.commandbars.executemso) is documented for buttons, toggle buttons and split buttons, and [GetPressedMso](https://learn.microsoft.com/en-us/office/vba/api/office.commandbars.getpressedmso) for toggle buttons; their use on this checkbox rests on the native tests above. [GetEnabledMso](https://learn.microsoft.com/en-us/office/vba/api/office.commandbars.getenabledmso) and [GetVisibleMso](https://learn.microsoft.com/en-us/office/vba/api/office.commandbars.getvisiblemso) report availability.
+
+[Application.Activate](https://learn.microsoft.com/en-us/office/vba/api/powerpoint.application.activate) is documented but did not bring PowerPoint forward on Mac. [ActivePresentation](https://learn.microsoft.com/en-us/office/vba/api/powerpoint.application.activepresentation) and [ActiveWindow](https://learn.microsoft.com/en-us/office/vba/api/powerpoint.application.activewindow) behaved as documented.
 
 The [StopAfterSlides reference](https://learn.microsoft.com/en-us/office/vba/api/powerpoint.playsettings.stopafterslides) describes a writable slide limit and makes no promise about other animations. [EffectInformation.PlaySettings](https://learn.microsoft.com/en-us/office/vba/api/powerpoint.effectinformation.playsettings) is read-only. The [Play in Background instructions](https://support.microsoft.com/en-us/powerpoint/play-music-across-multiple-slides-in-your-slide-show-in-powerpoint) describe its wider behavior.
