@@ -51,12 +51,14 @@ function createCachedRetrySaver(
     new TtsManager(new Map([["gcp", provider]]), cacheDirectory),
   );
   const powerpoint = {
-    saveNotes: vi.fn<NarrationPowerPoint["saveNotes"]>().mockResolvedValue({ success: true }),
-    insertAudio: vi
-      .fn<NarrationPowerPoint["insertAudio"]>()
-      .mockResolvedValueOnce({ success: false, message: "audio automation failed" })
+    saveSlideNarration: vi
+      .fn<NarrationPowerPoint["saveSlideNarration"]>()
+      .mockResolvedValueOnce({
+        success: false,
+        saved: "nothing",
+        message: "audio automation failed",
+      })
       .mockResolvedValue({ success: true }),
-    removeAudio: vi.fn<NarrationPowerPoint["removeAudio"]>().mockResolvedValue({ success: true }),
   } satisfies NarrationPowerPoint;
 
   return {
@@ -67,7 +69,7 @@ function createCachedRetrySaver(
 }
 
 describe("NarratedPresentationSaver cache retries", () => {
-  it("reuses prepared narration when an ordinary retry follows a partial PowerPoint failure", async () => {
+  it("reuses prepared narration when an ordinary retry follows a PowerPoint failure", async () => {
     const { powerpoint, saver, synthesize } = createCachedRetrySaver();
     const request = {
       filePath: "/slides/talk.pptx",
@@ -78,19 +80,18 @@ describe("NarratedPresentationSaver cache retries", () => {
     await expect(saver.saveSlide(request)).resolves.toEqual({
       success: false,
       stage: "powerpoint",
-      partial: true,
+      saved: "nothing",
       message: "audio automation failed",
     });
     await expect(saver.saveSlide(request)).resolves.toEqual({ success: true });
 
     expect(synthesize).toHaveBeenCalledTimes(1);
-    expect(powerpoint.saveNotes).toHaveBeenCalledTimes(2);
-    expect(powerpoint.insertAudio).toHaveBeenCalledTimes(2);
+    expect(powerpoint.saveSlideNarration).toHaveBeenCalledTimes(2);
   });
 
   it("reuses cached narration when only the playback choice changes", async () => {
     const { powerpoint, saver, synthesize } = createCachedRetrySaver();
-    powerpoint.insertAudio.mockReset().mockResolvedValue({ success: true });
+    powerpoint.saveSlideNarration.mockReset().mockResolvedValue({ success: true });
     const saveWithPlayback = (playAcrossSlides: boolean) =>
       saver.savePresentation({
         filePath: "/slides/talk.pptx",
@@ -109,7 +110,7 @@ describe("NarratedPresentationSaver cache retries", () => {
     });
 
     expect(synthesize).toHaveBeenCalledTimes(1);
-    expect(powerpoint.insertAudio.mock.lastCall?.[1]).toEqual([
+    expect(powerpoint.saveSlideNarration.mock.lastCall?.[1].audio).toEqual([
       expect.objectContaining({ sectionIndex: 0, playAcrossSlides: true }),
     ]);
   });

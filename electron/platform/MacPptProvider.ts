@@ -25,12 +25,15 @@ import {
 } from "./sectionAudioPlayback.js";
 import { completeSlideReload } from "./slideReload.js";
 import {
-  checkInsertAudioReport,
-  checkRemoveAudioReport,
-  formatInsertAudioParams,
-} from "./macInsertAudio.js";
+  checkSaveNarrationReport,
+  formatNotesData,
+  formatSaveNarrationParams,
+  narrationSavePhase,
+  type StagedSlideAudio,
+} from "./macSaveNarration.js";
 import type {
   BasicPptResult,
+  ErrorResult,
   SectionsPlayingAcrossSlides,
   ExportSlideImagesResult,
   ReadAllSlideNotesResult,
@@ -39,10 +42,13 @@ import type {
   SlideAudioEntry,
   SlideImageMap,
   SlideManifestEntry,
+  SlideNarrationEntry,
+  SlideNarrationSaveResult,
   SlideNotesEntry,
   SlideNotesMap,
   SlidePptResult,
   SlidesPptResult,
+  SuccessResult,
   VideoPptResult,
 } from "./types.js";
 
@@ -59,6 +65,19 @@ type AppleScriptResult<T = Record<string, unknown>> =
 type ClosedPresentation =
   | { closed: true; slideIndex: SlideIndex }
   | { closed: false; slideIndex: SlideIndex; message: string };
+
+type NarrationSaveRequest = {
+  /** What the macro is doing, for its messages. */
+  action: string;
+  slideIndices: readonly SlideIndex[];
+  /** Notes to write; empty to leave the notes alone. */
+  notes: readonly SlideNotesEntry[];
+  /** The complete section audio of each requested slide; none removes it. */
+  audio: readonly SlideAudioEntry[];
+};
+
+/** `saved` once PowerPoint saved the changes, even when a later step failed. */
+type NarrationSaveResult = SuccessResult | (ErrorResult & { saved: boolean });
 
 /** close-presentation.applescript prints this when no open presentation has the path. */
 const NOT_OPEN = "not-open";
@@ -477,157 +496,139 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
-  async insertAudio(filePath: string, slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult> {
-    if (!slidesAudio || slidesAudio.length === 0) return { success: true };
-
-    return this.discardChangesOnFailure(filePath, () => this.runInsertAudio(filePath, slidesAudio));
-  }
-
-  private async runInsertAudio(
+  async saveSlideNarration(
     filePath: string,
-    slidesAudio: SlideAudioEntry[],
-  ): Promise<BasicPptResult> {
-    const officeContainer = this.getOfficeContainerPath();
-    const audioSessionDir = path.join(officeContainer, "TemporaryAudio", `session-${Date.now()}`);
-
-    try {
-      fs.mkdirSync(audioSessionDir, { recursive: true });
-    } catch {
-      return { success: false, message: "Could not create audio directory in Office container." };
-    }
-
-    const resultPath = path.join(officeContainer, "insert_audio_result.txt");
-
-    try {
-      const stagedAudio = slidesAudio.map((entry) => {
-        const slideDir = path.join(audioSessionDir, `slide_${slideNumberOf(entry.slideIndex)}`);
-        fs.mkdirSync(slideDir, { recursive: true });
-        const audioPath = path.join(slideDir, buildPptAudioFileName(entry.sectionIndex));
-        fs.writeFileSync(audioPath, Buffer.from(entry.audioData));
-        return { entry, audioPath };
-      });
-
-      cleanupPaths(resultPath);
-      const scriptResult = await this.triggerMacro(
-        "InsertAudio",
-        filePath,
-        "insert_audio_params.txt",
-        formatInsertAudioParams(filePath, resultPath, stagedAudio),
-      );
-      if (!scriptResult.success) {
-        return { success: false, message: scriptResult.message || "Failed to insert audio." };
-      }
-
-      const report = fs.existsSync(resultPath) ? fs.readFileSync(resultPath, "utf8") : undefined;
-      const result = checkInsertAudioReport(report, slidesAudio);
-      if (result.success) {
-        this.focusApp();
-      }
-      return result;
-    } catch (e: unknown) {
-      return { success: false, message: getErrorMessage(e) };
-    } finally {
-      cleanupPaths(resultPath, audioSessionDir);
-    }
-  }
-
-  removeAudio(filePath: string, slideIndices: SlideIndex[]): Promise<BasicPptResult> {
-    return this.discardChangesOnFailure(filePath, () =>
-      this.runRemoveAudio(filePath, slideIndices),
-    );
-  }
-
-  private async runRemoveAudio(
-    filePath: string,
-    slideIndices: SlideIndex[],
-  ): Promise<BasicPptResult> {
-    const officeContainer = this.getOfficeContainerPath();
-    const resultPath = path.join(officeContainer, "remove_audio_result.txt");
-
-    try {
-      const slideNumbers = slideIndices.map(slideNumberOf);
-      cleanupPaths(resultPath);
-      const scriptResult = await this.triggerMacro(
-        "RemoveAudio",
-        filePath,
-        "remove_audio_params.txt",
-        `${filePath}|${slideNumbers.join(",")}|${resultPath}`,
-      );
-      if (!scriptResult.success) {
-        return { success: false, message: scriptResult.message || "Failed to remove audio." };
-      }
-
-      const report = fs.existsSync(resultPath) ? fs.readFileSync(resultPath, "utf8") : undefined;
-      const result = checkRemoveAudioReport(report, slideNumbers);
-      if (result.success) {
-        this.focusApp();
-      }
-      return result;
-    } catch (e: unknown) {
-      return { success: false, message: getErrorMessage(e) };
-    } finally {
-      cleanupPaths(resultPath);
-    }
-  }
-
-  /**
-   * A failed audio macro can leave edits in PowerPoint's memory, such as
-   * animations PowerPoint degraded while rebuilding a slide. Any later save would
-   * write them, so reload the deck as last saved. Callers save notes just before.
-   */
-  private async discardChangesOnFailure(
-    filePath: string,
-    edit: () => Promise<BasicPptResult>,
-  ): Promise<BasicPptResult> {
-    const result = await edit();
+    slide: SlideNarrationEntry,
+  ): Promise<SlideNarrationSaveResult> {
+    const result = await this.saveNarration(filePath, {
+      action: "saving the slide",
+      slideIndices: [slide.slideIndex],
+      notes: [{ slideIndex: slide.slideIndex, notes: slide.notes }],
+      audio: slide.audio,
+    });
     if (result.success) {
       return result;
     }
+    return {
+      success: false,
+      message: result.message,
+      saved: result.saved ? "notesAndAudio" : "nothing",
+    };
+  }
 
-    const closed = await this.close(filePath, "discard");
-    if (!closed.closed) {
+  async removeAudio(filePath: string, slideIndices: SlideIndex[]): Promise<BasicPptResult> {
+    const result = await this.saveNarration(filePath, {
+      action: "removing audio",
+      slideIndices,
+      notes: [],
+      audio: [],
+    });
+    if (result.success || !result.saved) {
+      return result.success ? result : { success: false, message: result.message };
+    }
+    return {
+      success: false,
+      message: `PowerPoint removed the section audio and saved the presentation. ${result.message}`,
+    };
+  }
+
+  /**
+   * The macro saves the presentation as it was before changing it, then saves the
+   * new notes and section audio together. A failure in between leaves edits in
+   * PowerPoint's memory that any later save would write, so only then is the deck
+   * reloaded as last saved; earlier failures leave it open as it was.
+   */
+  private async saveNarration(
+    filePath: string,
+    request: NarrationSaveRequest,
+  ): Promise<NarrationSaveResult> {
+    const officeContainer = this.getOfficeContainerPath();
+    const sessionDir = path.join(officeContainer, "TemporaryAudio", `session-${Date.now()}`);
+    const resultPath = path.join(officeContainer, "save_narration_result.txt");
+    const notesPath =
+      request.notes.length > 0 ? path.join(officeContainer, `notes_data_${Date.now()}.txt`) : "";
+    const slideNumbers = request.slideIndices.map(slideNumberOf);
+
+    let result: BasicPptResult;
+    let report: string | undefined;
+    try {
+      let params: string;
+      try {
+        params = formatSaveNarrationParams(
+          filePath,
+          resultPath,
+          notesPath,
+          slideNumbers,
+          this.stageAudio(sessionDir, request.audio),
+        );
+        if (notesPath) {
+          fs.writeFileSync(notesPath, formatNotesData(request.notes), "utf8");
+        }
+        cleanupPaths(resultPath);
+      } catch (e: unknown) {
+        return {
+          success: false,
+          saved: false,
+          message: `Could not prepare the files PowerPoint needs: ${getErrorMessage(e)}`,
+        };
+      }
+
+      const scriptResult = await this.triggerMacro(
+        "SaveNarration",
+        filePath,
+        "save_narration_params.txt",
+        params,
+      );
+      report = fs.existsSync(resultPath) ? fs.readFileSync(resultPath, "utf8") : undefined;
+      result = scriptResult.success
+        ? checkSaveNarrationReport(report, request.action, slideNumbers, request.audio)
+        : {
+            success: false,
+            message: scriptResult.message || "Failed to run the PowerPoint macro.",
+          };
+    } catch (e: unknown) {
+      result = { success: false, message: getErrorMessage(e) };
+    } finally {
+      cleanupPaths(resultPath, sessionDir, notesPath);
+    }
+
+    const phase = narrationSavePhase(report);
+    if (result.success) {
+      this.focusApp();
+      return result;
+    }
+    if (phase === "editing") {
       return {
         success: false,
-        message: `${result.message} PowerPoint could not discard the failed changes (${closed.message}); close the presentation without saving before continuing.`,
+        saved: false,
+        message: await this.discardFailedChanges(filePath, result.message),
       };
+    }
+    this.focusApp();
+    return { success: false, saved: phase === "saved", message: result.message };
+  }
+
+  private stageAudio(sessionDir: string, audio: readonly SlideAudioEntry[]): StagedSlideAudio[] {
+    return audio.map((entry) => {
+      const slideDir = path.join(sessionDir, `slide_${slideNumberOf(entry.slideIndex)}`);
+      fs.mkdirSync(slideDir, { recursive: true });
+      const audioPath = path.join(slideDir, buildPptAudioFileName(entry.sectionIndex));
+      fs.writeFileSync(audioPath, Buffer.from(entry.audioData));
+      return { entry, audioPath };
+    });
+  }
+
+  /** Resolves to the failure, extended with how recovery went. */
+  private async discardFailedChanges(filePath: string, failure: string): Promise<string> {
+    const closed = await this.close(filePath, "discard");
+    if (!closed.closed) {
+      return `${failure} PowerPoint could not discard the failed changes (${closed.message}); close the presentation without saving before continuing.`;
     }
     const reopenFailure = await this.reopen(filePath, closed.slideIndex);
     if (reopenFailure !== undefined) {
-      return {
-        success: false,
-        message: `${result.message} The failed changes were discarded, but PowerPoint could not reopen the presentation (${reopenFailure}).`,
-      };
+      return `${failure} The failed changes were discarded, but PowerPoint could not reopen the presentation (${reopenFailure}).`;
     }
-    return result;
-  }
-
-  async saveNotes(filePath: string, slides: SlideNotesEntry[]): Promise<BasicPptResult> {
-    const officeContainer = this.getOfficeContainerPath();
-
-    let dataContent = "";
-    for (const s of slides) {
-      dataContent += `###SLIDE_START### ${slideNumberOf(s.slideIndex)}\n${s.notes || ""}\n###SLIDE_END###\n`;
-    }
-
-    const dataPath = path.join(officeContainer, `notes_data_${Date.now()}.txt`);
-    fs.writeFileSync(dataPath, dataContent, "utf8");
-
-    try {
-      const scriptResult = await this.triggerMacro(
-        "UpdateNotes",
-        filePath,
-        "update_notes_params.txt",
-        `${filePath}|${dataPath}`,
-      );
-      if (!scriptResult.success) {
-        return { success: false, message: scriptResult.message || "Failed to update notes." };
-      }
-
-      this.focusApp();
-      return { success: true };
-    } finally {
-      cleanupPaths(dataPath);
-    }
+    return failure;
   }
 
   async generateVideo(filePath: string, videoOutputPath: string): Promise<VideoPptResult> {

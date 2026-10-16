@@ -1,5 +1,6 @@
 import type { SlideIndex } from "../../shared/slides/slideCoordinates.js";
 import type { ErrorResult, Result, SuccessResult } from "../../shared/types/result.js";
+import type { SavedSlideNarration } from "../../shared/types/narration.js";
 
 export type { ErrorResult, Result, SuccessResult };
 export type {
@@ -49,6 +50,17 @@ export type SlideAudioEntry = {
   audioData: Uint8Array;
   playAcrossSlides: boolean;
 };
+
+/** A slide's new notes with its complete section audio, which PowerPoint saves together. */
+export type SlideNarrationEntry = {
+  slideIndex: SlideIndex;
+  notes: string;
+  audio: SlideAudioEntry[];
+};
+
+export type SlideNarrationSaveResult =
+  | SuccessResult
+  | (ErrorResult & { saved: SavedSlideNarration });
 
 export type SlidesPptResult = Result<{ slides: SlideWithSrc[] }>;
 

@@ -128,7 +128,7 @@ describe.each([
       asResult({
         success: false,
         stage: "validation",
-        partial: false,
+        saved: "nothing",
         message: `File not found: ${missingPath}`,
       }),
     );

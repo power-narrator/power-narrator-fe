@@ -3,6 +3,7 @@ import { useCallback, useLayoutEffect, useMemo } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type {
   NarratedSaveResult,
+  SavedSlideNarration,
   SaveAllRunCallbacks,
   SaveAllRunResult,
 } from "../../../shared/types/narration";
@@ -51,13 +52,22 @@ function alertSaveError(detail: string) {
   alert(`Save error: ${detail}`);
 }
 
-function reportNarratedSaveFailure({ partial, message }: NarratedSaveFailure) {
-  alertSaveError(
-    partial
-      ? `PowerPoint notes were saved, but narration audio was not committed. ${message}`
-      : message,
-  );
+const SAVED_BEFORE_FAILURE: Record<SavedSlideNarration, string> = {
+  nothing: "",
+  notes: "PowerPoint notes were saved, but narration audio was not committed. ",
+  notesAndAudio: "PowerPoint saved the notes and narration audio. ",
+};
+
+function reportNarratedSaveFailure({ saved, message }: NarratedSaveFailure) {
+  alertSaveError(`${SAVED_BEFORE_FAILURE[saved]}${message}`);
 }
+
+const SAVE_ALL_PERSISTENCE: Record<SavedSlideNarration, string> = {
+  nothing: "its notes and narration audio were not saved",
+  notes:
+    "its notes were saved, but its narration audio was not fully saved, so the slide's notes and audio may not match",
+  notesAndAudio: "its notes and narration audio were saved",
+};
 
 function reportSaveAllFailure({ outcome, savedNoteSlides, failedSlideIndex }: SaveAllRunResult) {
   if (outcome.success || outcome.stage === "cancelled") {
@@ -72,11 +82,8 @@ function reportSaveAllFailure({ outcome, savedNoteSlides, failedSlideIndex }: Sa
     return;
   }
 
-  const persistence = outcome.partial
-    ? "its notes were saved, but its narration audio was not fully saved, so the slide's notes and audio may not match"
-    : "its notes may not have been saved";
   alert(
-    `Save error on slide ${slideNumberOf(failedSlideIndex)}: ${persistence}. ${outcome.message}${earlierSaved} Later slides were not changed.`,
+    `Save error on slide ${slideNumberOf(failedSlideIndex)}: ${SAVE_ALL_PERSISTENCE[outcome.saved]}. ${outcome.message}${earlierSaved} Later slides were not changed.`,
   );
 }
 

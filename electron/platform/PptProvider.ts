@@ -5,9 +5,9 @@ import type {
   ReadAllSlideNotesResult,
   ReadSlideNotesResult,
   ReloadSlideImageResult,
+  SlideNarrationEntry,
+  SlideNarrationSaveResult,
   SlidePptResult,
-  SlideAudioEntry,
-  SlideNotesEntry,
   SlidesPptResult,
   VideoPptResult,
 } from "./types.js";
@@ -15,15 +15,17 @@ import type {
 export type PptProvider = {
   convertPptx(filePath: string, outputDir: string): Promise<SlidesPptResult>;
   /**
-   * The entries for a slide are its complete section audio: any other section
-   * audio on that slide is obsolete and removed, while other media and slides
-   * not named in the entries are left alone.
+   * Writes the slide's notes and makes its audio entries its complete section
+   * audio: any other section audio on that slide is obsolete and removed, while
+   * other media and slides are left alone. A failure says what it left saved.
    */
-  insertAudio(filePath: string, slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult>;
+  saveSlideNarration(
+    filePath: string,
+    slide: SlideNarrationEntry,
+  ): Promise<SlideNarrationSaveResult>;
   removeAudio(filePath: string, slideIndices: SlideIndex[]): Promise<BasicPptResult>;
   readAllSlideNotes(filePath: string): Promise<ReadAllSlideNotesResult>;
   readSlideNotes(filePath: string, slideIndex: SlideIndex): Promise<ReadSlideNotesResult>;
-  saveNotes(filePath: string, slides: SlideNotesEntry[]): Promise<BasicPptResult>;
   reloadSlide(filePath: string, slideIndex: SlideIndex, outputDir: string): Promise<SlidePptResult>;
 };
 
