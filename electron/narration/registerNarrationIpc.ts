@@ -10,7 +10,7 @@ import { registerNarratedPresentationSaveIpc } from "./registerNarratedPresentat
 import { registerNarratedSlideSaveIpc } from "./registerNarratedSlideSaveIpc.js";
 import { registerNarrationPreviewIpc } from "./registerNarrationPreviewIpc.js";
 
-export type NarrationPowerPoint = Pick<PptProvider, "saveNotes" | "insertAudio" | "removeAudio">;
+export type NarrationPowerPoint = Pick<PptProvider, "saveSlideNarration">;
 
 export type NarrationAdapters = {
   mappingSource: SpeakerMappingSource;

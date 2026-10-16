@@ -28,6 +28,8 @@ import type {
   RunXmlCliResult,
   SlideAudioEntry,
   SlidePptResult,
+  SlideNarrationEntry,
+  SlideNarrationSaveResult,
   SlideNotesEntry,
   SlidesPptResult,
   XmlCliOperation,
@@ -176,6 +178,25 @@ export class XmlPptProvider implements PptProvider {
     }
 
     return cliResult;
+  }
+
+  /** Saves the notes first, so a failed audio change leaves them saved. */
+  async saveSlideNarration(
+    filePath: string,
+    slide: SlideNarrationEntry,
+  ): Promise<SlideNarrationSaveResult> {
+    const notesResult = await this.saveNotes(filePath, [
+      { slideIndex: slide.slideIndex, notes: slide.notes },
+    ]);
+    if (!notesResult.success) {
+      return { ...notesResult, saved: "nothing" };
+    }
+
+    const audioResult =
+      slide.audio.length > 0
+        ? await this.insertAudio(filePath, slide.audio)
+        : await this.removeAudio(filePath, [slide.slideIndex]);
+    return audioResult.success ? { success: true } : { ...audioResult, saved: "notes" };
   }
 
   async insertAudio(filePath: string, slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult> {

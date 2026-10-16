@@ -130,24 +130,6 @@ function succeedAppleScript(capture: () => void = () => {}) {
 }
 
 describe("MacPptProvider native slide numbers", () => {
-  it("writes notes blocks under the 1-based slide number the macro expects", async () => {
-    const provider = new MacPptProvider();
-    let notesData = "";
-    succeedAppleScript(() => {
-      const params = fs.readFileSync(officeContainerPath("update_notes_params.txt"), "utf8");
-      notesData = fs.readFileSync(params.split("|")[1]!, "utf8");
-    });
-
-    await provider.saveNotes("/presentations/deck.pptx", [
-      { slideIndex: toSlideIndex(0), notes: "First" },
-      { slideIndex: toSlideIndex(4), notes: "Fifth" },
-    ]);
-
-    expect(notesData).toBe(
-      "###SLIDE_START### 1\nFirst\n###SLIDE_END###\n###SLIDE_START### 5\nFifth\n###SLIDE_END###\n",
-    );
-  });
-
   it("starts the slideshow at the 1-based slide number", async () => {
     const provider = new MacPptProvider();
     succeedAppleScript();
@@ -445,67 +427,70 @@ describe("MacPptProvider.convertPptx", () => {
   });
 });
 
-describe("MacPptProvider.insertAudio", () => {
+/**
+ * Stands in for the SaveNarration macro: the provider learns the outcome only
+ * from the report the macro writes to the result path named in its params.
+ */
+function saveNarrationMacroReports(report: string | undefined) {
+  const request = { params: "", notes: "" };
+  succeedAppleScript(() => {
+    request.params = fs.readFileSync(officeContainerPath("save_narration_params.txt"), "utf8");
+    const [, resultPath, notesPath] = request.params.split(/\r?\n/)[0]!.split("|");
+    if (notesPath) {
+      request.notes = fs.readFileSync(notesPath, "utf8");
+    }
+    if (report !== undefined) {
+      fs.writeFileSync(resultPath!, report);
+    }
+  });
+  return request;
+}
+
+describe("MacPptProvider.saveSlideNarration", () => {
   const deck = "/presentations/deck.pptx";
-  const firstAndThirdSlideAudio = [
-    {
-      slideIndex: toSlideIndex(0),
-      sectionIndex: 0,
-      audioData: new Uint8Array([1]),
-      playAcrossSlides: true,
-    },
-    {
-      slideIndex: toSlideIndex(2),
-      sectionIndex: 1,
-      audioData: new Uint8Array([2]),
-      playAcrossSlides: false,
-    },
+  const thirdSlide = {
+    slideIndex: toSlideIndex(2),
+    notes: "First\n---\nSecond",
+    audio: [
+      {
+        slideIndex: toSlideIndex(2),
+        sectionIndex: 0,
+        audioData: new Uint8Array([1]),
+        playAcrossSlides: true,
+      },
+      {
+        slideIndex: toSlideIndex(2),
+        sectionIndex: 1,
+        audioData: new Uint8Array([2]),
+        playAcrossSlides: false,
+      },
+    ],
+  };
+  const savedThirdSlide = [
+    "editing",
+    "inserted|3|ppt_audio_1|true",
+    "inserted|3|ppt_audio_2|false",
+    "slide|3|ppt_audio_1,ppt_audio_2",
+    "saved",
+    "done",
   ];
-  const confirmedFirst = "inserted|1|ppt_audio_1|true";
-  const confirmedThird = "inserted|3|ppt_audio_2|false";
 
-  /**
-   * Stands in for the InsertAudio macro: the provider learns the outcome only
-   * from the report the macro writes to the result path named in its params.
-   */
-  function insertAudioMacroReports(report: string | undefined) {
-    let params = "";
-    succeedAppleScript(() => {
-      params = fs.readFileSync(officeContainerPath("insert_audio_params.txt"), "utf8");
-      const [, resultPath] = params.split(/\r?\n/)[0]!.split("|");
-      if (report !== undefined) {
-        fs.writeFileSync(resultPath!, report);
-      }
-    });
-    return () => params;
-  }
-
-  it("succeeds once the macro confirms each section audio, its playback, and the narration left on each slide", async () => {
+  it("hands the macro the slide's notes and section audio under its 1-based slide number", async () => {
     const provider = new MacPptProvider();
-    const params = insertAudioMacroReports(
-      [confirmedFirst, confirmedThird, "slide|1|ppt_audio_1", "slide|3|ppt_audio_2", "done"].join(
-        "\r",
-      ),
-    );
+    const request = saveNarrationMacroReports(savedThirdSlide.join("\r"));
 
-    const result = await provider.insertAudio(deck, firstAndThirdSlideAudio);
+    const result = await provider.saveSlideNarration(deck, thirdSlide);
 
     expect(result).toEqual({ success: true });
-    expect(
-      params()
-        .trimEnd()
-        .split("\n")
-        .slice(1)
-        .map((line) => {
-          const [slideNumber, , playAcrossSlides] = line.split("|");
-          return [slideNumber, playAcrossSlides];
-        }),
-    ).toEqual([
-      ["1", "1"],
-      ["3", "0"],
+    const [header = "", ...audioLines] = request.params.trimEnd().split("\n");
+    expect(header.split("|")).toEqual([deck, expect.any(String), expect.any(String), "3"]);
+    expect(audioLines.map((line) => line.split("|"))).toEqual([
+      ["3", expect.stringMatching(/ppt_audio_1\.mp3$/), "1"],
+      ["3", expect.stringMatching(/ppt_audio_2\.mp3$/), "0"],
     ]);
+    expect(request.notes).toBe("###SLIDE_START### 3\nFirst\n---\nSecond\n###SLIDE_END###\n");
+    expect(scriptsRun()).toEqual([["trigger-macro.applescript", "SaveNarration", deck]]);
   });
-
   it.each([
     {
       problem: "writes no report",
@@ -514,128 +499,157 @@ describe("MacPptProvider.insertAudio", () => {
     },
     {
       problem: "stops before finishing",
-      report: `${confirmedFirst}\n`,
+      report: "editing\ninserted|3|ppt_audio_1|true\n",
       message: /did not finish/,
     },
     {
-      problem: "reports an error",
-      report: "error|Presentation not found: /presentations/deck.pptx\n",
-      message: /Presentation not found/,
+      problem: "finishes without saving",
+      report: savedThirdSlide.filter((record) => record !== "saved").join("\n"),
+      message: /did not save the presentation/,
     },
     {
       problem: "does not confirm a section audio",
-      report: `${confirmedFirst}\nslide|1|ppt_audio_1\nslide|3|ppt_audio_2\ndone\n`,
+      report: savedThirdSlide.filter((record) => !record.includes("ppt_audio_2|")).join("\n"),
       message: /ppt_audio_2 on slide 3/,
     },
     {
       problem: "leaves an enabled section's checkbox unchecked",
-      report: [
-        "inserted|1|ppt_audio_1|false",
-        confirmedThird,
-        "slide|1|ppt_audio_1",
-        "slide|3|ppt_audio_2",
-        "done",
-      ].join("\n"),
-      message: /playback of ppt_audio_1 on slide 1/,
+      report: savedThirdSlide.join("\n").replace("ppt_audio_1|true", "ppt_audio_1|false"),
+      message: /playback of ppt_audio_1 on slide 3/,
     },
     {
       problem: "leaves a disabled section's checkbox checked",
-      report: [
-        confirmedFirst,
-        "inserted|3|ppt_audio_2|true",
-        "slide|1|ppt_audio_1",
-        "slide|3|ppt_audio_2",
-        "done",
-      ].join("\n"),
+      report: savedThirdSlide.join("\n").replace("ppt_audio_2|false", "ppt_audio_2|true"),
       message: /playback of ppt_audio_2 on slide 3/,
     },
     {
       problem: "reports a numeric playback, as an older add-in does",
-      report: [
-        "inserted|1|ppt_audio_1|999|1|0",
-        "inserted|3|ppt_audio_2|0|1|0",
-        "slide|1|ppt_audio_1",
-        "slide|3|ppt_audio_2",
-        "done",
-      ].join("\n"),
-      message: /numeric playback for ppt_audio_1 on slide 1.*add-in does not match/,
+      report: savedThirdSlide.join("\n").replace("ppt_audio_1|true", "ppt_audio_1|999|1|0"),
+      message: /numeric playback for ppt_audio_1 on slide 3.*add-in does not match/,
     },
     {
       problem: "reports an unreadable checkbox",
-      report: [
-        confirmedFirst,
-        "inserted|3|ppt_audio_2|False",
-        "slide|1|ppt_audio_1",
-        "slide|3|ppt_audio_2",
-        "done",
-      ].join("\n"),
+      report: savedThirdSlide.join("\n").replace("ppt_audio_2|false", "ppt_audio_2|False"),
       message: /unreadable playback for ppt_audio_2 on slide 3/,
     },
     {
       problem: "reports extra playback fields",
-      report: [
-        confirmedFirst,
-        "inserted|3|ppt_audio_2|false|1|0",
-        "slide|1|ppt_audio_1",
-        "slide|3|ppt_audio_2",
-        "done",
-      ].join("\n"),
+      report: savedThirdSlide.join("\n").replace("ppt_audio_2|false", "ppt_audio_2|false|1|0"),
       message: /unreadable playback for ppt_audio_2 on slide 3/,
     },
     {
       problem: "does not report a section's playback",
-      report: [
-        confirmedFirst,
-        "inserted|3|ppt_audio_2",
-        "slide|1|ppt_audio_1",
-        "slide|3|ppt_audio_2",
-        "done",
-      ].join("\n"),
+      report: savedThirdSlide.join("\n").replace("ppt_audio_2|false", "ppt_audio_2"),
       message: /unreadable playback for ppt_audio_2 on slide 3/,
     },
     {
-      problem: "leaves obsolete section audio on a saved slide",
-      report: [
-        confirmedFirst,
-        confirmedThird,
-        "slide|1|ppt_audio_1,ppt_audio_2",
-        "slide|3|ppt_audio_2",
-        "done",
-      ].join("\n"),
-      message: /slide 1.*ppt_audio_1,ppt_audio_2/,
+      problem: "does not report the section audio left on the slide",
+      report: savedThirdSlide.filter((record) => !record.startsWith("slide|")).join("\n"),
+      message: /section audio left on slide 3/,
     },
     {
-      problem: "leaves duplicate section audio on a saved slide",
-      report: [
-        confirmedFirst,
-        confirmedThird,
-        "slide|1|ppt_audio_1",
-        "slide|3|ppt_audio_2,ppt_audio_2",
-        "done",
-      ].join("\n"),
+      problem: "leaves obsolete section audio on the slide",
+      report: savedThirdSlide.join("\n").replace("slide|3|", "slide|3|ppt_audio_3,"),
+      message: /slide 3.*ppt_audio_3,ppt_audio_1,ppt_audio_2/,
+    },
+    {
+      problem: "leaves duplicate section audio on the slide",
+      report: savedThirdSlide.join("\n").replace("slide|3|", "slide|3|ppt_audio_1,"),
       message: /slide 3/,
     },
   ])("fails when the macro $problem", async ({ report, message }) => {
     const provider = new MacPptProvider();
-    insertAudioMacroReports(report);
+    saveNarrationMacroReports(report);
 
-    const result = await provider.insertAudio(deck, firstAndThirdSlideAudio);
+    const result = await provider.saveSlideNarration(deck, thirdSlide);
 
-    expect(result).toEqual({ success: false, message: expect.stringMatching(message) as unknown });
+    expect(result).toMatchObject({
+      success: false,
+      message: expect.stringMatching(message) as unknown,
+    });
   });
 
-  it("reloads the deck as last saved when the macro fails, so a later save cannot keep its edits", async () => {
+  it.each([
+    {
+      failure: "PowerPoint cannot save the presentation before changing it",
+      report: "error|The file is read-only.\n",
+      message: "The file is read-only.",
+    },
+    {
+      failure: "the section audio cannot be replaced as it is",
+      report:
+        "error|ppt_audio_1 on slide 3 fades in or out, which replacing its audio cannot keep.\n",
+      message: "ppt_audio_1 on slide 3 fades in or out, which replacing its audio cannot keep.",
+    },
+  ])("leaves the presentation open as it was when $failure", async ({ report, message }) => {
     const provider = new MacPptProvider();
-    insertAudioMacroReports("error|ppt_audio_1 on slide 5 has an animation that cannot be kept.\n");
+    saveNarrationMacroReports(report);
 
-    await provider.insertAudio(deck, firstAndThirdSlideAudio);
+    const result = await provider.saveSlideNarration(deck, thirdSlide);
 
-    expect(scriptsRun()).toEqual([
-      ["trigger-macro.applescript", "InsertAudio", deck],
-      ["close-presentation.applescript", deck, "discard"],
-      ["reopen-presentation.applescript", deck, "1"],
-    ]);
+    expect(result).toEqual({ success: false, saved: "nothing", message });
+    expect(scriptsRun()).toEqual([["trigger-macro.applescript", "SaveNarration", deck]]);
   });
+
+  it("leaves the presentation open when the macro cannot run", async () => {
+    const provider = new MacPptProvider();
+    scriptOutcomes.set("trigger-macro.applescript", {
+      stdout: JSON.stringify({
+        success: false,
+        message: "Error calling macro 'SaveNarration': The macro cannot be found.",
+      }),
+    });
+
+    const result = await provider.saveSlideNarration(deck, thirdSlide);
+
+    expect(result).toEqual({
+      success: false,
+      saved: "nothing",
+      message: "Error calling macro 'SaveNarration': The macro cannot be found.",
+    });
+    expect(scriptsRun()).toEqual([["trigger-macro.applescript", "SaveNarration", deck]]);
+  });
+
+  it("leaves the presentation open when the section audio cannot be staged for PowerPoint", async () => {
+    const provider = new MacPptProvider();
+    fs.writeFileSync(officeContainerPath("TemporaryAudio"), "not a directory");
+
+    const result = await provider.saveSlideNarration(deck, thirdSlide);
+
+    expect(result).toEqual({
+      success: false,
+      saved: "nothing",
+      message: expect.stringMatching(/^Could not prepare the files PowerPoint needs/) as unknown,
+    });
+    expect(scriptsRun()).toEqual([]);
+  });
+
+  it.each([
+    ["writing the notes", "editing\nerror|Could not write the notes of slide 3.\n"],
+    [
+      "changing the section audio",
+      "editing\ninserted|3|ppt_audio_1|true\nerror|Could not insert ppt_audio_2 on slide 3.\n",
+    ],
+  ])(
+    "reopens the presentation as saved before the change when %s fails, so a later save cannot keep the failed edits",
+    async (_, report) => {
+      const provider = new MacPptProvider();
+      saveNarrationMacroReports(report);
+
+      const result = await provider.saveSlideNarration(deck, thirdSlide);
+
+      expect(result).toEqual({
+        success: false,
+        saved: "nothing",
+        message: report.split("error|")[1]!.trimEnd(),
+      });
+      expect(scriptsRun()).toEqual([
+        ["trigger-macro.applescript", "SaveNarration", deck],
+        ["close-presentation.applescript", deck, "discard"],
+        ["reopen-presentation.applescript", deck, "1"],
+      ]);
+    },
+  );
 
   it.each([
     {
@@ -657,31 +671,38 @@ describe("MacPptProvider.insertAudio", () => {
     "reports the macro error and a failed recovery when $problem",
     async ({ outcome: [script, outcome], message }) => {
       const provider = new MacPptProvider();
-      insertAudioMacroReports("error|ppt_audio_1 on slide 1 has unsupported animations.\n");
+      saveNarrationMacroReports("editing\nerror|Could not insert ppt_audio_2 on slide 3.\n");
       scriptOutcomes.set(script, outcome);
 
-      const result = await provider.insertAudio(deck, firstAndThirdSlideAudio);
+      const result = await provider.saveSlideNarration(deck, thirdSlide);
 
       expect(result).toEqual({
         success: false,
+        saved: "nothing",
         message: expect.stringMatching(
-          new RegExp(`^ppt_audio_1 on slide 1 has unsupported animations\\..*${message.source}`),
+          new RegExp(`^Could not insert ppt_audio_2 on slide 3\\..*${message.source}`),
         ) as unknown,
       });
     },
   );
 
-  it("keeps the deck open once the macro saves", async () => {
+  it("keeps the presentation open and reports the slide saved when PowerPoint fails after saving it", async () => {
     const provider = new MacPptProvider();
-    insertAudioMacroReports(
-      [confirmedFirst, confirmedThird, "slide|1|ppt_audio_1", "slide|3|ppt_audio_2", "done"].join(
-        "\n",
-      ),
+    saveNarrationMacroReports(
+      [
+        ...savedThirdSlide.filter((record) => record !== "done"),
+        "error|PowerPoint could not restore the previous editing view: Invalid request.",
+      ].join("\n"),
     );
 
-    await provider.insertAudio(deck, firstAndThirdSlideAudio);
+    const result = await provider.saveSlideNarration(deck, thirdSlide);
 
-    expect(scriptsRun()).toEqual([["trigger-macro.applescript", "InsertAudio", deck]]);
+    expect(result).toEqual({
+      success: false,
+      saved: "notesAndAudio",
+      message: "PowerPoint could not restore the previous editing view: Invalid request.",
+    });
+    expect(scriptsRun()).toEqual([["trigger-macro.applescript", "SaveNarration", deck]]);
   });
 });
 
@@ -689,72 +710,86 @@ describe("MacPptProvider.removeAudio", () => {
   const deck = "/presentations/deck.pptx";
   const firstAndThirdSlides = [toSlideIndex(0), toSlideIndex(2)];
 
-  /**
-   * Stands in for the RemoveAudio macro: the provider learns the outcome only
-   * from the report the macro writes to the result path named in its params.
-   */
-  function removeAudioMacroReports(report: string | undefined) {
-    let params = "";
-    succeedAppleScript(() => {
-      params = fs.readFileSync(officeContainerPath("remove_audio_params.txt"), "utf8");
-      const [, , resultPath] = params.split("|");
-      if (report !== undefined) {
-        fs.writeFileSync(resultPath!, report);
-      }
-    });
-    return () => params;
-  }
-
-  it("succeeds once the macro reports no section audio left on any 1-based slide number", async () => {
+  it("asks the macro to leave no section audio on each 1-based slide number, without writing notes", async () => {
     const provider = new MacPptProvider();
-    const params = removeAudioMacroReports("slide|1|\r\nslide|3|\r\ndone\r\n");
+    const request = saveNarrationMacroReports(
+      "editing\r\nslide|1|\r\nslide|3|\r\nsaved\r\ndone\r\n",
+    );
 
     const result = await provider.removeAudio(deck, firstAndThirdSlides);
 
     expect(result).toEqual({ success: true });
-    expect(params().split("|").slice(0, 2)).toEqual([deck, "1,3"]);
+    expect(request.params.trimEnd().split("|")).toEqual([deck, expect.any(String), "", "1,3"]);
+    expect(scriptsRun()).toEqual([["trigger-macro.applescript", "SaveNarration", deck]]);
   });
 
   it.each([
     { problem: "writes no report", report: undefined, message: /did not report/ },
     {
       problem: "stops before finishing",
-      report: "slide|1|\nslide|3|\n",
+      report: "editing\nslide|1|\nslide|3|\n",
       message: /did not finish/,
     },
     {
-      problem: "reports an error",
-      report: "error|Presentation not found: /presentations/deck.pptx\n",
-      message: /Presentation not found/,
-    },
-    {
       problem: "does not report a slide",
-      report: "slide|1|\ndone\n",
+      report: "editing\nslide|1|\nsaved\ndone\n",
       message: /slide 3/,
     },
     {
       problem: "leaves section audio on a slide",
-      report: "slide|1|\nslide|3|ppt_audio_2\ndone\n",
+      report: "editing\nslide|1|\nslide|3|ppt_audio_2\nsaved\ndone\n",
       message: /slide 3.*ppt_audio_2/,
     },
   ])("fails when the macro $problem", async ({ report, message }) => {
     const provider = new MacPptProvider();
-    removeAudioMacroReports(report);
+    saveNarrationMacroReports(report);
 
     const result = await provider.removeAudio(deck, firstAndThirdSlides);
 
     expect(result).toEqual({ success: false, message: expect.stringMatching(message) as unknown });
   });
 
-  it("reloads the deck as last saved when the macro fails, so a later save cannot keep its edits", async () => {
+  it("leaves the presentation open as it was when PowerPoint cannot save it before removing audio", async () => {
     const provider = new MacPptProvider();
-    removeAudioMacroReports("slide|1|\n");
+    saveNarrationMacroReports("error|The file is read-only.\n");
 
-    await provider.removeAudio(deck, firstAndThirdSlides);
+    const result = await provider.removeAudio(deck, firstAndThirdSlides);
 
+    expect(result).toEqual({ success: false, message: "The file is read-only." });
+    expect(scriptsRun()).toEqual([["trigger-macro.applescript", "SaveNarration", deck]]);
+  });
+
+  it("reopens the presentation as saved before the removal when removing fails", async () => {
+    const provider = new MacPptProvider();
+    saveNarrationMacroReports(
+      "editing\nslide|1|\nerror|Could not delete ppt_audio_1 on slide 3.\n",
+    );
+
+    const result = await provider.removeAudio(deck, firstAndThirdSlides);
+
+    expect(result).toEqual({
+      success: false,
+      message: "Could not delete ppt_audio_1 on slide 3.",
+    });
     expect(scriptsRun().slice(1)).toEqual([
       ["close-presentation.applescript", deck, "discard"],
       ["reopen-presentation.applescript", deck, "1"],
     ]);
+  });
+
+  it("reports the removal saved when PowerPoint fails after saving it", async () => {
+    const provider = new MacPptProvider();
+    saveNarrationMacroReports(
+      "editing\nslide|1|\nslide|3|\nsaved\nerror|PowerPoint could not restore the previous editing view: Invalid request.\n",
+    );
+
+    const result = await provider.removeAudio(deck, firstAndThirdSlides);
+
+    expect(result).toEqual({
+      success: false,
+      message:
+        "PowerPoint removed the section audio and saved the presentation. PowerPoint could not restore the previous editing view: Invalid request.",
+    });
+    expect(scriptsRun()).toEqual([["trigger-macro.applescript", "SaveNarration", deck]]);
   });
 });

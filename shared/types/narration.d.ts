@@ -56,12 +56,15 @@ export type SaveAllRunCallbacks = {
 
 export type NarratedSaveFailureStage = "validation" | "synthesis" | "powerpoint";
 
+/** How much of a slide's new note sections and section audio a failed save left saved. */
+export type SavedSlideNarration = "nothing" | "notes" | "notesAndAudio";
+
 export type NarratedSaveResult =
   | { success: true }
   | {
       success: false;
       stage: NarratedSaveFailureStage;
-      partial: boolean;
+      saved: SavedSlideNarration;
       message: string;
     };
 
@@ -69,7 +72,7 @@ export type SaveAllRunOutcome = NarratedSaveResult | { success: false; stage: "c
 
 export type SaveAllRunResult = {
   outcome: SaveAllRunOutcome;
-  /** Submitted slides whose notes PowerPoint confirmed written, in run order. */
+  /** Submitted slides whose notes PowerPoint confirmed saved, in run order. */
   savedNoteSlides: readonly SlideIndex[];
   failedSlideIndex?: SlideIndex;
 };

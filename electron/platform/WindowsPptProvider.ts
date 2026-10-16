@@ -6,8 +6,8 @@ import type {
   ReadAllSlideNotesResult,
   ReadSlideNotesResult,
   ReloadSlideImageResult,
-  SlideAudioEntry,
-  SlideNotesEntry,
+  SlideNarrationEntry,
+  SlideNarrationSaveResult,
   SlidePptResult,
   SlidesPptResult,
   VideoPptResult,
@@ -18,16 +18,19 @@ export class WindowsPptProvider implements PptProvider, NativePlatformProvider {
     return Promise.resolve({ success: false, message: "convertPptx not supported on Windows yet" });
   }
 
-  insertAudio(_filePath: string, _slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult> {
-    return Promise.resolve({ success: false, message: "insertAudio not supported on Windows yet" });
+  saveSlideNarration(
+    _filePath: string,
+    _slide: SlideNarrationEntry,
+  ): Promise<SlideNarrationSaveResult> {
+    return Promise.resolve({
+      success: false,
+      saved: "nothing",
+      message: "saveSlideNarration not supported on Windows yet",
+    });
   }
 
   removeAudio(_filePath: string, _slideIndices: SlideIndex[]): Promise<BasicPptResult> {
     return Promise.resolve({ success: false, message: "removeAudio not supported on Windows yet" });
-  }
-
-  saveNotes(_filePath: string, _slides: SlideNotesEntry[]): Promise<BasicPptResult> {
-    return Promise.resolve({ success: false, message: "saveNotes not supported on Windows yet" });
   }
 
   generateVideo(_filePath: string, _videoOutputPath: string): Promise<VideoPptResult> {

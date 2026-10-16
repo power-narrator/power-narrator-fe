@@ -23,7 +23,7 @@ export function resolvePresentationSaveTarget<TRequest extends { filePath: strin
       failure: {
         success: false,
         stage: "validation",
-        partial: false,
+        saved: "nothing",
         message: `File not found: ${absolutePath}`,
       },
     };

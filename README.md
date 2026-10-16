@@ -234,10 +234,9 @@ sequenceDiagram
     Prep->>TTS: Synthesize its valid sections in parallel
     TTS-->>Prep: Ordered MP3 entries
     Prep-->>Saver: Audio remains in Electron
-    Saver->>PPT: Commit this slide's notes
-    Saver->>PPT: Insert its audio, or remove stale audio
+    Saver->>PPT: Save this slide's notes with its complete section audio
   end
-  Saver-->>UI: Outcome and slides whose notes were written
+  Saver-->>UI: Outcome and slides whose notes were saved
 ```
 
 Save All is a save-all run: the author confirms it first, a blocking progress modal shows the slide
@@ -245,10 +244,11 @@ position and phase, and the window cannot close or quit until the run settles. S
 and saved one complete slide at a time, so a slide is written only after all of its sections
 synthesize, and no later slide starts before it is saved. Validation of every slide completes before
 any synthesis or PowerPoint change. A failure stops the run, keeps earlier saved slides, and leaves
-the failed and later slides untouched; the Viewer treats only notes confirmed written as saved. If a
-slide's notes commit but its audio mutation fails, the result is reported as a partial PowerPoint
-failure; an ordinary retry can reuse the synthesized cache entries. There is no automated
-PowerPoint rollback. Save Slide uses the same path for its single slide.
+the failed and later slides untouched; the Viewer treats only notes confirmed saved as saved. A
+failure reports what it left saved of the slide: nothing, only its notes (the XML CLI engine saves
+notes before audio), or its notes and audio when a later step such as restoring the editing view
+failed. An ordinary retry can reuse the synthesized cache entries. Save Slide uses the same path for
+its single slide.
 
 **Generate Video** first runs the same save-all run, with its own confirmation, progress modal, and
 safe cancellation. The video destination is requested and export starts only after every slide's
@@ -331,11 +331,17 @@ later. Unchecking by hand in PowerPoint keeps the old duration instead. The chec
 some stored delays slightly. See
 [Saved Play duration](docs/powerpoint/mac-audio-playback.md#saved-play-duration) for details.
 
-When an audio save fails, PowerPoint may already hold part of the change. The app closes the
-presentation without saving and reopens it, so a later save cannot write the failed edits. The
-slide's notes are saved just before its audio. Earlier slides of a save-all run keep everything
-they saved, and the run stops at the failed slide. If PowerPoint could not discard or reopen the
-presentation, the error says so: close the presentation without saving before you continue.
+Saving a slide first saves the presentation as it is, including your own unsaved PowerPoint edits.
+Only then does the app write the slide's notes and change its section audio, and it saves both
+together once both succeed. Remove Audio likewise saves first, removes the section audio, then
+saves again; it does not write notes. If that first save or a check before it fails, nothing was
+changed and the presentation stays open. If writing the notes or changing the audio fails, the app
+closes the presentation without saving and reopens it as saved just before: the slide keeps its
+previous notes and section audio, your earlier edits remain, and a later save cannot write the
+failed edits. An error after the final save, such as failing to restore your editing view, leaves
+the saved changes in place and says so. Earlier slides of a save-all run keep everything they saved,
+and the run stops at the failed slide. If PowerPoint could not discard or reopen the presentation,
+the error says so: close the presentation without saving before you continue.
 
 ### PowerPoint add-in
 
@@ -351,7 +357,8 @@ committed, and a change to one must be accompanied by a recompile of the other. 
 `pre-commit` hook in `.githooks/` enforces this. The rebuild steps are at the top of the `.bas`
 file. PowerPoint loads the `.ppam` from wherever it was added, so after rebuilding, add or copy
 the new file there and restart PowerPoint. An add-in older than the app reports playback as a
-number. The app rejects that report and says the installed add-in does not match.
+number when loading. The app rejects that report and says the installed add-in does not match.
+Saving with an older add-in fails because it has no `SaveNarration` macro, before any change.
 
 ### XML CLI mode
 
@@ -480,9 +487,9 @@ execution when prompted. XML CLI mode can perform supported notes and audio muta
 VBA macros, but slide images, playback, and video export still use native PowerPoint automation.
 
 An error that the installed add-in does not match this app means PowerPoint loaded an older
-`ppt-tools.ppam`. Replace it with the one from this checkout and restart PowerPoint. An older
-add-in saves the presentation before the app can detect the mismatch, so check the audio of the
-slide that was being saved.
+`ppt-tools.ppam`. Replace it with the one from this checkout and restart PowerPoint. An error
+calling the macro `SaveNarration` means the same: the older add-in cannot save narration, and the
+presentation was left unchanged.
 
 Errors about the Play Across Slides checkbox mean PowerPoint could not show it for the section
 audio. Make sure the presentation has an open editing window and PowerPoint is not in a slideshow
