@@ -5,6 +5,8 @@ Private Const SECTION_AUDIO_PREFIX As String = "ppt_audio_"
 ' PowerPoint's Play Across Slides checkbox uses 999 when enabled and 0 when disabled.
 Private Const PLAY_ACROSS_SLIDES_SPAN As Long = 999
 Private Const CURRENT_SLIDE_SPAN As Long = 0
+' Mac PowerPoint fails to read EffectType for some effects, such as ink replay.
+Private Const UNREADABLE_EFFECT_TYPE As Long = -1
 
 ' ==============================================================================================
 ' ADD-IN REBUILD INSTRUCTIONS:
@@ -312,8 +314,8 @@ Function SectionAudioPlayEffect(sld As Slide, shp As Shape) As Effect
     Dim i As Long
 
     For i = 1 To sld.TimeLine.MainSequence.Count
-        If sld.TimeLine.MainSequence(i).EffectType = MEDIA_PLAY_EFFECT Then
-            If EffectTargetsShape(sld.TimeLine.MainSequence(i), shp) Then
+        If EffectTargetsShape(sld.TimeLine.MainSequence(i), shp) Then
+            If sld.TimeLine.MainSequence(i).EffectType = MEDIA_PLAY_EFFECT Then
                 Set SectionAudioPlayEffect = sld.TimeLine.MainSequence(i)
                 Exit Function
             End If
@@ -351,6 +353,12 @@ Function EffectShapeId(eff As Effect) As Long
     If Not eff.Shape Is Nothing Then EffectShapeId = eff.Shape.Id
 End Function
 
+Function ReadEffectType(eff As Effect) As Long
+    ReadEffectType = UNREADABLE_EFFECT_TYPE
+    On Error Resume Next
+    ReadEffectType = eff.EffectType
+End Function
+
 Function SaveSlideTiming(sld As Slide) As Collection
     Dim i As Long
     Dim records As Collection
@@ -362,7 +370,7 @@ Function SaveSlideTiming(sld As Slide) As Collection
         Set eff = sld.TimeLine.MainSequence(i)
         Set record = New Collection
         record.Add EffectShapeId(eff), "shapeId"
-        record.Add eff.EffectType, "effectType"
+        record.Add ReadEffectType(eff), "effectType"
         record.Add eff.Timing.TriggerType, "triggerType"
         record.Add eff.Timing.TriggerDelayTime, "delay"
         records.Add record
@@ -379,7 +387,7 @@ Sub RestoreSlideTiming(sld As Slide, records As Collection)
     End If
     For i = 1 To records.Count
         Set record = records(i)
-        If EffectShapeId(sld.TimeLine.MainSequence(i)) <> record("shapeId") Or sld.TimeLine.MainSequence(i).EffectType <> record("effectType") Then
+        If EffectShapeId(sld.TimeLine.MainSequence(i)) <> record("shapeId") Or ReadEffectType(sld.TimeLine.MainSequence(i)) <> record("effectType") Then
             Err.Raise vbObjectError + 519, , "Setting section audio playback on slide " & sld.SlideIndex & " changed its animation order."
         End If
         With sld.TimeLine.MainSequence(i).Timing
