@@ -29,11 +29,11 @@ import {
   formatNotesData,
   formatSaveNarrationParams,
   narrationSavePhase,
+  type NarrationSaveAction,
   type StagedSlideAudio,
 } from "./macSaveNarration.js";
 import type {
   BasicPptResult,
-  ErrorResult,
   SectionsPlayingAcrossSlides,
   ExportSlideImagesResult,
   ReadAllSlideNotesResult,
@@ -48,7 +48,6 @@ import type {
   SlideNotesMap,
   SlidePptResult,
   SlidesPptResult,
-  SuccessResult,
   VideoPptResult,
 } from "./types.js";
 
@@ -67,17 +66,13 @@ type ClosedPresentation =
   | { closed: false; slideIndex: SlideIndex; message: string };
 
 type NarrationSaveRequest = {
-  /** What the macro is doing, for its messages. */
-  action: string;
+  action: NarrationSaveAction;
   slideIndices: readonly SlideIndex[];
-  /** Notes to write; empty to leave the notes alone. */
-  notes: readonly SlideNotesEntry[];
+  /** Notes to write; without them the notes are left alone. */
+  notes?: readonly SlideNotesEntry[];
   /** The complete section audio of each requested slide; none removes it. */
   audio: readonly SlideAudioEntry[];
 };
-
-/** `saved` once PowerPoint saved the changes, even when a later step failed. */
-type NarrationSaveResult = SuccessResult | (ErrorResult & { saved: boolean });
 
 /** close-presentation.applescript prints this when no open presentation has the path. */
 const NOT_OPEN = "not-open";
@@ -496,79 +491,76 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
-  async saveSlideNarration(
+  saveSlideNarration(
     filePath: string,
     slide: SlideNarrationEntry,
   ): Promise<SlideNarrationSaveResult> {
-    const result = await this.saveNarration(filePath, {
+    return this.saveNarration(filePath, {
       action: "saving the slide",
       slideIndices: [slide.slideIndex],
       notes: [{ slideIndex: slide.slideIndex, notes: slide.notes }],
       audio: slide.audio,
     });
-    if (result.success) {
-      return result;
-    }
-    return {
-      success: false,
-      message: result.message,
-      saved: result.saved ? "notesAndAudio" : "nothing",
-    };
   }
 
   async removeAudio(filePath: string, slideIndices: SlideIndex[]): Promise<BasicPptResult> {
     const result = await this.saveNarration(filePath, {
       action: "removing audio",
       slideIndices,
-      notes: [],
       audio: [],
     });
-    if (result.success || !result.saved) {
-      return result.success ? result : { success: false, message: result.message };
+    if (result.success) {
+      return result;
     }
-    return {
-      success: false,
-      message: `PowerPoint removed the section audio and saved the presentation. ${result.message}`,
-    };
+    const saved =
+      result.saved === "notesAndAudio"
+        ? "PowerPoint removed the section audio and saved the presentation. "
+        : "";
+    return { success: false, message: `${saved}${result.message}` };
   }
 
   /**
    * The macro saves the presentation as it was before changing it, then saves the
    * new notes and section audio together. A failure in between leaves edits in
-   * PowerPoint's memory that any later save would write, so only then is the deck
-   * reloaded as last saved; earlier failures leave it open as it was.
+   * PowerPoint's memory that any later save would write, so only then, or when the
+   * macro stopped responding without saying how far it got, is the deck reloaded as
+   * last saved; earlier failures leave it open as it was.
    */
   private async saveNarration(
     filePath: string,
     request: NarrationSaveRequest,
-  ): Promise<NarrationSaveResult> {
+  ): Promise<SlideNarrationSaveResult> {
     const officeContainer = this.getOfficeContainerPath();
-    const sessionDir = path.join(officeContainer, "TemporaryAudio", `session-${Date.now()}`);
+    const sessionId = Date.now();
+    const sessionDir = path.join(officeContainer, "TemporaryAudio", `session-${sessionId}`);
     const resultPath = path.join(officeContainer, "save_narration_result.txt");
-    const notesPath =
-      request.notes.length > 0 ? path.join(officeContainer, `notes_data_${Date.now()}.txt`) : "";
+    const notesFile = request.notes && {
+      path: path.join(officeContainer, `notes_data_${sessionId}.txt`),
+      data: formatNotesData(request.notes),
+    };
     const slideNumbers = request.slideIndices.map(slideNumberOf);
 
     let result: BasicPptResult;
     let report: string | undefined;
+    let macroReturned = true;
     try {
       let params: string;
       try {
         params = formatSaveNarrationParams(
           filePath,
           resultPath,
-          notesPath,
+          notesFile?.path,
           slideNumbers,
           this.stageAudio(sessionDir, request.audio),
         );
-        if (notesPath) {
-          fs.writeFileSync(notesPath, formatNotesData(request.notes), "utf8");
+        if (notesFile) {
+          fs.writeFileSync(notesFile.path, notesFile.data, "utf8");
         }
         cleanupPaths(resultPath);
       } catch (e: unknown) {
         return {
           success: false,
-          saved: false,
+          saved: "nothing",
           message: `Could not prepare the files PowerPoint needs: ${getErrorMessage(e)}`,
         };
       }
@@ -579,6 +571,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
         "save_narration_params.txt",
         params,
       );
+      macroReturned = scriptResult.success;
       report = fs.existsSync(resultPath) ? fs.readFileSync(resultPath, "utf8") : undefined;
       result = scriptResult.success
         ? checkSaveNarrationReport(report, request.action, slideNumbers, request.audio)
@@ -589,23 +582,37 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     } catch (e: unknown) {
       result = { success: false, message: getErrorMessage(e) };
     } finally {
-      cleanupPaths(resultPath, sessionDir, notesPath);
+      cleanupPaths(resultPath, sessionDir, notesFile?.path);
     }
 
-    const phase = narrationSavePhase(report);
     if (result.success) {
       this.focusApp();
       return result;
     }
-    if (phase === "editing") {
-      return {
-        success: false,
-        saved: false,
-        message: await this.discardFailedChanges(filePath, result.message),
-      };
+    switch (narrationSavePhase(report, macroReturned)) {
+      case "editing":
+        return {
+          success: false,
+          saved: "nothing",
+          message: await this.discardFailedChanges(filePath, result.message),
+        };
+      case "unknown":
+        return {
+          success: false,
+          saved: "unknown",
+          message: await this.discardFailedChanges(
+            filePath,
+            `${result.message} PowerPoint did not report whether it saved the presentation.`,
+            "It was closed without saving and reopened as last saved; check it in PowerPoint, as edits it had not saved may be lost.",
+          ),
+        };
+      case "saved":
+        this.focusApp();
+        return { success: false, saved: "notesAndAudio", message: result.message };
+      case "unchanged":
+        this.focusApp();
+        return { success: false, saved: "nothing", message: result.message };
     }
-    this.focusApp();
-    return { success: false, saved: phase === "saved", message: result.message };
   }
 
   private stageAudio(sessionDir: string, audio: readonly SlideAudioEntry[]): StagedSlideAudio[] {
@@ -618,8 +625,12 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     });
   }
 
-  /** Resolves to the failure, extended with how recovery went. */
-  private async discardFailedChanges(filePath: string, failure: string): Promise<string> {
+  /** Resolves to the failure, extended with how recovery went or else with `discarded`. */
+  private async discardFailedChanges(
+    filePath: string,
+    failure: string,
+    discarded?: string,
+  ): Promise<string> {
     const closed = await this.close(filePath, "discard");
     if (!closed.closed) {
       return `${failure} PowerPoint could not discard the failed changes (${closed.message}); close the presentation without saving before continuing.`;
@@ -628,7 +639,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     if (reopenFailure !== undefined) {
       return `${failure} The failed changes were discarded, but PowerPoint could not reopen the presentation (${reopenFailure}).`;
     }
-    return failure;
+    return discarded ? `${failure} ${discarded}` : failure;
   }
 
   async generateVideo(filePath: string, videoOutputPath: string): Promise<VideoPptResult> {

@@ -548,42 +548,51 @@ test.each([
   },
 );
 
-test("Save All reports a slide whose notes and audio PowerPoint did not save and keeps it unsaved", async () => {
-  const api = installElectronApi({
-    saveNarratedPresentation: vi.fn<typeof window.electronAPI.saveNarratedPresentation>(() =>
-      Promise.resolve({
-        outcome: {
-          success: false,
-          stage: "powerpoint",
-          saved: "nothing",
-          message: "Could not insert ppt_audio_1 on slide 2.",
-        },
-        savedNoteSlides: [at(0)],
-        failedSlideIndex: at(1),
-      }),
-    ),
-  });
-  const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
-  const secondSlide: Slide = { ...loadedSlide, slideIndex: at(1), image: "slide-two.png" };
-  const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
-  await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Saved notes");
-  await screen.getByRole("button", { name: "Slide 2", exact: true }).click();
-  await screen.getByRole("textbox", { name: "Slide 2 section 1 notes" }).fill("Failed notes");
-  await startSaveAll(screen);
-
-  await vi.waitFor(() =>
-    expect(alert).toHaveBeenCalledWith(
+test.each([
+  {
+    outcome: "did not save",
+    saved: "nothing",
+    message: "Could not insert ppt_audio_1 on slide 2.",
+    alerted:
       "Save error on slide 2: its notes and narration audio were not saved. Could not insert ppt_audio_1 on slide 2. Earlier slides remain saved. Later slides were not changed.",
-    ),
-  );
-  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
-  expect(api.confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
-  expect(api.reloadSlide).not.toHaveBeenCalled();
-  await screen.getByRole("button", { name: "Slide 1", exact: true }).click();
-  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
-  await vi.waitFor(() => expect(api.reloadSlide).toHaveBeenCalledOnce());
-  expect(api.confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
-});
+  },
+  {
+    outcome: "may not have saved",
+    saved: "unknown",
+    message: "PowerPoint did not report whether it saved the presentation.",
+    alerted:
+      "Save error on slide 2: PowerPoint did not confirm whether its notes and narration audio were saved. PowerPoint did not report whether it saved the presentation. Earlier slides remain saved. Later slides were not changed.",
+  },
+] as const)(
+  "Save All reports a slide whose notes and audio PowerPoint $outcome and keeps it unsaved",
+  async ({ saved, message, alerted }) => {
+    const api = installElectronApi({
+      saveNarratedPresentation: vi.fn<typeof window.electronAPI.saveNarratedPresentation>(() =>
+        Promise.resolve({
+          outcome: { success: false, stage: "powerpoint", saved, message },
+          savedNoteSlides: [at(0)],
+          failedSlideIndex: at(1),
+        }),
+      ),
+    });
+    const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
+    const secondSlide: Slide = { ...loadedSlide, slideIndex: at(1), image: "slide-two.png" };
+    const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
+    await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Saved notes");
+    await screen.getByRole("button", { name: "Slide 2", exact: true }).click();
+    await screen.getByRole("textbox", { name: "Slide 2 section 1 notes" }).fill("Failed notes");
+    await startSaveAll(screen);
+
+    await vi.waitFor(() => expect(alert).toHaveBeenCalledWith(alerted));
+    await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+    expect(api.confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
+    expect(api.reloadSlide).not.toHaveBeenCalled();
+    await screen.getByRole("button", { name: "Slide 1", exact: true }).click();
+    await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+    await vi.waitFor(() => expect(api.reloadSlide).toHaveBeenCalledOnce());
+    expect(api.confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
+  },
+);
 
 test("Save Slide reports narration PowerPoint saved before failing", async () => {
   installElectronApi({
