@@ -139,19 +139,7 @@ Sub ExportNotesToFile(pres As Presentation, outputPath As String, Optional slide
 End Sub
 
 Function GetSectionIndex(audioTag As String) As Integer
-    Dim parts() As String
-    On Error Resume Next
-    parts = Split(audioTag, "_")
-    If UBound(parts) >= 2 Then
-        GetSectionIndex = CInt(parts(2))
-    Else
-        GetSectionIndex = 1
-    End If
-    If Err.Number <> 0 Then
-        GetSectionIndex = 1
-        Err.Clear
-    End If
-    On Error GoTo 0
+    GetSectionIndex = CInt(Mid(audioTag, Len(SECTION_AUDIO_PREFIX) + 1))
 End Function
 
 ' Own only sound shapes named ppt_audio_<positive ordinal>, without leading zeros.
@@ -165,16 +153,6 @@ Function IsSectionAudioShape(s As Shape) As Boolean
     ordinal = Mid(s.Name, Len(SECTION_AUDIO_PREFIX) + 1)
     If Len(ordinal) = 0 Or Left(ordinal, 1) = "0" Then Exit Function
     IsSectionAudioShape = Not ordinal Like "*[!0-9]*"
-End Function
-
-Function CountSectionAudioNamed(sld As Slide, shapeName As String) As Integer
-    Dim s As Shape
-
-    For Each s In sld.Shapes
-        If IsSectionAudioShape(s) Then
-            If s.Name = shapeName Then CountSectionAudioNamed = CountSectionAudioNamed + 1
-        End If
-    Next s
 End Function
 
 ' Shapes(name) may select same-named text or video; resolve the sound shape explicitly.
@@ -617,9 +595,6 @@ Sub InsertAudio()
             Err.Raise vbObjectError + 516, , "Slide " & slideNumbers(i) & " does not exist."
         End If
         Set sld = pres.Slides(slideNumbers(i))
-        If CountSectionAudioNamed(sld, shapeNames(i)) > 1 Then
-            Err.Raise vbObjectError + 518, , "Slide " & slideNumbers(i) & " has more than one shape named " & shapeNames(i) & "."
-        End If
         Set shp = SectionAudioNamed(sld, shapeNames(i))
         If Not shp Is Nothing Then CheckReplaceable sld, shp
     Next i
