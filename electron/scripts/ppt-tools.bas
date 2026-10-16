@@ -191,15 +191,6 @@ Function IsRequestedSectionAudio(slideNumber As Integer, shapeName As String, sl
     Next i
 End Function
 
-Function IsFirstEntryForSlide(slideNumbers() As Integer, entry As Integer) As Boolean
-    Dim i As Integer
-
-    For i = 1 To entry - 1
-        If slideNumbers(i) = slideNumbers(entry) Then Exit Function
-    Next i
-    IsFirstEntryForSlide = True
-End Function
-
 Private Sub RemoveObsoleteSectionAudio(sld As Slide, slideNumber As Integer, slideNumbers() As Integer, shapeNames() As String, entryCount As Integer, ByRef editing As EditingContext)
     Dim iShape As Integer
     Dim s As Shape
@@ -512,12 +503,65 @@ Function ReadEffectType(eff As Effect) As Long
     ReadEffectType = eff.EffectType
 End Function
 
-' Input: presentation|resultPath, then slideNumber|audioPath|playAcrossSlides (1/0) per entry.
-' Each submitted slide's entries replace its complete section audio. A replacement keeps the
-' old audio's animations, media settings and geometry; only the checkbox may then change.
-' Results: inserted|slideNumber|shapeName|playsAcrossSlides (the confirmed checkbox, true/false),
-' slide|slideNumber|remainingNames (comma-separated), error|message, and done after saving.
-Sub InsertAudio()
+' Notes data holds "###SLIDE_START### <slide number>", the notes lines, then "###SLIDE_END###" per slide.
+Private Sub WriteNotesFromFile(pres As Presentation, dataPath As String)
+    Dim dataNum As Integer
+    Dim lineData As String
+    Dim slideNumber As Integer
+    Dim notesText As String
+    Dim isReading As Boolean
+    Dim isFirstLine As Boolean
+    Dim errorMessage As String
+
+    dataNum = FreeFile
+    Open dataPath For Input As dataNum
+    On Error GoTo Failed
+
+    Do While Not EOF(dataNum)
+        Line Input #dataNum, lineData
+        If Left(lineData, 17) = "###SLIDE_START###" Then
+            slideNumber = CInt(Mid(lineData, 19))
+            notesText = ""
+            isReading = True
+            isFirstLine = True
+        ElseIf Left(lineData, 15) = "###SLIDE_END###" Then
+            If slideNumber < 1 Or slideNumber > pres.Slides.Count Then
+                Err.Raise vbObjectError + 516, , "Slide " & slideNumber & " does not exist."
+            End If
+            If pres.Slides(slideNumber).NotesPage.Shapes.Count < 2 Then
+                Err.Raise vbObjectError + 528, , "Slide " & slideNumber & " has no notes placeholder."
+            End If
+            pres.Slides(slideNumber).NotesPage.Shapes(2).TextFrame.TextRange.Text = notesText
+            isReading = False
+        ElseIf isReading Then
+            If isFirstLine Then
+                notesText = lineData
+                isFirstLine = False
+            Else
+                notesText = notesText & vbLf & lineData
+            End If
+        End If
+    Loop
+
+    Close dataNum
+    Exit Sub
+
+Failed:
+    errorMessage = "Could not write the notes of slide " & slideNumber & ": " & Err.Description
+    Close dataNum
+    Err.Raise vbObjectError + 529, , errorMessage
+End Sub
+
+' Input: presentation|resultPath|notesPath|slideNumbers (comma-separated), then
+' slideNumber|audioPath|playAcrossSlides (1/0) per section audio. An empty notesPath leaves the notes alone.
+' Saves the presentation as it is first, so a failure loses only this macro's edits. Then writes the
+' notes, makes each requested slide's entries its complete section audio (no entries remove it all)
+' and saves both together. A replacement keeps the old audio's animations, media settings and
+' geometry; only the checkbox may then change.
+' Results: editing once the first save succeeded, inserted|slideNumber|shapeName|playsAcrossSlides
+' (the confirmed checkbox, true/false), slide|slideNumber|remainingNames (comma-separated), saved once
+' the edits are saved, then done, or error|message at the point of failure.
+Sub SaveNarration()
     Dim pres As Presentation
     Dim sld As Slide
     Dim shp As Shape
@@ -527,6 +571,9 @@ Sub InsertAudio()
     Dim fileContent As String
     Dim header() As String
     Dim params() As String
+    Dim requested() As String
+    Dim requestedSlides() As Integer
+    Dim requestedCount As Integer
     Dim slideNumbers() As Integer
     Dim audioPaths() As String
     Dim shapeNames() As String
@@ -538,9 +585,11 @@ Sub InsertAudio()
     Dim editing As EditingContext
     Dim errorMessage As String
     Dim restoreError As String
+    Dim isRequested As Boolean
     Dim i As Integer
+    Dim j As Integer
 
-    paramsPath = GetOfficeFilePath("insert_audio_params.txt")
+    paramsPath = GetOfficeFilePath("save_narration_params.txt")
     If Dir(paramsPath) = "" Then Exit Sub
 
     paramsNum = FreeFile
@@ -551,7 +600,7 @@ Sub InsertAudio()
     End If
     Line Input #paramsNum, fileContent
     header = Split(fileContent, "|")
-    If UBound(header) < 1 Then
+    If UBound(header) < 3 Then
         Close paramsNum
         Exit Sub
     End If
@@ -590,9 +639,26 @@ Sub InsertAudio()
         Err.Raise vbObjectError + 515, , "Presentation not found: " & header(0)
     End If
 
+    requested = Split(header(3), ",")
+    requestedCount = 0
+    For i = LBound(requested) To UBound(requested)
+        If Len(Trim(requested(i))) > 0 Then
+            requestedCount = requestedCount + 1
+            ReDim Preserve requestedSlides(1 To requestedCount)
+            requestedSlides(requestedCount) = CInt(Trim(requested(i)))
+            If requestedSlides(requestedCount) < 1 Or requestedSlides(requestedCount) > pres.Slides.Count Then
+                Err.Raise vbObjectError + 516, , "Slide " & requestedSlides(requestedCount) & " does not exist."
+            End If
+        End If
+    Next i
+
     For i = 1 To entryCount
-        If slideNumbers(i) < 1 Or slideNumbers(i) > pres.Slides.Count Then
-            Err.Raise vbObjectError + 516, , "Slide " & slideNumbers(i) & " does not exist."
+        isRequested = False
+        For j = 1 To requestedCount
+            If requestedSlides(j) = slideNumbers(i) Then isRequested = True
+        Next j
+        If Not isRequested Then
+            Err.Raise vbObjectError + 516, , "Section audio for slide " & slideNumbers(i) & " was not requested."
         End If
         Set sld = pres.Slides(slideNumbers(i))
         Set shp = SectionAudioNamed(sld, shapeNames(i))
@@ -600,7 +666,12 @@ Sub InsertAudio()
     Next i
 
     ' Setting the checkbox selects audio, and replacing audio can delete the selection.
-    CaptureEditingContext pres, editing
+    If entryCount > 0 Then CaptureEditingContext pres, editing
+
+    pres.Save
+    Print #resultNum, "editing"
+
+    If Len(header(2)) > 0 Then WriteNotesFromFile pres, header(2)
 
     currentSlideNumber = 0
     For i = 1 To entryCount
@@ -614,18 +685,17 @@ Sub InsertAudio()
         Print #resultNum, "inserted|" & slideNumbers(i) & "|" & shp.Name & "|" & IIf(SetPlayAcrossSlides(editing, sld, shp, playAcross(i)), "true", "false")
     Next i
 
-    For i = 1 To entryCount
-        If IsFirstEntryForSlide(slideNumbers, i) Then
-            Set sld = pres.Slides(slideNumbers(i))
-            RemoveObsoleteSectionAudio sld, slideNumbers(i), slideNumbers, shapeNames, entryCount, editing
-            Print #resultNum, "slide|" & slideNumbers(i) & "|" & ListSectionAudio(sld)
-        End If
+    For i = 1 To requestedCount
+        Set sld = pres.Slides(requestedSlides(i))
+        RemoveObsoleteSectionAudio sld, requestedSlides(i), slideNumbers, shapeNames, entryCount, editing
+        Print #resultNum, "slide|" & requestedSlides(i) & "|" & ListSectionAudio(sld)
     Next i
 
     pres.Save
+    Print #resultNum, "saved"
     restoreError = RestoreEditingContext(editing)
     If Len(restoreError) > 0 Then
-        Print #resultNum, "error|The section audio was saved, but " & restoreError
+        Print #resultNum, "error|" & restoreError
     Else
         Print #resultNum, "done"
     End If
@@ -1007,145 +1077,4 @@ ReportFailure:
     If Len(restoreError) > 0 Then errorMessage = errorMessage & " " & restoreError
     If outputNum <> 0 Then Close outputNum
     WriteInspectionError outputPath, errorMessage
-End Sub
-
-Sub UpdateNotes()
-    Dim pres As Presentation
-    Dim paramsPath As String
-    Dim dataPath As String
-    Dim targetPath As String
-    Dim fileContent As String
-    Dim params() As String
-    Dim dataNum As Integer
-    Dim lineData As String
-    Dim currentSlideIndex As Integer
-    Dim currentNotes As String
-    Dim isReadingNotes As Boolean
-    Dim isFirstLine As Boolean
-    
-    paramsPath = GetOfficeFilePath("update_notes_params.txt")
-    fileContent = ReadSingleLineFile(paramsPath, "Error: Could not find update_notes_params.txt")
-    If fileContent = "" Then Exit Sub
-    
-    params = Split(fileContent, "|")
-    If UBound(params) < 1 Then Exit Sub
-    
-    targetPath = params(0)
-    dataPath = params(1)
-    
-    Set pres = GetPresentationOrShowError(targetPath)
-    If pres Is Nothing Then Exit Sub
-    
-    If Dir(dataPath) = "" Then
-        MsgBox "Error: Data file not found: " & dataPath
-        Exit Sub
-    End If
-    
-    
-    currentSlideIndex = -1
-    isReadingNotes = False
-    
-    dataNum = FreeFile
-    Open dataPath For Input As dataNum
-    
-    isReadingNotes = False
-    
-    Do While Not EOF(dataNum)
-        Line Input #dataNum, lineData
-        
-        If Left(lineData, 17) = "###SLIDE_START###" Then
-            currentSlideIndex = CInt(Mid(lineData, 19))
-            currentNotes = ""
-            isReadingNotes = True
-            isFirstLine = True
-        ElseIf Left(lineData, 15) = "###SLIDE_END###" Then
-            If currentSlideIndex > 0 And currentSlideIndex <= pres.Slides.Count Then
-                On Error Resume Next
-                pres.Slides(currentSlideIndex).NotesPage.Shapes(2).TextFrame.TextRange.Text = currentNotes
-                On Error GoTo 0
-            End If
-            isReadingNotes = False
-        Else
-            If isReadingNotes Then
-                If isFirstLine Then
-                    currentNotes = lineData
-                    isFirstLine = False
-                Else
-                    currentNotes = currentNotes & vbLf & lineData
-                End If
-            End If
-        End If
-    Loop
-    
-    Close dataNum
-    
-    pres.Save
-    
-End Sub
-
-' Input: presentation|slideNumbers|resultPath (comma-separated slide numbers).
-' Uses InsertAudio's result format without inserted records.
-Sub RemoveAudio()
-    Dim pres As Presentation
-    Dim sld As Slide
-    Dim s As Shape
-    Dim paramsPath As String
-    Dim paramsNum As Integer
-    Dim resultNum As Integer
-    Dim fileContent As String
-    Dim params() As String
-    Dim slideNumbers() As String
-    Dim slideNumber As Integer
-    Dim iShape As Integer
-    Dim i As Integer
-
-    paramsPath = GetOfficeFilePath("remove_audio_params.txt")
-    If Dir(paramsPath) = "" Then Exit Sub
-
-    paramsNum = FreeFile
-    Open paramsPath For Input As paramsNum
-    If EOF(paramsNum) Then
-        Close paramsNum
-        Exit Sub
-    End If
-    Line Input #paramsNum, fileContent
-    Close paramsNum
-
-    params = Split(fileContent, "|")
-    If UBound(params) < 2 Then Exit Sub
-
-    resultNum = FreeFile
-    Open params(2) For Output As resultNum
-    On Error GoTo Failed
-
-    Set pres = GetPresentation(params(0))
-    If pres Is Nothing Then
-        Err.Raise vbObjectError + 515, , "Presentation not found: " & params(0)
-    End If
-
-    slideNumbers = Split(params(1), ",")
-    For i = LBound(slideNumbers) To UBound(slideNumbers)
-        If Len(Trim(slideNumbers(i))) > 0 Then
-            slideNumber = CInt(Trim(slideNumbers(i)))
-            If slideNumber < 1 Or slideNumber > pres.Slides.Count Then
-                Err.Raise vbObjectError + 516, , "Slide " & slideNumber & " does not exist."
-            End If
-
-            Set sld = pres.Slides(slideNumber)
-            For iShape = sld.Shapes.Count To 1 Step -1
-                Set s = sld.Shapes(iShape)
-                If IsSectionAudioShape(s) Then s.Delete
-            Next iShape
-            Print #resultNum, "slide|" & slideNumber & "|" & ListSectionAudio(sld)
-        End If
-    Next i
-
-    pres.Save
-    Print #resultNum, "done"
-    Close resultNum
-    Exit Sub
-
-Failed:
-    Print #resultNum, "error|" & Replace(Replace(Err.Description, vbCr, " "), vbLf, " ")
-    Close resultNum
 End Sub
