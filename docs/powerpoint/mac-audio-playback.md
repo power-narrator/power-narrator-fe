@@ -13,7 +13,7 @@ Every finding comes from automating PowerPoint itself, then saving, reopening an
 - `PickupAnimation` / `ApplyAnimation` copy an audio's animations, including its playback setting, onto a replacement. Effect order, volume, mute and geometry must be restored separately. A Play started by clicking another shape must be rebuilt.
 - Changing the checkbox changes the stored Play duration, which moves later After Previous animations. See [Saved Play duration](#saved-play-duration).
 - The checkbox is the only reliable reading of the setting; numeric getters and legacy flags disagree with it.
-- PowerPoint does not need to be the frontmost app when the audio's deck is already its active window. Switching to another deck worked only with PowerPoint in front. `DocumentWindow.Activate` and setting `ViewType` raise PowerPoint's window above other windows even when nothing changes. See [PowerPoint in the background](#powerpoint-in-the-background).
+- PowerPoint does not need to be the frontmost app when the audio's deck is already its active window. Switching to another deck worked only with PowerPoint in front. `DocumentWindow.Activate`, setting `ViewType` and AppleScript `open` on an already open deck raise PowerPoint's window above other windows even when nothing changes. See [PowerPoint in the background](#powerpoint-in-the-background).
 
 Terms used below:
 
@@ -107,6 +107,8 @@ Raising a window is different from activating the app, and checks of the frontmo
 - Navigating slides, selecting, `DoEvents`, the identity queries, the Ribbon queries, `Application.Activate` and saving did not raise it.
 - Skipping `Activate` when `ActiveWindow` was already the target, and setting the view only when it differed, avoided the raise, including when starting on another slide. Selection, the guards and the checkbox read still worked.
 - Opening a closed deck with AppleScript `open` did not activate PowerPoint.
+- AppleScript `open` on a deck that was already open raised its window. An AppleScript loop `repeat with p in presentations` comparing `full name of p` never matched the open deck, so a launcher built that way re-opened it before every macro. `full name of every presentation` returned the open deck's path.
+- With both avoided, a full save in the add-in raised PowerPoint only when the view had to change, such as from Slide Sorter to Normal and back.
 
 ### Saved Play duration
 
@@ -151,7 +153,7 @@ Untested:
 
 - other effects on the audio, shared triggers, and other shapes' effects triggered by the audio;
 - stacking order, trims, bookmarks, fades, and replacement media shorter than the original;
-- in the background: minimized windows, two decks with the same filename, and whether skipping `Activate` removes every window raise in a full save;
+- in the background: minimized windows, two decks with the same filename, and a deck with more than one window;
 - slideshow playback. Attempts started media and advanced slides, but reading the first slide's player afterwards failed with AppleScript error -1700 whether or not the box was checked. Whether audio is actually heard across slides, how slides look, and whether custom triggers fire are unverified.
 
 ## Published API references
