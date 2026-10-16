@@ -100,7 +100,7 @@ export class NarratedPresentationSaver {
 
       report("saving");
       const saved = await commitSlide(powerpoint, request.filePath, slide, synthesized.audio);
-      if (saved.success || saved.saved !== "nothing") {
+      if (saved.success || saved.saved === "notes" || saved.saved === "notesAndAudio") {
         savedNoteSlides.push(slide.slideIndex);
       }
       if (!saved.success) {

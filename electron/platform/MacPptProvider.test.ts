@@ -62,9 +62,14 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
+/** Restoring spies alone leaves module-factory mocks with a test's return values. */
+function resetMocks() {
   vi.resetAllMocks();
   vi.restoreAllMocks();
+}
+
+afterEach(() => {
+  resetMocks();
   spawnCalls.length = 0;
   spawnStdout = "";
   beforeSpawnClose = undefined;
@@ -363,9 +368,13 @@ describe("MacPptProvider section audio playback", () => {
     expect(appWindow.focus).toHaveBeenCalled();
   });
 
-  it("starts the next test without the focus test's app window or recorded calls", () => {
+  it("resets the app window mock between tests to no window and no recorded calls", () => {
     // oxlint-disable-next-line typescript/unbound-method
     const getAllWindows = vi.mocked(BrowserWindow.getAllWindows);
+    getAllWindows.mockReturnValue([{} as never]);
+    getAllWindows();
+
+    resetMocks();
 
     expect(getAllWindows).not.toHaveBeenCalled();
     expect(getAllWindows()).toEqual([]);
@@ -618,6 +627,58 @@ describe("MacPptProvider.saveSlideNarration", () => {
     expect(scriptsRun()).toEqual([["trigger-macro.applescript", "SaveNarration", deck]]);
   });
 
+  it.each([
+    ["has not reported anything yet", ""],
+    ["has reported only its first save", "editing\ninserted|3|ppt_audio_1|true\n"],
+  ])(
+    "reopens the presentation as last saved, reporting the slide's narration as unknown, when PowerPoint stops responding after the macro started and %s",
+    async (_, report) => {
+      const provider = new MacPptProvider();
+      saveNarrationMacroReports(report);
+      scriptOutcomes.set("trigger-macro.applescript", {
+        stdout: JSON.stringify({
+          success: false,
+          message: "Error calling macro 'SaveNarration': AppleEvent timed out.",
+        }),
+      });
+
+      const result = await provider.saveSlideNarration(deck, thirdSlide);
+
+      expect(result).toEqual({
+        success: false,
+        saved: "unknown",
+        message: expect.stringMatching(
+          /^Error calling macro 'SaveNarration': AppleEvent timed out\. PowerPoint did not report whether it saved .*closed without saving and reopened as last saved/,
+        ) as unknown,
+      });
+      expect(scriptsRun()).toEqual([
+        ["trigger-macro.applescript", "SaveNarration", deck],
+        ["close-presentation.applescript", deck, "discard"],
+        ["reopen-presentation.applescript", deck, "1"],
+      ]);
+    },
+  );
+
+  it("keeps the presentation open and reports the slide saved when PowerPoint stops responding after saving it", async () => {
+    const provider = new MacPptProvider();
+    saveNarrationMacroReports(savedThirdSlide.filter((record) => record !== "done").join("\n"));
+    scriptOutcomes.set("trigger-macro.applescript", {
+      stdout: JSON.stringify({
+        success: false,
+        message: "Error calling macro 'SaveNarration': AppleEvent timed out.",
+      }),
+    });
+
+    const result = await provider.saveSlideNarration(deck, thirdSlide);
+
+    expect(result).toEqual({
+      success: false,
+      saved: "notesAndAudio",
+      message: "Error calling macro 'SaveNarration': AppleEvent timed out.",
+    });
+    expect(scriptsRun()).toEqual([["trigger-macro.applescript", "SaveNarration", deck]]);
+  });
+
   it("leaves the presentation open when the section audio cannot be staged for PowerPoint", async () => {
     const provider = new MacPptProvider();
     fs.writeFileSync(officeContainerPath("TemporaryAudio"), "not a directory");
@@ -641,6 +702,10 @@ describe("MacPptProvider.saveSlideNarration", () => {
     [
       "changing the section audio",
       "editing\ninserted|3|ppt_audio_1|true\nerror|Could not insert ppt_audio_2 on slide 3.\n",
+    ],
+    [
+      "confirming the section audio left on the slide",
+      "editing\ninserted|3|ppt_audio_1|true\ninserted|3|ppt_audio_2|false\nslide|3|ppt_audio_1,ppt_audio_2,ppt_audio_3\nerror|Section audio on slide 3 is ppt_audio_1,ppt_audio_2,ppt_audio_3 instead of ppt_audio_1,ppt_audio_2.\n",
     ],
   ])(
     "reopens the presentation as saved before the change when %s fails, so a later save cannot keep the failed edits",

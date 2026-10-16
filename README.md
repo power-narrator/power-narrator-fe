@@ -335,12 +335,16 @@ Saving a slide first saves the presentation as it is, including your own unsaved
 Only then does the app write the slide's notes and change its section audio, and it saves both
 together once both succeed. Remove Audio likewise saves first, removes the section audio, then
 saves again; it does not write notes. If that first save or a check before it fails, nothing was
-changed and the presentation stays open. If the section audio cannot be replaced as it is, or
-writing the notes or changing the audio fails, the app closes the presentation without saving and
-reopens it as saved just before: the slide keeps its
+changed and the presentation stays open. If the section audio cannot be replaced as it is, writing
+the notes or changing the audio fails, or PowerPoint cannot confirm the slide's resulting section
+audio and checkboxes, the app closes the presentation without saving and reopens it as saved just
+before: the slide keeps its
 previous notes and section audio, your earlier edits remain, and a later save cannot write the
 failed edits. An error after the final save, such as failing to restore your editing view, leaves
-the saved changes in place and says so. Earlier slides of a save-all run keep everything they saved,
+the saved changes in place and says so. If PowerPoint stops responding after starting a save, so
+the app cannot tell how far it got, the app also closes the presentation without saving and
+reopens it as last saved, and says it cannot tell whether the slide was saved; check it in
+PowerPoint, as edits PowerPoint had not saved yet may be lost. Earlier slides of a save-all run keep everything they saved,
 and the run stops at the failed slide. If PowerPoint could not discard or reopen the presentation,
 the error says so: close the presentation without saving before you continue.
 

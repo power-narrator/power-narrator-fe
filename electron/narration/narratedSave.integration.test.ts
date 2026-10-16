@@ -657,6 +657,12 @@ for (const failure of [
     savedNoteSlides: [0, 1],
   },
   {
+    name: "a reported failure that did not say what was saved",
+    sections: [narrator("One")],
+    outcome: { success: false, saved: "unknown", message: "PowerPoint stopped responding" },
+    savedNoteSlides: [0],
+  },
+  {
     name: "a thrown failure",
     sections: [narrator("One")],
     outcome: new Error("PowerPoint closed"),
