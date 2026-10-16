@@ -660,16 +660,21 @@ Sub SaveNarration()
         If Not isRequested Then
             Err.Raise vbObjectError + 516, , "Section audio for slide " & slideNumbers(i) & " was not requested."
         End If
-        Set sld = pres.Slides(slideNumbers(i))
-        Set shp = SectionAudioNamed(sld, shapeNames(i))
-        If Not shp Is Nothing Then CheckReplaceable sld, shp
     Next i
 
     ' Setting the checkbox selects audio, and replacing audio can delete the selection.
     If entryCount > 0 Then CaptureEditingContext pres, editing
 
+    ' Save before inspecting the audio: reading it can change PowerPoint's stored Play durations,
+    ' which this save would otherwise write even when the slide is then left as it was.
     pres.Save
     Print #resultNum, "editing"
+
+    For i = 1 To entryCount
+        Set sld = pres.Slides(slideNumbers(i))
+        Set shp = SectionAudioNamed(sld, shapeNames(i))
+        If Not shp Is Nothing Then CheckReplaceable sld, shp
+    Next i
 
     If Len(header(2)) > 0 Then WriteNotesFromFile pres, header(2)
 
