@@ -63,6 +63,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.resetAllMocks();
   vi.restoreAllMocks();
   spawnCalls.length = 0;
   spawnStdout = "";
@@ -378,6 +379,14 @@ describe("MacPptProvider section audio playback", () => {
     await provider.convertPptx("/presentations/deck.pptx", "/tmp/deck");
 
     expect(appWindow.focus).toHaveBeenCalled();
+  });
+
+  it("starts the next test without the focus test's app window or recorded calls", () => {
+    // oxlint-disable-next-line typescript/unbound-method
+    const getAllWindows = vi.mocked(BrowserWindow.getAllWindows);
+
+    expect(getAllWindows).not.toHaveBeenCalled();
+    expect(getAllWindows()).toEqual([]);
   });
 
   it("reads the playback of the reloaded slide only", async () => {
