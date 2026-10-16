@@ -59,7 +59,7 @@ The exact identifier is `MediaClipPlayAcrossSlides`. `Application.CommandBars.Ex
 
 Successful queries and commands used an active editing window in Normal view with the target audio selected. Explicit activation of the Playback tab was unnecessary in that context. The methods reflected global UI state: with no selection or a non-audio selection, a disabled control could report False. A hidden presentation with no editing window could not provide that context. `GetEnabledMso` and `GetVisibleMso` reported availability facts separately from pressed state; invalid-control queries returned error 5.
 
-Actual toggles persisted across reopening. Tested unrelated ink/fade effects, other media, geometry, references and slide structure were retained. Custom Play/Pause/Stop, self-click and external-button trees survived toggles of existing audio. These experiments did not replace that audio, so they did not establish combined replacement-and-toggle behavior.
+Actual toggles persisted across reopening. Tested unrelated ink/fade effects, other media, geometry, references and slide structure were retained. Custom Play/Pause/Stop, self-click and external-button trees survived toggles of existing audio. These experiments did not replace that audio. Combined replacement and toggling was later verified through the add-in's save path; its timing is described under [Saved Play duration](#saved-play-duration).
 
 Observed additional changes were:
 
@@ -72,6 +72,18 @@ Observed additional changes were:
 These values describe animation commands and sequence conditions, not the audio file’s duration. Their impact on audible or visual playback was not established. Matching-state requests that skipped execution retained exact saved state in the tested cases.
 
 Batched checkbox queries did not change saved content. Restoration of Normal and Slide Sorter context was observed; arbitrary text selections, multiple selections, other window arrangements and slideshow contexts were not established.
+
+### Saved Play duration
+
+The duration PowerPoint stores on an audio Play command depends on how the Play was created and on the checkbox. Later After Previous groups in the same sequence shift their delays by the same amount. In one tested slide, a 2304 ms clip moved the following delays from 375 to 2679 ms and from 1623 to 3927 ms.
+
+| Action                                                       | Stored Play duration            | Later After Previous delays |
+| ------------------------------------------------------------ | ------------------------------- | --------------------------- |
+| Checking the box, through the Ribbon by hand or `ExecuteMso` | 1 ms                            | Start right after the Play  |
+| Unchecking the box by hand                                   | Unchanged (whatever was stored) | Shift by at most 1 ms       |
+| Adding or replacing audio whose box ends up unchecked        | The clip length                 | Wait for the clip to end    |
+
+Checking by hand and checking through the add-in saved identical timing, apart from the replaced audio's shape ids. Section audio is always replaced on save, so the add-in gives every unchecked section the clip length, as PowerPoint does for any newly animated audio that does not play across slides. This is intended, even though it differs from unchecking by hand. Audio that an earlier add-in stored at 1 ms while unchecked gets the clip length the next time it is saved.
 
 ## Playback-state API findings
 
