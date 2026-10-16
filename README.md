@@ -293,6 +293,9 @@ cached and newly synthesized results as `audio/mpeg`, and PowerPoint audio files
   Slide image export still uses native PowerPoint automation, and video generation and slide
   playback always use the native provider.
 
+For findings on Mac PowerPoint playback APIs, animation copying and alternative approaches, see
+the [audio API research reference](docs/powerpoint/mac-audio-playback.md).
+
 ### PowerPoint add-in
 
 For VBA-backed notes and audio operations:
