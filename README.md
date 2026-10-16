@@ -335,8 +335,9 @@ Saving a slide first saves the presentation as it is, including your own unsaved
 Only then does the app write the slide's notes and change its section audio, and it saves both
 together once both succeed. Remove Audio likewise saves first, removes the section audio, then
 saves again; it does not write notes. If that first save or a check before it fails, nothing was
-changed and the presentation stays open. If writing the notes or changing the audio fails, the app
-closes the presentation without saving and reopens it as saved just before: the slide keeps its
+changed and the presentation stays open. If the section audio cannot be replaced as it is, or
+writing the notes or changing the audio fails, the app closes the presentation without saving and
+reopens it as saved just before: the slide keeps its
 previous notes and section audio, your earlier edits remain, and a later save cannot write the
 failed edits. An error after the final save, such as failing to restore your editing view, leaves
 the saved changes in place and says so. Earlier slides of a save-all run keep everything they saved,
