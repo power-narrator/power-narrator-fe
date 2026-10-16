@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { app } from "electron";
+import { app, BrowserWindow } from "electron";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toSlideIndex } from "../../shared/slides/slideCoordinates.js";
 import { MacPptProvider } from "./MacPptProvider.js";
@@ -253,7 +253,7 @@ function stubSlideExport(provider: MacPptProvider, slideIndices: number[]) {
 }
 
 describe("MacPptProvider section audio playback", () => {
-  it("reads which sections' audio plays across slides by slide number and section ordinal", async () => {
+  it("reads each section audio's Play Across Slides checkbox by slide number and section ordinal", async () => {
     const provider = new MacPptProvider();
     stubSlideExport(provider, [0, 3]);
     const request = reportSectionAudioPlayback(
@@ -261,10 +261,10 @@ describe("MacPptProvider section audio playback", () => {
         "###SLIDE_START### 1",
         "###SLIDE_END###",
         "###SLIDE_START### 4",
-        "ppt_audio_1\t0",
-        "ppt_audio_2\t999",
-        "ppt_audio_3\t2",
-        "ppt_audio_4\t1",
+        "ppt_audio_1\tfalse",
+        "ppt_audio_2\ttrue",
+        "ppt_audio_3\ttrue",
+        "ppt_audio_4\tfalse",
         "###SLIDE_END###",
         "###EXPORT_COMPLETE###",
         "",
@@ -292,7 +292,7 @@ describe("MacPptProvider section audio playback", () => {
   it.each([
     [
       "two audio shapes share a section's name",
-      "###SLIDE_START### 1\nppt_audio_1\t999\nppt_audio_1\t0\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "###SLIDE_START### 1\nppt_audio_1\ttrue\nppt_audio_1\tfalse\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
       "Slide 1 has more than one shape named ppt_audio_1.",
     ],
     [
@@ -306,9 +306,49 @@ describe("MacPptProvider section audio playback", () => {
       "PowerPoint reported an unreadable playback for ppt_audio_1 on slide 1.",
     ],
     [
+      "an add-in older than the app reports a numeric playback span",
+      "###SLIDE_START### 1\nppt_audio_1\t83\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported a numeric playback for ppt_audio_1 on slide 1; the installed PowerPoint add-in does not match this app.",
+    ],
+    [
+      "a section audio's playback is missing",
+      "###SLIDE_START### 1\nppt_audio_1\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported an unreadable playback for ppt_audio_1 on slide 1.",
+    ],
+    [
+      "a playback record has extra fields",
+      "###SLIDE_START### 1\nppt_audio_1\ttrue\t999\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported an unreadable playback for ppt_audio_1 on slide 1.",
+    ],
+    [
       "the report stops before completing",
       "###SLIDE_START### 1\n###SLIDE_END###\n",
       "PowerPoint did not finish reporting section audio playback.",
+    ],
+    [
+      "a slide's report is not closed",
+      "###SLIDE_START### 1\nppt_audio_1\ttrue\n###EXPORT_COMPLETE###\n",
+      "PowerPoint did not finish reporting section audio playback for slide 1.",
+    ],
+    [
+      "a playback is reported outside any slide",
+      "ppt_audio_1\ttrue\n###SLIDE_START### 1\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported playback outside a slide: ppt_audio_1\ttrue",
+    ],
+    [
+      "a slide's number is unreadable",
+      "###SLIDE_START### first\nppt_audio_1\ttrue\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported an unreadable slide: first",
+    ],
+    [
+      "a slide is reported twice",
+      "###SLIDE_START### 1\nppt_audio_1\ttrue\n###SLIDE_END###\n###SLIDE_START### 1\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported section audio playback for slide 1 more than once.",
+    ],
+    [
+      "a slide is closed without being opened",
+      "###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported playback outside a slide: ###SLIDE_END###",
     ],
     [
       "a requested slide is missing from the report",
@@ -327,6 +367,19 @@ describe("MacPptProvider section audio playback", () => {
     });
   });
 
+  it("returns focus to the app after PowerPoint fails to read the checkboxes", async () => {
+    const appWindow = { show: vi.fn<() => void>(), focus: vi.fn<() => void>() };
+    // oxlint-disable-next-line typescript/unbound-method
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([appWindow as never]);
+    const provider = new MacPptProvider();
+    stubSlideExport(provider, [0]);
+    reportSectionAudioPlayback("###ERROR### Target presentation has no editing window\n");
+
+    await provider.convertPptx("/presentations/deck.pptx", "/tmp/deck");
+
+    expect(appWindow.focus).toHaveBeenCalled();
+  });
+
   it("reads the playback of the reloaded slide only", async () => {
     if (!tempDir) {
       throw new Error("Expected a temporary test directory");
@@ -341,7 +394,7 @@ describe("MacPptProvider section audio playback", () => {
     });
     vi.spyOn(provider, "readSlideNotes").mockResolvedValue({ success: true, notes: "Second" });
     const request = reportSectionAudioPlayback(
-      "###SLIDE_START### 2\nppt_audio_1\t999\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "###SLIDE_START### 2\nppt_audio_1\ttrue\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
     );
 
     const result = await provider.reloadSlide(

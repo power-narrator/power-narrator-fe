@@ -18,11 +18,10 @@ const EXPORT_COMPLETE = "###EXPORT_COMPLETE###";
 const ERROR = "###ERROR### ";
 const SECTION_AUDIO_NAME = new RegExp(`^${PPT_AUDIO_PREFIX}_([1-9]\\d*)$`);
 
-/**
- * The ribbon writes 0 when Play Across Slides is off and 999 when on. A span of
- * 1 is untested and most likely stops at the current slide, so it reads as off.
- */
-export const playsAcrossSlides = (stopAfterSlides: number): boolean => stopAfterSlides > 1;
+const CHECKBOX_STATES: ReadonlyMap<string, boolean> = new Map([
+  ["true", true],
+  ["false", false],
+]);
 
 export const sectionsPlayingAcrossSlidesOn = (
   playback: ReadonlyMap<SlideIndex, SectionsPlayingAcrossSlides>,
@@ -49,24 +48,50 @@ export function parseSectionAudioPlaybackReport(
   let slideNumber: SlideNumber | null = null;
   let namesOnSlide = new Set<string>();
 
+  const unfinishedSlide = (slide: SlideNumber): SectionAudioPlaybackResult => ({
+    success: false,
+    message: `PowerPoint did not finish reporting section audio playback for slide ${slide}.`,
+  });
+
   for (const line of lines) {
-    if (line.startsWith(SLIDE_START)) {
-      slideNumber = readSlideNumber(line.slice(SLIDE_START.length)) ?? null;
-      namesOnSlide = new Set();
+    if (line === EXPORT_COMPLETE) {
       if (slideNumber !== null) {
-        reported.set(slideNumber, new Set());
+        return unfinishedSlide(slideNumber);
       }
+      break;
+    }
+    if (line.startsWith(SLIDE_START)) {
+      if (slideNumber !== null) {
+        return unfinishedSlide(slideNumber);
+      }
+      const slideText = line.slice(SLIDE_START.length);
+      const started = readSlideNumber(slideText);
+      if (started === undefined) {
+        return { success: false, message: `PowerPoint reported an unreadable slide: ${slideText}` };
+      }
+      if (reported.has(started)) {
+        return {
+          success: false,
+          message: `PowerPoint reported section audio playback for slide ${started} more than once.`,
+        };
+      }
+      slideNumber = started;
+      namesOnSlide = new Set();
+      reported.set(slideNumber, new Set());
       continue;
+    }
+    if (line === "") {
+      continue;
+    }
+    if (slideNumber === null) {
+      return { success: false, message: `PowerPoint reported playback outside a slide: ${line}` };
     }
     if (line === SLIDE_END) {
       slideNumber = null;
       continue;
     }
-    if (slideNumber === null || line === "") {
-      continue;
-    }
 
-    const [name = "", stopAfterSlides = ""] = line.split("\t");
+    const [name = "", checkbox = "", ...extraFields] = line.split("\t");
     const ordinal = SECTION_AUDIO_NAME.exec(name)?.[1];
     if (ordinal === undefined) {
       return {
@@ -81,13 +106,20 @@ export function parseSectionAudioPlaybackReport(
       };
     }
     namesOnSlide.add(name);
-    if (!isIntegerText(stopAfterSlides)) {
+    if (isIntegerText(checkbox)) {
+      return {
+        success: false,
+        message: `PowerPoint reported a numeric playback for ${name} on slide ${slideNumber}; the installed PowerPoint add-in does not match this app.`,
+      };
+    }
+    const playsAcrossSlides = CHECKBOX_STATES.get(checkbox);
+    if (playsAcrossSlides === undefined || extraFields.length > 0) {
       return {
         success: false,
         message: `PowerPoint reported an unreadable playback for ${name} on slide ${slideNumber}.`,
       };
     }
-    if (playsAcrossSlides(Number(stopAfterSlides))) {
+    if (playsAcrossSlides) {
       reported.get(slideNumber)?.add(Number(ordinal) - 1);
     }
   }

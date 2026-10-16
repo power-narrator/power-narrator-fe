@@ -6,7 +6,6 @@ import {
   isIntegerText,
   readAudioMacroReport,
 } from "./macroReport.js";
-import { playsAcrossSlides } from "./sectionAudioPlayback.js";
 import type { BasicPptResult, SlideAudioEntry } from "./types.js";
 
 export type StagedSlideAudio = {
@@ -41,7 +40,8 @@ function appliedPlayback(
     ? Number(stopAfterSlides) === PLAY_ACROSS_SLIDES_SPAN &&
         playOnEntry === "1" &&
         pauseAnimation === "0"
-    : !playsAcrossSlides(Number(stopAfterSlides));
+    : // A span of 1 most likely stops at the current slide.
+      Number(stopAfterSlides) <= 1;
 }
 
 /** Each `inserted` record is `inserted|slideNumber|shapeName|stopAfterSlides|playOnEntry|pauseAnimation`. */

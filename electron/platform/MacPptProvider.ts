@@ -441,6 +441,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       return { success: false, message: getErrorMessage(e) };
     } finally {
       cleanupPaths(outputPath);
+      this.focusApp();
     }
   }
 
