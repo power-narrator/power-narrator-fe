@@ -1,7 +1,8 @@
 on run argv
     set targetPath to item 1 of argv
+    set discardChanges to (count of argv) > 1 and item 2 of argv is "discard"
     set targetSlideIndex to 1
-    
+
     tell application "Microsoft PowerPoint"
         set presCount to count presentations
         repeat with i from 1 to presCount
@@ -12,13 +13,17 @@ on run argv
                     set theSelection to selection of document window 1
                     set targetSlideIndex to slide index of slide 1 of slide range of theSelection
                 end try
-                
-                save pres
-                close pres
+
+                if discardChanges then
+                    close pres saving no
+                else
+                    save pres
+                    close pres
+                end if
                 return targetSlideIndex
             end if
         end repeat
     end tell
-    
+
     return targetSlideIndex
 end run

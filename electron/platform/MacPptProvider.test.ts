@@ -104,13 +104,20 @@ function officeContainerPath(fileName: string): string {
   return path.join(tempDir, "Library/Group Containers/UBF8T346G9.Office", fileName);
 }
 
+function scriptsRun(): string[][] {
+  return spawnCalls.map(({ args: [script = "", ...args] }) => [path.basename(script), ...args]);
+}
+
 /**
  * The macro seam takes 1-based slide numbers, so capture what the provider
- * writes while the fake AppleScript process runs, before cleanup removes it.
+ * writes while the fake macro process runs, before cleanup removes it.
  */
 function succeedAppleScript(capture: () => void = () => {}) {
   spawnStdout = JSON.stringify({ success: true, data: {} });
-  beforeSpawnClose = capture;
+  beforeSpawnClose = () => {
+    beforeSpawnClose = undefined;
+    capture();
+  };
 }
 
 describe("MacPptProvider native slide numbers", () => {
@@ -532,6 +539,34 @@ describe("MacPptProvider.insertAudio", () => {
 
     expect(result).toEqual({ success: false, message: expect.stringMatching(message) as unknown });
   });
+
+  it("reloads the deck as last saved when the macro fails, so a later save cannot keep its edits", async () => {
+    const provider = new MacPptProvider();
+    insertAudioMacroReports(
+      "error|Setting section audio playback on slide 5 changed its animation order.\n",
+    );
+
+    await provider.insertAudio(deck, firstAndThirdSlideAudio);
+
+    expect(scriptsRun()).toEqual([
+      ["trigger-macro.applescript", "InsertAudio", deck],
+      ["close-presentation.applescript", deck, "discard"],
+      ["reopen-presentation.applescript", deck, "1"],
+    ]);
+  });
+
+  it("keeps the deck open once the macro saves", async () => {
+    const provider = new MacPptProvider();
+    insertAudioMacroReports(
+      [confirmedFirst, confirmedThird, "slide|1|ppt_audio_1", "slide|3|ppt_audio_2", "done"].join(
+        "\n",
+      ),
+    );
+
+    await provider.insertAudio(deck, firstAndThirdSlideAudio);
+
+    expect(scriptsRun()).toEqual([["trigger-macro.applescript", "InsertAudio", deck]]);
+  });
 });
 
 describe("MacPptProvider.removeAudio", () => {
@@ -593,5 +628,17 @@ describe("MacPptProvider.removeAudio", () => {
     const result = await provider.removeAudio(deck, firstAndThirdSlides);
 
     expect(result).toEqual({ success: false, message: expect.stringMatching(message) as unknown });
+  });
+
+  it("reloads the deck as last saved when the macro fails, so a later save cannot keep its edits", async () => {
+    const provider = new MacPptProvider();
+    removeAudioMacroReports("slide|1|\n");
+
+    await provider.removeAudio(deck, firstAndThirdSlides);
+
+    expect(scriptsRun().slice(1)).toEqual([
+      ["close-presentation.applescript", deck, "discard"],
+      ["reopen-presentation.applescript", deck, "1"],
+    ]);
   });
 });

@@ -236,10 +236,14 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
-  async closePresentation(filePath: string): Promise<SlideIndex> {
+  closePresentation(filePath: string): Promise<SlideIndex> {
+    return this.close(filePath, "save");
+  }
+
+  private async close(filePath: string, changes: "save" | "discard"): Promise<SlideIndex> {
     try {
       const closeScript = resolveScriptPath("close-presentation.applescript");
-      const childClose = spawn("osascript", [closeScript, filePath]);
+      const childClose = spawn("osascript", [closeScript, filePath, changes]);
       return await new Promise<SlideIndex>((resolve) => {
         let out = "";
         childClose.stdout.on("data", (d: Buffer) => (out += d.toString()));
@@ -444,6 +448,13 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
   async insertAudio(filePath: string, slidesAudio: SlideAudioEntry[]): Promise<BasicPptResult> {
     if (!slidesAudio || slidesAudio.length === 0) return { success: true };
 
+    return this.discardChangesOnFailure(filePath, () => this.runInsertAudio(filePath, slidesAudio));
+  }
+
+  private async runInsertAudio(
+    filePath: string,
+    slidesAudio: SlideAudioEntry[],
+  ): Promise<BasicPptResult> {
     const officeContainer = this.getOfficeContainerPath();
     const audioSessionDir = path.join(officeContainer, "TemporaryAudio", `session-${Date.now()}`);
 
@@ -488,7 +499,16 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
-  async removeAudio(filePath: string, slideIndices: SlideIndex[]): Promise<BasicPptResult> {
+  removeAudio(filePath: string, slideIndices: SlideIndex[]): Promise<BasicPptResult> {
+    return this.discardChangesOnFailure(filePath, () =>
+      this.runRemoveAudio(filePath, slideIndices),
+    );
+  }
+
+  private async runRemoveAudio(
+    filePath: string,
+    slideIndices: SlideIndex[],
+  ): Promise<BasicPptResult> {
     const officeContainer = this.getOfficeContainerPath();
     const resultPath = path.join(officeContainer, "remove_audio_result.txt");
 
@@ -516,6 +536,22 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     } finally {
       cleanupPaths(resultPath);
     }
+  }
+
+  /**
+   * A failed audio macro can leave edits in PowerPoint's memory, such as
+   * animations PowerPoint degraded while rebuilding a slide. Any later save would
+   * write them, so reload the deck as last saved. Callers save notes just before.
+   */
+  private async discardChangesOnFailure(
+    filePath: string,
+    edit: () => Promise<BasicPptResult>,
+  ): Promise<BasicPptResult> {
+    const result = await edit();
+    if (!result.success) {
+      await this.reopenPresentation(filePath, await this.close(filePath, "discard"));
+    }
+    return result;
   }
 
   async saveNotes(filePath: string, slides: SlideNotesEntry[]): Promise<BasicPptResult> {
