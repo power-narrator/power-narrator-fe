@@ -25,5 +25,5 @@ on run argv
         end repeat
     end tell
 
-    return targetSlideIndex
+    return "not-open"
 end run

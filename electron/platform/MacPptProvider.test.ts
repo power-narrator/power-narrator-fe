@@ -6,27 +6,35 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toSlideIndex } from "../../shared/slides/slideCoordinates.js";
 import { MacPptProvider } from "./MacPptProvider.js";
 
+type ScriptOutcome = { stdout?: string; stderr?: string; code?: number };
+
 const spawnCalls: Array<{ command: string; args: string[] }> = [];
 let spawnStdout = "";
 let beforeSpawnClose: (() => void) | undefined;
+/** Outcomes for particular AppleScripts, keyed by file name; others print `spawnStdout`. */
+const scriptOutcomes = new Map<string, ScriptOutcome>();
 
 vi.mock("node:child_process", () => ({
   spawn: (command: string, args: string[]) => {
     spawnCalls.push({ command, args });
-    const listeners = new Map<string, (value: string) => void>();
+    const listeners = new Map<string, (value: unknown) => void>();
+    const outcome = scriptOutcomes.get(path.basename(args[0] ?? "")) ?? { stdout: spawnStdout };
 
     queueMicrotask(() => {
       beforeSpawnClose?.();
-      if (spawnStdout) {
-        listeners.get("stdout")?.(spawnStdout);
+      if (outcome.stdout) {
+        listeners.get("stdout")?.(outcome.stdout);
       }
-      listeners.get("close")?.("");
+      if (outcome.stderr) {
+        listeners.get("stderr")?.(outcome.stderr);
+      }
+      listeners.get("close")?.(outcome.code ?? 0);
     });
 
     return {
-      stdout: { on: (_: string, cb: (value: string) => void) => listeners.set("stdout", cb) },
-      stderr: { on: () => {} },
-      on: (event: string, cb: (value: string) => void) => listeners.set(event, cb),
+      stdout: { on: (_: string, cb: (value: unknown) => void) => listeners.set("stdout", cb) },
+      stderr: { on: (_: string, cb: (value: unknown) => void) => listeners.set("stderr", cb) },
+      on: (event: string, cb: (value: unknown) => void) => listeners.set(event, cb),
     };
   },
 }));
@@ -59,6 +67,7 @@ afterEach(() => {
   spawnCalls.length = 0;
   spawnStdout = "";
   beforeSpawnClose = undefined;
+  scriptOutcomes.clear();
   if (tempDir) {
     fs.rmSync(tempDir, { recursive: true, force: true });
     tempDir = undefined;
@@ -554,6 +563,40 @@ describe("MacPptProvider.insertAudio", () => {
       ["reopen-presentation.applescript", deck, "1"],
     ]);
   });
+
+  it.each([
+    {
+      problem: "the deck is no longer open under its path",
+      outcome: ["close-presentation.applescript", { stdout: "not-open\n" }],
+      message: /could not discard/,
+    },
+    {
+      problem: "closing the deck fails",
+      outcome: ["close-presentation.applescript", { stderr: "PowerPoint got an error.", code: 1 }],
+      message: /could not discard.*PowerPoint got an error/,
+    },
+    {
+      problem: "reopening the deck fails",
+      outcome: ["reopen-presentation.applescript", { stderr: "File not found.", code: 1 }],
+      message: /could not reopen.*File not found/,
+    },
+  ] as const)(
+    "reports the macro error and a failed recovery when $problem",
+    async ({ outcome: [script, outcome], message }) => {
+      const provider = new MacPptProvider();
+      insertAudioMacroReports("error|ppt_audio_1 on slide 1 has unsupported animations.\n");
+      scriptOutcomes.set(script, outcome);
+
+      const result = await provider.insertAudio(deck, firstAndThirdSlideAudio);
+
+      expect(result).toEqual({
+        success: false,
+        message: expect.stringMatching(
+          new RegExp(`^ppt_audio_1 on slide 1 has unsupported animations\\..*${message.source}`),
+        ) as unknown,
+      });
+    },
+  );
 
   it("keeps the deck open once the macro saves", async () => {
     const provider = new MacPptProvider();

@@ -56,6 +56,13 @@ type AppleScriptResult<T = Record<string, unknown>> =
       message: string;
     };
 
+type ClosedPresentation =
+  | { closed: true; slideIndex: SlideIndex }
+  | { closed: false; slideIndex: SlideIndex; message: string };
+
+/** close-presentation.applescript prints this when no open presentation has the path. */
+const NOT_OPEN = "not-open";
+
 export class MacPptProvider implements PptProvider, NativePlatformProvider {
   constructor() {
     this.cleanup();
@@ -237,44 +244,68 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
   }
 
   closePresentation(filePath: string): Promise<SlideIndex> {
-    return this.close(filePath, "save");
+    return this.close(filePath, "save").then(({ slideIndex }) => slideIndex);
   }
 
-  private async close(filePath: string, changes: "save" | "discard"): Promise<SlideIndex> {
+  private async close(filePath: string, changes: "save" | "discard"): Promise<ClosedPresentation> {
     try {
-      const closeScript = resolveScriptPath("close-presentation.applescript");
-      const childClose = spawn("osascript", [closeScript, filePath, changes]);
-      return await new Promise<SlideIndex>((resolve) => {
-        let out = "";
-        childClose.stdout.on("data", (d: Buffer) => (out += d.toString()));
-        childClose.on("close", () => {
-          const trimmed = out.trim();
-          const slideNumber = trimmed === "" ? Number.NaN : Math.trunc(Number(trimmed));
-          resolve(trySlideIndexFromOneBased(slideNumber) ?? FIRST_SLIDE_INDEX);
-        });
-      });
+      const { stdout, stderr, code } = await this.runScript("close-presentation.applescript", [
+        filePath,
+        changes,
+      ]);
+      const trimmed = stdout.trim();
+      const slideNumber = trimmed === "" ? Number.NaN : Math.trunc(Number(trimmed));
+      const slideIndex = trySlideIndexFromOneBased(slideNumber) ?? FIRST_SLIDE_INDEX;
+      if (code !== 0) {
+        return { closed: false, slideIndex, message: stderr.trim() || `exit code ${code}` };
+      }
+      if (trimmed === NOT_OPEN) {
+        return { closed: false, slideIndex, message: "it is not open in PowerPoint" };
+      }
+      return { closed: true, slideIndex };
     } catch (e) {
       console.error("Failed to close presentation", e);
-      return FIRST_SLIDE_INDEX;
+      return { closed: false, slideIndex: FIRST_SLIDE_INDEX, message: getErrorMessage(e) };
     }
   }
 
   async reopenPresentation(filePath: string, slideIndex: SlideIndex): Promise<void> {
+    await this.reopen(filePath, slideIndex);
+  }
+
+  /** Resolves to the failure, if any. */
+  private async reopen(filePath: string, slideIndex: SlideIndex): Promise<string | undefined> {
+    let failure: string | undefined;
     try {
-      const reopenScript = resolveScriptPath("reopen-presentation.applescript");
-      const childReopen = spawn("osascript", [
-        reopenScript,
+      const { stderr, code } = await this.runScript("reopen-presentation.applescript", [
         filePath,
         slideNumberOf(slideIndex).toString(),
       ]);
-      await new Promise<void>((resolve) => {
-        childReopen.on("close", () => resolve());
-      });
+      if (code !== 0) {
+        failure = stderr.trim() || `exit code ${code}`;
+      }
     } catch (e) {
       console.error("Failed to reopen presentation", e);
+      failure = getErrorMessage(e);
     }
 
     this.focusApp();
+    return failure;
+  }
+
+  private runScript(
+    scriptName: string,
+    args: string[],
+  ): Promise<{ stdout: string; stderr: string; code: number }> {
+    const child = spawn("osascript", [resolveScriptPath(scriptName), ...args]);
+    return new Promise((resolve, reject) => {
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
+      child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+      child.on("close", (code: number) => resolve({ stdout, stderr, code }));
+      child.on("error", reject);
+    });
   }
 
   async exportSlideImages(filePath: string, outputDir: string): Promise<ExportSlideImagesResult> {
@@ -548,8 +579,23 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     edit: () => Promise<BasicPptResult>,
   ): Promise<BasicPptResult> {
     const result = await edit();
-    if (!result.success) {
-      await this.reopenPresentation(filePath, await this.close(filePath, "discard"));
+    if (result.success) {
+      return result;
+    }
+
+    const closed = await this.close(filePath, "discard");
+    if (!closed.closed) {
+      return {
+        success: false,
+        message: `${result.message} PowerPoint could not discard the failed changes (${closed.message}); close the presentation without saving before continuing.`,
+      };
+    }
+    const reopenFailure = await this.reopen(filePath, closed.slideIndex);
+    if (reopenFailure !== undefined) {
+      return {
+        success: false,
+        message: `${result.message} The failed changes were discarded, but PowerPoint could not reopen the presentation (${reopenFailure}).`,
+      };
     }
     return result;
   }
