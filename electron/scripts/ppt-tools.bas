@@ -1,10 +1,11 @@
 Attribute VB_Name = "AudioTools"
 
 Private Const MEDIA_PLAY_EFFECT As Long = 83
+Private Const MEDIA_PAUSE_EFFECT As Long = 84
+Private Const MEDIA_STOP_EFFECT As Long = 85
 Private Const SECTION_AUDIO_PREFIX As String = "ppt_audio_"
-' PowerPoint's Play Across Slides checkbox uses 999 when enabled and 0 when disabled.
-Private Const PLAY_ACROSS_SLIDES_SPAN As Long = 999
-Private Const CURRENT_SLIDE_SPAN As Long = 0
+' New section audio sits beside the slide, stacked in section order.
+Private Const NEW_AUDIO_MARGIN As Single = 20
 ' Mac PowerPoint fails to read EffectType for some effects, such as ink replay.
 Private Const UNREADABLE_EFFECT_TYPE As Long = -1
 Private Const PLAY_ACROSS_SLIDES_CHECKBOX As String = "MediaClipPlayAcrossSlides"
@@ -221,7 +222,7 @@ Function IsFirstEntryForSlide(slideNumbers() As Integer, entry As Integer) As Bo
     IsFirstEntryForSlide = True
 End Function
 
-Sub RemoveObsoleteSectionAudio(sld As Slide, slideNumber As Integer, slideNumbers() As Integer, shapeNames() As String, entryCount As Integer)
+Private Sub RemoveObsoleteSectionAudio(sld As Slide, slideNumber As Integer, slideNumbers() As Integer, shapeNames() As String, entryCount As Integer, ByRef editing As EditingContext)
     Dim iShape As Integer
     Dim s As Shape
 
@@ -229,145 +230,302 @@ Sub RemoveObsoleteSectionAudio(sld As Slide, slideNumber As Integer, slideNumber
         Set s = sld.Shapes(iShape)
         If IsSectionAudioShape(s) Then
             If Not IsRequestedSectionAudio(slideNumber, s.Name, slideNumbers, shapeNames, entryCount) Then
+                ReplaceSelectedShape editing, sld, s.Id, 0
                 s.Delete
             End If
         End If
     Next iShape
 End Sub
 
-Function ReplaceSectionAudio(pres As Presentation, sld As Slide, audioPath As String, audioTag As String, newAudioInsertIndex As Integer) As Shape
-    Dim shp As Shape
-    Dim s As Shape
-    Dim eff As Effect
-    Dim effIdx As Integer
-    Dim i As Integer
-    Dim margin As Single
-    Dim sectionIdx As Integer
-    Dim hadExistingAudio As Boolean
-    Dim existingAnimIndex As Integer
-    Dim existingTriggerType As Integer
-    Dim existingDelay As Single
-    Dim existingRepeatCount As Long
-    Dim existingRepeatDuration As Single
-    Dim existingRewindAtEnd As MsoTriState
+Private Function TimelineSequence(sld As Slide, i As Long) As Sequence
+    If i = 0 Then
+        Set TimelineSequence = sld.TimeLine.MainSequence
+    Else
+        Set TimelineSequence = sld.TimeLine.InteractiveSequences(i)
+    End If
+End Function
 
-    hadExistingAudio = False
-    existingAnimIndex = 1
-    existingTriggerType = 3 ' 3 = msoAnimTriggerAfterPrevious
-    existingDelay = 0
-    existingRepeatCount = 1
-    existingRepeatDuration = 0
-    existingRewindAtEnd = msoFalse
+Private Sub ClearAnimations(sld As Slide, shp As Shape)
+    Dim seq As Sequence
+    Dim i As Long
+    Dim j As Long
 
-    Set s = SectionAudioNamed(sld, audioTag)
-    If Not s Is Nothing Then
-        For effIdx = 1 To sld.TimeLine.MainSequence.Count
-            If EffectTargetsShape(sld.TimeLine.MainSequence(effIdx), s) Then
-                hadExistingAudio = True
-                existingAnimIndex = effIdx
-                existingTriggerType = sld.TimeLine.MainSequence(effIdx).Timing.TriggerType
-                existingDelay = sld.TimeLine.MainSequence(effIdx).Timing.TriggerDelayTime
-                existingRepeatCount = sld.TimeLine.MainSequence(effIdx).Timing.RepeatCount
-                existingRepeatDuration = sld.TimeLine.MainSequence(effIdx).Timing.RepeatDuration
-                existingRewindAtEnd = sld.TimeLine.MainSequence(effIdx).Timing.RewindAtEnd
-                Exit For
+    For i = sld.TimeLine.InteractiveSequences.Count To 0 Step -1
+        Set seq = TimelineSequence(sld, i)
+        For j = seq.Count To 1 Step -1
+            If EffectTargetsShape(seq(j), shp) Then seq(j).Delete
+        Next j
+    Next i
+End Sub
+
+' 0 when the effect has no trigger shape, which main-sequence effects may not expose.
+Private Function TriggerShapeId(eff As Effect) As Long
+    On Error Resume Next
+    TriggerShapeId = eff.Timing.TriggerShape.Id
+End Function
+
+' The audio's effect types, main-sequence positions and click triggers, for example
+' "main:83@2,84@5|click:7:85|click:self:83" (shape 7 is an external button).
+' Click sequences are sorted, because copying and rebuilding them can change their order.
+' Empty when the audio has no animations.
+Private Function AnimationLayout(sld As Slide, shp As Shape) As String
+    Dim seq As Sequence
+    Dim i As Long
+    Dim j As Long
+    Dim effects As String
+    Dim mainLayout As String
+    Dim clicks() As String
+    Dim clickCount As Long
+    Dim swap As String
+
+    ReDim clicks(0 To sld.TimeLine.InteractiveSequences.Count)
+    For i = 0 To sld.TimeLine.InteractiveSequences.Count
+        Set seq = TimelineSequence(sld, i)
+        effects = ""
+        For j = 1 To seq.Count
+            If EffectTargetsShape(seq(j), shp) Then
+                If Len(effects) > 0 Then effects = effects & ","
+                effects = effects & ReadEffectType(seq(j))
+                If i = 0 Then effects = effects & "@" & j
             End If
-        Next effIdx
-        s.Delete
+        Next j
+        If Len(effects) > 0 Then
+            If i = 0 Then
+                mainLayout = "main:" & effects
+            Else
+                If TriggerShapeId(seq(1)) = shp.Id Then
+                    clicks(clickCount) = "click:self:" & effects
+                Else
+                    clicks(clickCount) = "click:" & TriggerShapeId(seq(1)) & ":" & effects
+                End If
+                For j = clickCount To 1 Step -1
+                    If clicks(j - 1) <= clicks(j) Then Exit For
+                    swap = clicks(j - 1)
+                    clicks(j - 1) = clicks(j)
+                    clicks(j) = swap
+                Next j
+                clickCount = clickCount + 1
+            End If
+        End If
+    Next i
+
+    AnimationLayout = mainLayout
+    For i = 0 To clickCount - 1
+        If Len(AnimationLayout) > 0 Then AnimationLayout = AnimationLayout & "|"
+        AnimationLayout = AnimationLayout & clicks(i)
+    Next i
+End Function
+
+' A click sequence started by another shape, such as a button, rather than by the audio itself.
+Private Function IsExternalTrigger(seq As Sequence, old As Shape) As Boolean
+    If seq.Count = 0 Then Exit Function
+    If Not EffectTargetsShape(seq(1), old) Then Exit Function
+    IsExternalTrigger = TriggerShapeId(seq(1)) <> old.Id
+End Function
+
+Private Sub RaiseUnsupported(sld As Slide, shp As Shape, reason As String)
+    Err.Raise vbObjectError + 525, , shp.Name & " on slide " & sld.SlideIndex & " " & reason & ", which replacing its audio cannot keep."
+End Sub
+
+' Replacement copies the audio's animations, which keeps only Play/Pause/Stop on its own
+' main sequence or click triggers. Check before any edit, so nothing is lost silently.
+Private Sub CheckReplaceable(sld As Slide, shp As Shape)
+    Dim seq As Sequence
+    Dim i As Long
+    Dim j As Long
+    Dim owned As Long
+    Dim others As Long
+    Dim hasAnimations As Boolean
+    Dim hasPlay As Boolean
+
+    For i = 0 To sld.TimeLine.InteractiveSequences.Count
+        Set seq = TimelineSequence(sld, i)
+        owned = 0
+        others = 0
+        For j = 1 To seq.Count
+            If EffectTargetsShape(seq(j), shp) Then
+                owned = owned + 1
+                Select Case ReadEffectType(seq(j))
+                Case MEDIA_PLAY_EFFECT
+                    hasPlay = True
+                Case MEDIA_PAUSE_EFFECT, MEDIA_STOP_EFFECT
+                Case Else
+                    RaiseUnsupported sld, shp, "has an animation other than Play, Pause or Stop"
+                End Select
+            Else
+                others = others + 1
+                If TriggerShapeId(seq(j)) = shp.Id Then RaiseUnsupported sld, shp, "starts another shape's animation"
+            End If
+        Next j
+        If owned > 0 Then hasAnimations = True
+        If i > 0 And owned > 0 And others > 0 Then RaiseUnsupported sld, shp, "shares a click trigger with other animations"
+        If i > 0 And owned > 0 Then
+            If seq(1).Timing.TriggerType <> msoAnimTriggerOnShapeClick Then RaiseUnsupported sld, shp, "starts on a bookmark"
+        End If
+    Next i
+    If hasAnimations And Not hasPlay Then RaiseUnsupported sld, shp, "has animations but no Play animation"
+
+    With shp.MediaFormat
+        If .MediaBookmarks.Count > 0 Then RaiseUnsupported sld, shp, "has bookmarks"
+        If .FadeInDuration > 0 Or .FadeOutDuration > 0 Then RaiseUnsupported sld, shp, "fades in or out"
+        If .StartPoint > 0 Or (.EndPoint > 0 And .EndPoint < .Length) Then RaiseUnsupported sld, shp, "is trimmed"
+    End With
+End Sub
+
+' New section audio plays after the previous section, so audio added together plays in section order.
+Private Sub AddSectionAudioPlay(sld As Slide, shp As Shape, ByRef newAudioInsertIndex As Integer)
+    Dim eff As Effect
+
+    Set eff = sld.TimeLine.MainSequence.AddEffect(shp, MEDIA_PLAY_EFFECT, , msoAnimTriggerAfterPrevious)
+    If sld.TimeLine.MainSequence.Count >= newAudioInsertIndex Then eff.MoveTo newAudioInsertIndex
+    newAudioInsertIndex = newAudioInsertIndex + 1
+End Sub
+
+' Copying animations leaves the replacement's effects after every other effect; move each
+' back to the position its original held. Returns the position after the last one.
+Private Function RestoreMainPositions(sld As Slide, shp As Shape, positions As Collection) As Integer
+    Dim i As Long
+    Dim j As Long
+
+    j = 1
+    For i = 1 To sld.TimeLine.MainSequence.Count
+        If EffectTargetsShape(sld.TimeLine.MainSequence(i), shp) Then
+            If j <= positions.Count Then sld.TimeLine.MainSequence(i).MoveTo CLng(positions(j))
+            j = j + 1
+        End If
+    Next i
+    If positions.Count > 0 Then RestoreMainPositions = positions(positions.Count) + 1
+End Function
+
+' Copying turns an external button's click sequence into main-sequence effects at the end of
+' the replacement's copies. Rebuild each such sequence on the replacement from the original's
+' effects, then remove those copies. Media effects take a trigger shape only by converting an Appear.
+Private Sub RestoreExternalTriggers(sld As Slide, old As Shape, shp As Shape)
+    Dim mainSeq As Sequence
+    Dim seq As Sequence
+    Dim rebuilt As Sequence
+    Dim eff As Effect
+    Dim button As Shape
+    Dim copies As Collection
+    Dim oldMainCount As Long
+    Dim copiedCount As Long
+    Dim externalCount As Long
+    Dim sequenceCount As Long
+    Dim i As Long
+    Dim j As Long
+
+    Set mainSeq = sld.TimeLine.MainSequence
+    Set copies = New Collection
+    For i = 1 To mainSeq.Count
+        If EffectTargetsShape(mainSeq(i), old) Then oldMainCount = oldMainCount + 1
+    Next i
+    For i = 1 To mainSeq.Count
+        If EffectTargetsShape(mainSeq(i), shp) Then
+            copiedCount = copiedCount + 1
+            If copiedCount > oldMainCount Then copies.Add mainSeq(i)
+        End If
+    Next i
+    If copies.Count = 0 Then Exit Sub
+
+    sequenceCount = sld.TimeLine.InteractiveSequences.Count
+    For i = 1 To sequenceCount
+        Set seq = sld.TimeLine.InteractiveSequences(i)
+        If IsExternalTrigger(seq, old) Then externalCount = externalCount + seq.Count
+    Next i
+    If externalCount <> copies.Count Then
+        Err.Raise vbObjectError + 526, , "Replacing " & old.Name & " on slide " & sld.SlideIndex & " copied " & copies.Count & " unexpected main animations for " & externalCount & " button-triggered animations."
     End If
 
-    Set shp = sld.Shapes.AddMediaObject2(audioPath, 0, -1, 10, 10)
+    For i = 1 To sequenceCount
+        Set seq = sld.TimeLine.InteractiveSequences(i)
+        If IsExternalTrigger(seq, old) Then
+            Set button = seq(1).Timing.TriggerShape
+            Set rebuilt = sld.TimeLine.InteractiveSequences.Add
+            For j = 1 To seq.Count
+                Set eff = rebuilt.AddEffect(shp, msoAnimEffectAppear, , seq(j).Timing.TriggerType)
+                If j = 1 Then eff.Timing.TriggerShape = button
+                eff.EffectType = seq(j).EffectType
+                eff.Timing.TriggerDelayTime = seq(j).Timing.TriggerDelayTime
+                eff.Timing.RepeatCount = seq(j).Timing.RepeatCount
+                eff.Timing.RepeatDuration = seq(j).Timing.RepeatDuration
+                eff.Timing.RewindAtEnd = seq(j).Timing.RewindAtEnd
+            Next j
+        End If
+    Next i
+
+    For i = copies.Count To 1 Step -1
+        copies(i).Delete
+    Next i
+End Sub
+
+' Copying animations keeps neither media settings nor geometry.
+Private Sub KeepMediaAndGeometry(old As Shape, shp As Shape)
+    shp.LockAspectRatio = msoFalse
+    shp.Left = old.Left
+    shp.Top = old.Top
+    shp.Width = old.Width
+    shp.Height = old.Height
+    shp.Rotation = old.Rotation
+    shp.LockAspectRatio = old.LockAspectRatio
+    shp.MediaFormat.Volume = old.MediaFormat.Volume
+    shp.MediaFormat.Muted = old.MediaFormat.Muted
+End Sub
+
+Private Function ReplaceSectionAudio(pres As Presentation, sld As Slide, audioPath As String, audioTag As String, ByRef newAudioInsertIndex As Integer, ByRef editing As EditingContext) As Shape
+    Dim shp As Shape
+    Dim old As Shape
+    Dim layout As String
+    Dim replacedLayout As String
+    Dim positions As Collection
+    Dim i As Long
+
+    Set old = SectionAudioNamed(sld, audioTag)
+    Set shp = sld.Shapes.AddMediaObject2(audioPath, msoFalse, msoTrue, 10, 10)
     If shp Is Nothing Then
         Err.Raise vbObjectError + 513, , "Could not insert " & audioTag & " on slide " & sld.SlideIndex & "."
     End If
+    ClearAnimations sld, shp
+
+    ' PowerPoint keeps media settings only once the audio has a Play animation.
+    If old Is Nothing Then
+        shp.Left = pres.PageSetup.SlideWidth + NEW_AUDIO_MARGIN
+        shp.Top = NEW_AUDIO_MARGIN + (GetSectionIndex(audioTag) - 1) * (shp.Height + NEW_AUDIO_MARGIN)
+        AddSectionAudioPlay sld, shp, newAudioInsertIndex
+        shp.MediaFormat.Muted = False
+        shp.MediaFormat.Volume = 0.5
+    Else
+        layout = AnimationLayout(sld, old)
+        Set positions = New Collection
+        For i = 1 To sld.TimeLine.MainSequence.Count
+            If EffectTargetsShape(sld.TimeLine.MainSequence(i), old) Then positions.Add i
+        Next i
+        If Len(layout) = 0 Then
+            AddSectionAudioPlay sld, shp, newAudioInsertIndex
+        Else
+            ' Adding and clearing media can replace the picked-up animations, so pick up just before applying.
+            old.PickupAnimation
+            shp.ApplyAnimation
+            RestoreExternalTriggers sld, old, shp
+        End If
+        KeepMediaAndGeometry old, shp
+        ReplaceSelectedShape editing, sld, old.Id, shp.Id
+        old.Delete
+
+        If Len(layout) > 0 Then
+            If positions.Count > 0 Then newAudioInsertIndex = RestoreMainPositions(sld, shp, positions)
+            replacedLayout = AnimationLayout(sld, shp)
+            If replacedLayout <> layout Then
+                Err.Raise vbObjectError + 526, , "Replacing " & audioTag & " on slide " & sld.SlideIndex & " did not keep its animations: expected " & layout & ", found " & replacedLayout & "."
+            End If
+        End If
+    End If
 
     shp.Name = audioTag
-
-    margin = 20
-
-    sectionIdx = GetSectionIndex(audioTag)
-
-    shp.Left = pres.PageSetup.SlideWidth + margin
-
-    shp.Top = margin + (sectionIdx - 1) * (shp.Height + margin)
-
-    For i = sld.TimeLine.MainSequence.Count To 1 Step -1
-        If EffectTargetsShape(sld.TimeLine.MainSequence(i), shp) Then
-            sld.TimeLine.MainSequence(i).Delete
-        End If
-    Next i
-
-    Set eff = sld.TimeLine.MainSequence.AddEffect(shp, MEDIA_PLAY_EFFECT, , existingTriggerType)
-
-    If hadExistingAudio Then
-        eff.Timing.TriggerDelayTime = existingDelay
-        eff.Timing.RepeatCount = existingRepeatCount
-        eff.Timing.RepeatDuration = existingRepeatDuration
-        eff.Timing.RewindAtEnd = existingRewindAtEnd
-    End If
-
-    If hadExistingAudio Then
-        If existingAnimIndex <= sld.TimeLine.MainSequence.Count And existingAnimIndex > 0 Then
-            eff.MoveTo existingAnimIndex
-            newAudioInsertIndex = existingAnimIndex + 1
-        End If
-    Else
-        ' Place new audio first, in section order.
-        If sld.TimeLine.MainSequence.Count >= newAudioInsertIndex Then
-            eff.MoveTo newAudioInsertIndex
-        End If
-        newAudioInsertIndex = newAudioInsertIndex + 1
-    End If
-
-    With shp.MediaFormat
-        .Muted = False
-        .Volume = 0.5
-    End With
-
     Set ReplaceSectionAudio = shp
 End Function
 
-Function SectionAudioPlayEffect(sld As Slide, shp As Shape) As Effect
-    Dim i As Long
-
-    For i = 1 To sld.TimeLine.MainSequence.Count
-        If EffectTargetsShape(sld.TimeLine.MainSequence(i), shp) Then
-            If sld.TimeLine.MainSequence(i).EffectType = MEDIA_PLAY_EFFECT Then
-                Set SectionAudioPlayEffect = sld.TimeLine.MainSequence(i)
-                Exit Function
-            End If
-        End If
-    Next i
-End Function
-
-Sub ApplySectionAudioPlayback(sld As Slide, shp As Shape, playAcrossSlides As Boolean)
-    Dim effectCount As Long
-    Dim playback As PlaySettings
-    Dim i As Long
-
-    For i = 1 To sld.TimeLine.MainSequence.Count
-        If EffectTargetsShape(sld.TimeLine.MainSequence(i), shp) Then effectCount = effectCount + 1
-    Next i
-    If effectCount <> 1 Or SectionAudioPlayEffect(sld, shp) Is Nothing Then
-        Err.Raise vbObjectError + 517, , shp.Name & " on slide " & sld.SlideIndex & " has " & effectCount & " animations instead of one play effect."
-    End If
-
-    Set playback = SectionAudioPlayEffect(sld, shp).EffectInformation.PlaySettings
-    If playAcrossSlides Then
-        playback.PlayOnEntry = msoTrue
-        playback.PauseAnimation = msoFalse
-        playback.StopAfterSlides = PLAY_ACROSS_SLIDES_SPAN
-    Else
-        playback.StopAfterSlides = CURRENT_SLIDE_SPAN
-    End If
-End Sub
-
 Function EffectTargetsShape(eff As Effect, shp As Shape) As Boolean
     If Not eff.Shape Is Nothing Then EffectTargetsShape = eff.Shape.Id = shp.Id
-End Function
-
-Function EffectShapeId(eff As Effect) As Long
-    If Not eff.Shape Is Nothing Then EffectShapeId = eff.Shape.Id
 End Function
 
 Function ReadEffectType(eff As Effect) As Long
@@ -376,74 +534,10 @@ Function ReadEffectType(eff As Effect) As Long
     ReadEffectType = eff.EffectType
 End Function
 
-Function SaveSlideTiming(sld As Slide) As Collection
-    Dim i As Long
-    Dim records As Collection
-    Dim record As Collection
-    Dim eff As Effect
-
-    Set records = New Collection
-    For i = 1 To sld.TimeLine.MainSequence.Count
-        Set eff = sld.TimeLine.MainSequence(i)
-        Set record = New Collection
-        record.Add EffectShapeId(eff), "shapeId"
-        record.Add ReadEffectType(eff), "effectType"
-        record.Add eff.Timing.TriggerType, "triggerType"
-        record.Add eff.Timing.TriggerDelayTime, "delay"
-        records.Add record
-    Next i
-    Set SaveSlideTiming = records
-End Function
-
-Sub RestoreSlideTiming(sld As Slide, records As Collection)
-    Dim i As Long
-    Dim record As Collection
-
-    If sld.TimeLine.MainSequence.Count <> records.Count Then
-        Err.Raise vbObjectError + 519, , "Setting section audio playback on slide " & sld.SlideIndex & " changed its animations."
-    End If
-    For i = 1 To records.Count
-        Set record = records(i)
-        If EffectShapeId(sld.TimeLine.MainSequence(i)) <> record("shapeId") Or ReadEffectType(sld.TimeLine.MainSequence(i)) <> record("effectType") Then
-            Err.Raise vbObjectError + 519, , "Setting section audio playback on slide " & sld.SlideIndex & " changed its animation order."
-        End If
-        With sld.TimeLine.MainSequence(i).Timing
-            If .TriggerType <> record("triggerType") Then .TriggerType = record("triggerType")
-            If Abs(.TriggerDelayTime - record("delay")) > 0.001 Then .TriggerDelayTime = record("delay")
-        End With
-    Next i
-    For i = 1 To records.Count
-        Set record = records(i)
-        With sld.TimeLine.MainSequence(i).Timing
-            If .TriggerType <> record("triggerType") Or Abs(.TriggerDelayTime - record("delay")) > 0.001 Then
-                Err.Raise vbObjectError + 519, , "Setting section audio playback on slide " & sld.SlideIndex & " changed the start or delay of its animations."
-            End If
-        End With
-    Next i
-End Sub
-
-' Keep this helper: inline reads on Mac can misreport disabled playback after reopening.
-' No play effect returns 0 (current slide only).
-Function SectionAudioStopAfterSlides(sld As Slide, shp As Shape) As Long
-    Dim eff As Effect
-    Dim playback As PlaySettings
-
-    Set eff = SectionAudioPlayEffect(sld, shp)
-    If eff Is Nothing Then Exit Function
-    Set playback = eff.EffectInformation.PlaySettings
-    SectionAudioStopAfterSlides = playback.StopAfterSlides
-End Function
-
-Function SectionAudioPlaybackReport(sld As Slide, shp As Shape) As String
-    Dim playback As PlaySettings
-
-    Set playback = SectionAudioPlayEffect(sld, shp).EffectInformation.PlaySettings
-    SectionAudioPlaybackReport = SectionAudioStopAfterSlides(sld, shp) & "|" & IIf(playback.PlayOnEntry = msoTrue, "1", "0") & "|" & IIf(playback.PauseAnimation = msoTrue, "1", "0")
-End Function
-
 ' Input: presentation|resultPath, then slideNumber|audioPath|playAcrossSlides (1/0) per entry.
-' Each submitted slide's entries replace its complete section audio.
-' Results: inserted|slideNumber|shapeName|stopAfterSlides|playOnEntry|pauseAnimation (flags 1/0),
+' Each submitted slide's entries replace its complete section audio. A replacement keeps the
+' old audio's animations, media settings and geometry; only the checkbox may then change.
+' Results: inserted|slideNumber|shapeName|playsAcrossSlides (the confirmed checkbox, true/false),
 ' slide|slideNumber|remainingNames (comma-separated), error|message, and done after saving.
 Sub InsertAudio()
     Dim pres As Presentation
@@ -463,9 +557,10 @@ Sub InsertAudio()
     Dim fileName As String
     Dim currentSlideNumber As Integer
     Dim newAudioInsertIndex As Integer
-    Dim slideTiming As Collection
+    Dim editing As EditingContext
+    Dim errorMessage As String
+    Dim restoreError As String
     Dim i As Integer
-    Dim j As Integer
 
     paramsPath = GetOfficeFilePath("insert_audio_params.txt")
     If Dir(paramsPath) = "" Then Exit Sub
@@ -521,10 +616,16 @@ Sub InsertAudio()
         If slideNumbers(i) < 1 Or slideNumbers(i) > pres.Slides.Count Then
             Err.Raise vbObjectError + 516, , "Slide " & slideNumbers(i) & " does not exist."
         End If
-        If CountSectionAudioNamed(pres.Slides(slideNumbers(i)), shapeNames(i)) > 1 Then
+        Set sld = pres.Slides(slideNumbers(i))
+        If CountSectionAudioNamed(sld, shapeNames(i)) > 1 Then
             Err.Raise vbObjectError + 518, , "Slide " & slideNumbers(i) & " has more than one shape named " & shapeNames(i) & "."
         End If
+        Set shp = SectionAudioNamed(sld, shapeNames(i))
+        If Not shp Is Nothing Then CheckReplaceable sld, shp
     Next i
+
+    ' Setting the checkbox selects audio, and replacing audio can delete the selection.
+    CaptureEditingContext pres, editing
 
     currentSlideNumber = 0
     For i = 1 To entryCount
@@ -533,49 +634,38 @@ Sub InsertAudio()
             newAudioInsertIndex = 1
         End If
 
-        Set shp = ReplaceSectionAudio(pres, pres.Slides(slideNumbers(i)), audioPaths(i), shapeNames(i), newAudioInsertIndex)
-    Next i
-
-    For i = 1 To entryCount
-        If IsFirstEntryForSlide(slideNumbers, i) Then
-            Set sld = pres.Slides(slideNumbers(i))
-            ' Apply playback after rebuilding effects. On Mac, these writes reset play-effect
-            ' triggers and delays across the slide; snapshot once and restore after all writes.
-            Set slideTiming = SaveSlideTiming(sld)
-            For j = i To entryCount
-                If slideNumbers(j) = slideNumbers(i) Then
-                    Set shp = SectionAudioNamed(sld, shapeNames(j))
-                    If shp Is Nothing Then Err.Raise vbObjectError + 513, , "Section audio not found: " & shapeNames(j)
-                    ApplySectionAudioPlayback sld, shp, playAcross(j)
-                End If
-            Next j
-            RestoreSlideTiming sld, slideTiming
-        End If
-    Next i
-
-    For i = 1 To entryCount
         Set sld = pres.Slides(slideNumbers(i))
-        Set shp = SectionAudioNamed(sld, shapeNames(i))
-        If shp Is Nothing Then Err.Raise vbObjectError + 513, , "Section audio not found: " & shapeNames(i)
-        Print #resultNum, "inserted|" & slideNumbers(i) & "|" & shp.Name & "|" & SectionAudioPlaybackReport(sld, shp)
+        Set shp = ReplaceSectionAudio(pres, sld, audioPaths(i), shapeNames(i), newAudioInsertIndex, editing)
+        Print #resultNum, "inserted|" & slideNumbers(i) & "|" & shp.Name & "|" & IIf(SetPlayAcrossSlides(editing, sld, shp, playAcross(i)), "true", "false")
     Next i
 
-    ' Delay cleanup until replacements have preserved the old animation settings.
     For i = 1 To entryCount
         If IsFirstEntryForSlide(slideNumbers, i) Then
             Set sld = pres.Slides(slideNumbers(i))
-            RemoveObsoleteSectionAudio sld, slideNumbers(i), slideNumbers, shapeNames, entryCount
+            RemoveObsoleteSectionAudio sld, slideNumbers(i), slideNumbers, shapeNames, entryCount, editing
             Print #resultNum, "slide|" & slideNumbers(i) & "|" & ListSectionAudio(sld)
         End If
     Next i
 
     pres.Save
-    Print #resultNum, "done"
+    restoreError = RestoreEditingContext(editing)
+    If Len(restoreError) > 0 Then
+        Print #resultNum, "error|The section audio was saved, but " & restoreError
+    Else
+        Print #resultNum, "done"
+    End If
     Close resultNum
     Exit Sub
 
 Failed:
-    Print #resultNum, "error|" & Replace(Replace(Err.Description, vbCr, " "), vbLf, " ")
+    errorMessage = Err.Description
+    Resume ReportFailure
+
+ReportFailure:
+    On Error Resume Next
+    restoreError = RestoreEditingContext(editing)
+    If Len(restoreError) > 0 Then errorMessage = errorMessage & " " & restoreError
+    Print #resultNum, "error|" & Replace(Replace(errorMessage, vbCr, " "), vbLf, " ")
     Close resultNum
     If paramsNum <> 0 Then Close paramsNum
 End Sub
@@ -641,7 +731,7 @@ Private Function HasMediaPlayEffect(sld As Slide, shp As Shape) As Boolean
     Dim j As Long
 
     For i = 0 To sld.TimeLine.InteractiveSequences.Count
-        If i = 0 Then Set seq = sld.TimeLine.MainSequence Else Set seq = sld.TimeLine.InteractiveSequences(i)
+        Set seq = TimelineSequence(sld, i)
         For j = 1 To seq.Count
             If EffectTargetsShape(seq(j), shp) Then
                 If ReadEffectType(seq(j)) = MEDIA_PLAY_EFFECT Then
@@ -812,6 +902,40 @@ Private Function PlayAcrossSlidesChecked(editing As EditingContext, sld As Slide
     End If
     PlayAcrossSlidesChecked = Application.CommandBars.GetPressedMso(PLAY_ACROSS_SLIDES_CHECKBOX)
 End Function
+
+' Clicks the checkbox only when it differs, then returns the checkbox PowerPoint shows.
+Private Function SetPlayAcrossSlides(editing As EditingContext, sld As Slide, shp As Shape, playAcross As Boolean) As Boolean
+    SetPlayAcrossSlides = PlayAcrossSlidesChecked(editing, sld, shp)
+    If SetPlayAcrossSlides = playAcross Then Exit Function
+
+    Application.CommandBars.ExecuteMso PLAY_ACROSS_SLIDES_CHECKBOX
+    DoEvents
+    SetPlayAcrossSlides = PlayAcrossSlidesChecked(editing, sld, shp)
+    If SetPlayAcrossSlides <> playAcross Then
+        Err.Raise vbObjectError + 527, , "PowerPoint did not change the Play Across Slides checkbox of " & shp.Name & " on slide " & sld.SlideIndex & "."
+    End If
+End Function
+
+' Points a captured shape selection on this slide at a replacement, or drops a deleted shape (newId 0).
+Private Sub ReplaceSelectedShape(ByRef editing As EditingContext, sld As Slide, oldId As Long, newId As Long)
+    Dim i As Long
+    Dim kept As Long
+
+    If editing.SelectionType <> ppSelectionShapes Then Exit Sub
+    If editing.SelectedOnNotesPage Or editing.SlideIndex <> sld.SlideIndex Then Exit Sub
+
+    For i = 1 To editing.SelectedCount
+        If editing.SelectedIds(i) <> oldId Then
+            kept = kept + 1
+            editing.SelectedIds(kept) = editing.SelectedIds(i)
+        ElseIf newId <> 0 Then
+            kept = kept + 1
+            editing.SelectedIds(kept) = newId
+        End If
+    Next i
+    editing.SelectedCount = kept
+    If kept = 0 Then editing.SelectionType = ppSelectionNone
+End Sub
 
 Sub WriteInspectionError(outputPath As String, message As String)
     Dim fileNum As Integer

@@ -3,8 +3,8 @@ import { buildPptAudioShapeName } from "./helpers.js";
 import {
   checkSectionAudioBySlide,
   fail,
-  isIntegerText,
   readAudioMacroReport,
+  readPlayAcrossSlidesCheckbox,
 } from "./macroReport.js";
 import type { BasicPptResult, SlideAudioEntry } from "./types.js";
 
@@ -12,9 +12,6 @@ export type StagedSlideAudio = {
   entry: SlideAudioEntry;
   audioPath: string;
 };
-
-/** PowerPoint's Play Across Slides checkbox uses 999 when enabled and 0 when disabled. */
-const PLAY_ACROSS_SLIDES_SPAN = 999;
 
 /** Input to the InsertAudio macro, which parses by position: append new per-section fields. */
 export function formatInsertAudioParams(
@@ -29,22 +26,7 @@ export function formatInsertAudioParams(
   return `${filePath}|${resultPath}\n${sectionLines.join("")}`;
 }
 
-function appliedPlayback(
-  [stopAfterSlides, playOnEntry, pauseAnimation]: readonly string[],
-  playAcrossSlides: boolean,
-): boolean {
-  if (!isIntegerText(stopAfterSlides ?? "")) {
-    return false;
-  }
-  return playAcrossSlides
-    ? Number(stopAfterSlides) === PLAY_ACROSS_SLIDES_SPAN &&
-        playOnEntry === "1" &&
-        pauseAnimation === "0"
-    : // A span of 1 most likely stops at the current slide.
-      Number(stopAfterSlides) <= 1;
-}
-
-/** Each `inserted` record is `inserted|slideNumber|shapeName|stopAfterSlides|playOnEntry|pauseAnimation`. */
+/** Each `inserted` record is `inserted|slideNumber|shapeName|playsAcrossSlides`, the confirmed checkbox as `true`/`false`. */
 export function checkInsertAudioReport(
   report: string | undefined,
   slidesAudio: readonly SlideAudioEntry[],
@@ -67,7 +49,11 @@ export function checkInsertAudioReport(
     if (!record) {
       return fail(`PowerPoint did not confirm ${shapeName} on slide ${slideNumber}.`);
     }
-    if (!appliedPlayback(record.slice(3), entry.playAcrossSlides)) {
+    const playback = readPlayAcrossSlidesCheckbox(record.slice(3), shapeName, slideNumber);
+    if (!playback.success) {
+      return playback;
+    }
+    if (playback.playsAcrossSlides !== entry.playAcrossSlides) {
       return fail(`PowerPoint did not apply the playback of ${shapeName} on slide ${slideNumber}.`);
     }
     expectedBySlide.set(slideNumber, [...(expectedBySlide.get(slideNumber) ?? []), shapeName]);

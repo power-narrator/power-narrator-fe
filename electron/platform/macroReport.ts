@@ -13,6 +13,31 @@ export function fail(message: string): ErrorResult {
   return { success: false, message };
 }
 
+const CHECKBOX_STATES: ReadonlyMap<string, boolean> = new Map([
+  ["true", true],
+  ["false", false],
+]);
+
+export function readPlayAcrossSlidesCheckbox(
+  fields: readonly string[],
+  shapeName: string,
+  slideNumber: SlideNumber,
+): Result<{ playsAcrossSlides: boolean }> {
+  const [checkbox = "", ...extraFields] = fields;
+  if (isIntegerText(checkbox)) {
+    return fail(
+      `PowerPoint reported a numeric playback for ${shapeName} on slide ${slideNumber}; the installed PowerPoint add-in does not match this app.`,
+    );
+  }
+  const playsAcrossSlides = CHECKBOX_STATES.get(checkbox);
+  if (playsAcrossSlides === undefined || extraFields.length > 0) {
+    return fail(
+      `PowerPoint reported an unreadable playback for ${shapeName} on slide ${slideNumber}.`,
+    );
+  }
+  return { success: true, playsAcrossSlides };
+}
+
 export type AudioMacroReport = {
   records: string[][];
   sectionAudioBySlide: ReadonlyMap<SlideNumber, readonly string[]>;
