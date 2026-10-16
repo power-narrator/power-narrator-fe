@@ -836,6 +836,22 @@ Private Function WindowSlideIndex(w As DocumentWindow) As Long
     If WindowSlideIndex = 0 Then WindowSlideIndex = w.Selection.SlideRange(1).SlideIndex
 End Function
 
+' Activating a window raises it above other apps' windows even when it is already active.
+' Activation reports no error when PowerPoint ignores it, which it does while in the background.
+Private Sub ActivateWindow(w As DocumentWindow)
+    If IsActiveWindow(w) Then Exit Sub
+    w.Activate
+    If Not IsActiveWindow(w) Then
+        Err.Raise vbObjectError + 522, , "PowerPoint did not switch to the window of " & w.Presentation.Name & "."
+    End If
+End Sub
+
+' False when PowerPoint has no active window.
+Private Function IsActiveWindow(w As DocumentWindow) As Boolean
+    On Error Resume Next
+    IsActiveWindow = ActiveWindow Is w
+End Function
+
 Private Sub CaptureEditingContext(pres As Presentation, ByRef editing As EditingContext)
     Dim i As Long
 
@@ -933,13 +949,13 @@ Private Function RestoreEditingContext(ByRef editing As EditingContext) As Strin
     editing.Captured = False
     On Error GoTo Failed
 
-    editing.Target.Activate
+    ActivateWindow editing.Target
     If editing.Target.ViewType <> editing.ViewType Then editing.Target.ViewType = editing.ViewType
     If editing.ViewType = ppViewNormal And editing.SlideIndex > 0 Then
         If WindowSlideIndex(editing.Target) <> editing.SlideIndex Then editing.Target.View.GotoSlide editing.SlideIndex
     End If
     RestoreSelection editing
-    If Not editing.PreviousWindow Is Nothing Then editing.PreviousWindow.Activate
+    If Not editing.PreviousWindow Is Nothing Then ActivateWindow editing.PreviousWindow
     Exit Function
 
 Failed:
@@ -951,7 +967,7 @@ Private Sub SelectSectionAudio(editing As EditingContext, sld As Slide, shp As S
     Dim w As DocumentWindow
 
     Set w = editing.Target
-    w.Activate
+    ActivateWindow w
     If w.ViewType <> ppViewNormal Then w.ViewType = ppViewNormal
     If WindowSlideIndex(w) <> sld.SlideIndex Then w.View.GotoSlide sld.SlideIndex
     shp.Select
@@ -959,6 +975,9 @@ Private Sub SelectSectionAudio(editing As EditingContext, sld As Slide, shp As S
 
     If Not ActivePresentation Is sld.Parent Then
         Err.Raise vbObjectError + 522, , "PowerPoint did not activate " & sld.Parent.Name & "."
+    End If
+    If Not IsActiveWindow(w) Then
+        Err.Raise vbObjectError + 522, , "PowerPoint did not switch to the window of " & sld.Parent.Name & "."
     End If
     If ActiveWindow.ViewType <> ppViewNormal Then
         Err.Raise vbObjectError + 522, , "PowerPoint did not switch to Normal view."

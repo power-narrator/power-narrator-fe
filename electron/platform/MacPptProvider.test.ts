@@ -119,6 +119,13 @@ function officeContainerPath(fileName: string): string {
   return path.join(tempDir, "Library/Group Containers/UBF8T346G9.Office", fileName);
 }
 
+function openAppWindow() {
+  const appWindow = { show: vi.fn<() => void>(), focus: vi.fn<() => void>() };
+  // oxlint-disable-next-line typescript/unbound-method
+  vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([appWindow as never]);
+  return appWindow;
+}
+
 function scriptsRun(): string[][] {
   return spawnCalls.map(({ args: [script = "", ...args] }) => [path.basename(script), ...args]);
 }
@@ -355,7 +362,7 @@ describe("MacPptProvider section audio playback", () => {
     });
   });
 
-  it("returns focus to the app after PowerPoint fails to read the checkboxes", async () => {
+  it("returns focus to the app after the slide images were exported but PowerPoint fails to read the checkboxes", async () => {
     const appWindow = { show: vi.fn<() => void>(), focus: vi.fn<() => void>() };
     // oxlint-disable-next-line typescript/unbound-method
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([appWindow as never]);
@@ -378,6 +385,27 @@ describe("MacPptProvider section audio playback", () => {
 
     expect(getAllWindows).not.toHaveBeenCalled();
     expect(getAllWindows()).toEqual([]);
+  });
+
+  it("hands focus back to the app PowerPoint was brought in front of to read the checkboxes", async () => {
+    const provider = new MacPptProvider();
+    stubSlideExport(provider, [0]);
+    reportSectionAudioPlayback("###SLIDE_START### 1\n###SLIDE_END###\n###EXPORT_COMPLETE###\n");
+    scriptOutcomes.set("trigger-macro.applescript", {
+      stdout: JSON.stringify({ success: true, data: { previousApp: "/Applications/Notes.app/" } }),
+    });
+
+    await provider.convertPptx("/presentations/deck.pptx", "/tmp/deck");
+
+    expect(scriptsRun()).toEqual([
+      [
+        "trigger-macro.applescript",
+        "ExportSectionAudioPlayback",
+        "/presentations/deck.pptx",
+        "target-window",
+      ],
+      ["restore-foreground.applescript", "/Applications/Notes.app/"],
+    ]);
   });
 
   it("reads the playback of the reloaded slide only", async () => {
@@ -507,8 +535,85 @@ describe("MacPptProvider.saveSlideNarration", () => {
       ["3", expect.stringMatching(/ppt_audio_2\.mp3$/), "0"],
     ]);
     expect(request.notes).toBe("###SLIDE_START### 3\nFirst\n---\nSecond\n###SLIDE_END###\n");
-    expect(scriptsRun()).toEqual([["trigger-macro.applescript", "SaveNarration", deck]]);
+    expect(scriptsRun()).toEqual([
+      ["trigger-macro.applescript", "SaveNarration", deck, "target-window"],
+    ]);
   });
+
+  it("hands focus back to the app PowerPoint was brought in front of, rather than raising this app", async () => {
+    const appWindow = openAppWindow();
+    const provider = new MacPptProvider();
+    saveNarrationMacroReports(savedThirdSlide.join("\n"));
+    scriptOutcomes.set("trigger-macro.applescript", {
+      stdout: JSON.stringify({ success: true, data: { previousApp: "/Applications/Notes.app/" } }),
+    });
+
+    const result = await provider.saveSlideNarration(deck, thirdSlide);
+
+    expect(result).toEqual({ success: true });
+    expect(scriptsRun()).toEqual([
+      ["trigger-macro.applescript", "SaveNarration", deck, "target-window"],
+      ["restore-foreground.applescript", "/Applications/Notes.app/"],
+    ]);
+    expect(appWindow.show).not.toHaveBeenCalled();
+    expect(appWindow.focus).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["saving", savedThirdSlide.join("\n")],
+    ["reopening the presentation after a failed edit", "editing\nerror|Could not insert.\n"],
+  ])(
+    "leaves focus alone after %s when PowerPoint was not brought to the front",
+    async (_, report) => {
+      const appWindow = openAppWindow();
+      const provider = new MacPptProvider();
+      saveNarrationMacroReports(report);
+
+      await provider.saveSlideNarration(deck, thirdSlide);
+
+      expect(scriptsRun().map(([script]) => script)).not.toContain(
+        "restore-foreground.applescript",
+      );
+      expect(appWindow.show).not.toHaveBeenCalled();
+      expect(appWindow.focus).not.toHaveBeenCalled();
+    },
+  );
+
+  it("hands focus back when the macro fails after PowerPoint was brought to the front", async () => {
+    const provider = new MacPptProvider();
+    scriptOutcomes.set("trigger-macro.applescript", {
+      stdout: JSON.stringify({
+        success: false,
+        message: "Error calling macro 'SaveNarration': The macro cannot be found.",
+        data: { previousApp: "/Applications/Notes.app/" },
+      }),
+    });
+
+    await provider.saveSlideNarration(deck, thirdSlide);
+
+    expect(scriptsRun().at(-1)).toEqual([
+      "restore-foreground.applescript",
+      "/Applications/Notes.app/",
+    ]);
+  });
+
+  it("hands focus back only after reopening the presentation when a failed edit is discarded", async () => {
+    const provider = new MacPptProvider();
+    saveNarrationMacroReports("editing\nerror|Could not insert.\n");
+    scriptOutcomes.set("trigger-macro.applescript", {
+      stdout: JSON.stringify({ success: true, data: { previousApp: "/Applications/Notes.app/" } }),
+    });
+
+    await provider.saveSlideNarration(deck, thirdSlide);
+
+    expect(scriptsRun().map(([script]) => script)).toEqual([
+      "trigger-macro.applescript",
+      "close-presentation.applescript",
+      "reopen-presentation.applescript",
+      "restore-foreground.applescript",
+    ]);
+  });
+
   it.each([
     {
       problem: "writes no report",
@@ -605,7 +710,9 @@ describe("MacPptProvider.saveSlideNarration", () => {
     const result = await provider.saveSlideNarration(deck, thirdSlide);
 
     expect(result).toEqual({ success: false, saved: "nothing", message });
-    expect(scriptsRun()).toEqual([["trigger-macro.applescript", "SaveNarration", deck]]);
+    expect(scriptsRun()).toEqual([
+      ["trigger-macro.applescript", "SaveNarration", deck, "target-window"],
+    ]);
   });
 
   it("leaves the presentation open when the macro cannot run", async () => {
@@ -624,7 +731,9 @@ describe("MacPptProvider.saveSlideNarration", () => {
       saved: "nothing",
       message: "Error calling macro 'SaveNarration': The macro cannot be found.",
     });
-    expect(scriptsRun()).toEqual([["trigger-macro.applescript", "SaveNarration", deck]]);
+    expect(scriptsRun()).toEqual([
+      ["trigger-macro.applescript", "SaveNarration", deck, "target-window"],
+    ]);
   });
 
   it.each([
@@ -652,7 +761,7 @@ describe("MacPptProvider.saveSlideNarration", () => {
         ) as unknown,
       });
       expect(scriptsRun()).toEqual([
-        ["trigger-macro.applescript", "SaveNarration", deck],
+        ["trigger-macro.applescript", "SaveNarration", deck, "target-window"],
         ["close-presentation.applescript", deck, "discard"],
         ["reopen-presentation.applescript", deck, "1"],
       ]);
@@ -676,7 +785,9 @@ describe("MacPptProvider.saveSlideNarration", () => {
       saved: "notesAndAudio",
       message: "Error calling macro 'SaveNarration': AppleEvent timed out.",
     });
-    expect(scriptsRun()).toEqual([["trigger-macro.applescript", "SaveNarration", deck]]);
+    expect(scriptsRun()).toEqual([
+      ["trigger-macro.applescript", "SaveNarration", deck, "target-window"],
+    ]);
   });
 
   it("leaves the presentation open when the section audio cannot be staged for PowerPoint", async () => {
@@ -721,7 +832,7 @@ describe("MacPptProvider.saveSlideNarration", () => {
         message: report.split("error|")[1]!.trimEnd(),
       });
       expect(scriptsRun()).toEqual([
-        ["trigger-macro.applescript", "SaveNarration", deck],
+        ["trigger-macro.applescript", "SaveNarration", deck, "target-window"],
         ["close-presentation.applescript", deck, "discard"],
         ["reopen-presentation.applescript", deck, "1"],
       ]);
@@ -779,7 +890,9 @@ describe("MacPptProvider.saveSlideNarration", () => {
       saved: "notesAndAudio",
       message: "PowerPoint could not restore the previous editing view: Invalid request.",
     });
-    expect(scriptsRun()).toEqual([["trigger-macro.applescript", "SaveNarration", deck]]);
+    expect(scriptsRun()).toEqual([
+      ["trigger-macro.applescript", "SaveNarration", deck, "target-window"],
+    ]);
   });
 });
 

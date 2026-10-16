@@ -30,6 +30,7 @@ import {
   formatSaveNarrationParams,
   narrationSavePhase,
   type NarrationSaveAction,
+  type NarrationSavePhase,
   type StagedSlideAudio,
 } from "./macSaveNarration.js";
 import type {
@@ -59,7 +60,20 @@ type AppleScriptResult<T = Record<string, unknown>> =
   | {
       success: false;
       message: string;
+      data?: T;
     };
+
+/** How trigger-macro.applescript started the macro. */
+type MacroLaunch = {
+  /** The app that was in front, set only when the launch brought PowerPoint in front of it. */
+  previousApp?: string;
+};
+
+/**
+ * Selecting audio needs the presentation's window to be PowerPoint's active window, which
+ * PowerPoint switches to only while it is the frontmost app.
+ */
+type MacroWindow = "background" | "target-window";
 
 type ClosedPresentation =
   | { closed: true; slideIndex: SlideIndex }
@@ -165,6 +179,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       return {
         success: false,
         message: parsed.message || "AppleScript reported failure.",
+        data: parsed.data,
       };
     } catch (error: unknown) {
       return {
@@ -229,13 +244,34 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     filePath: string,
     paramsFileName: string,
     params: string,
-  ): Promise<AppleScriptResult> {
+    window: MacroWindow = "background",
+  ): Promise<AppleScriptResult<MacroLaunch>> {
     const paramsPath = path.join(this.getOfficeContainerPath(), paramsFileName);
     try {
       fs.writeFileSync(paramsPath, params, "utf8");
-      return await this.runAppleScriptJson("trigger-macro.applescript", [macroName, filePath]);
+      return await this.runAppleScriptJson<MacroLaunch>(
+        "trigger-macro.applescript",
+        window === "target-window" ? [macroName, filePath, window] : [macroName, filePath],
+      );
     } finally {
       cleanupPaths(paramsPath);
+    }
+  }
+
+  /** Brings back `previousApp` unless the user has since moved away from PowerPoint. */
+  private async restoreForeground(previousApp: string | undefined): Promise<void> {
+    if (previousApp === undefined) {
+      return;
+    }
+    try {
+      const { stderr, code } = await this.runScript("restore-foreground.applescript", [
+        previousApp,
+      ]);
+      if (code !== 0) {
+        console.error("Failed to restore the frontmost app:", stderr.trim());
+      }
+    } catch (e) {
+      console.error("Failed to restore the frontmost app:", e);
     }
   }
 
@@ -285,6 +321,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
 
   async reopenPresentation(filePath: string, slideIndex: SlideIndex): Promise<void> {
     await this.reopen(filePath, slideIndex);
+    this.focusApp();
   }
 
   /** Resolves to the failure, if any. */
@@ -303,7 +340,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       failure = getErrorMessage(e);
     }
 
-    this.focusApp();
     return failure;
   }
 
@@ -431,6 +467,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     const officeContainer = this.getOfficeContainerPath();
     const outputPath = path.join(officeContainer, "export_audio_playback.txt");
     const slideNumbers = slideIndices.map(slideNumberOf);
+    let previousApp: string | undefined;
 
     try {
       cleanupPaths(outputPath);
@@ -439,7 +476,9 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
         filePath,
         "export_audio_playback_params.txt",
         `${filePath}|${slideNumbers.join(",")}|${outputPath}`,
+        "target-window",
       );
+      previousApp = scriptResult.data?.previousApp;
       if (!scriptResult.success) {
         return {
           success: false,
@@ -455,7 +494,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       return { success: false, message: getErrorMessage(e) };
     } finally {
       cleanupPaths(outputPath);
-      this.focusApp();
+      await this.restoreForeground(previousApp);
     }
   }
 
@@ -465,26 +504,31 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       return imageResult;
     }
 
+    // Image export brings PowerPoint to the front.
+    try {
+      return await this.readSlideData(filePath, outputDir, imageResult.images);
+    } finally {
+      this.focusApp();
+    }
+  }
+
+  private async readSlideData(
+    filePath: string,
+    outputDir: string,
+    images: SlideImageMap,
+  ): Promise<SlidesPptResult> {
     const notesResult = await this.readAllSlideNotes(filePath);
     if (!notesResult.success) {
       return notesResult;
     }
 
-    const playbackResult = await this.readSectionAudioPlayback(filePath, [
-      ...imageResult.images.keys(),
-    ]);
+    const playbackResult = await this.readSectionAudioPlayback(filePath, [...images.keys()]);
     if (!playbackResult.success) {
       return playbackResult;
     }
 
     try {
-      const slides = this.mergeSlideData(
-        imageResult.images,
-        notesResult.notes,
-        playbackResult.playback,
-      );
-
-      this.focusApp();
+      const slides = this.mergeSlideData(images, notesResult.notes, playbackResult.playback);
       return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
     } catch (err: unknown) {
       return { success: false, message: getErrorMessage(err) };
@@ -543,6 +587,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     let result: BasicPptResult;
     let report: string | undefined;
     let macroReturned = true;
+    let previousApp: string | undefined;
     try {
       let params: string;
       try {
@@ -570,7 +615,9 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
         filePath,
         "save_narration_params.txt",
         params,
+        request.audio.length > 0 ? "target-window" : "background",
       );
+      previousApp = scriptResult.data?.previousApp;
       macroReturned = scriptResult.success;
       report = fs.existsSync(resultPath) ? fs.readFileSync(resultPath, "utf8") : undefined;
       result = scriptResult.success
@@ -585,16 +632,28 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       cleanupPaths(resultPath, sessionDir, notesFile?.path);
     }
 
-    if (result.success) {
-      this.focusApp();
-      return result;
-    }
-    switch (narrationSavePhase(report, macroReturned)) {
+    const outcome = result.success
+      ? result
+      : await this.settleFailedSave(
+          filePath,
+          result.message,
+          narrationSavePhase(report, macroReturned),
+        );
+    await this.restoreForeground(previousApp);
+    return outcome;
+  }
+
+  private async settleFailedSave(
+    filePath: string,
+    failure: string,
+    phase: NarrationSavePhase,
+  ): Promise<SlideNarrationSaveResult> {
+    switch (phase) {
       case "editing":
         return {
           success: false,
           saved: "nothing",
-          message: await this.discardFailedChanges(filePath, result.message),
+          message: await this.discardFailedChanges(filePath, failure),
         };
       case "unknown":
         return {
@@ -602,16 +661,14 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
           saved: "unknown",
           message: await this.discardFailedChanges(
             filePath,
-            `${result.message} PowerPoint did not report whether it saved the presentation.`,
+            `${failure} PowerPoint did not report whether it saved the presentation.`,
             "It was closed without saving and reopened as last saved; check it in PowerPoint, as edits it had not saved may be lost.",
           ),
         };
       case "saved":
-        this.focusApp();
-        return { success: false, saved: "notesAndAudio", message: result.message };
+        return { success: false, saved: "notesAndAudio", message: failure };
       case "unchanged":
-        this.focusApp();
-        return { success: false, saved: "nothing", message: result.message };
+        return { success: false, saved: "nothing", message: failure };
     }
   }
 
@@ -689,35 +746,33 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       return imageResult;
     }
 
-    const result = await completeSlideReload(outputDir, slideIndex, imageResult.image, async () => {
-      const notesResult = await this.readSlideNotes(filePath, slideIndex);
-      if (!notesResult.success) {
-        return notesResult;
-      }
+    try {
+      return await completeSlideReload(outputDir, slideIndex, imageResult.image, async () => {
+        const notesResult = await this.readSlideNotes(filePath, slideIndex);
+        if (!notesResult.success) {
+          return notesResult;
+        }
 
-      const playbackResult = await this.readSectionAudioPlayback(filePath, [slideIndex]);
-      if (!playbackResult.success) {
-        return playbackResult;
-      }
+        const playbackResult = await this.readSectionAudioPlayback(filePath, [slideIndex]);
+        if (!playbackResult.success) {
+          return playbackResult;
+        }
 
-      return {
-        success: true,
-        notes: notesResult.notes,
-        sectionsPlayingAcrossSlides: sectionsPlayingAcrossSlidesOn(
-          playbackResult.playback,
-          slideIndex,
-        ),
-      };
-    });
-
-    if (result.success) {
+        return {
+          success: true,
+          notes: notesResult.notes,
+          sectionsPlayingAcrossSlides: sectionsPlayingAcrossSlidesOn(
+            playbackResult.playback,
+            slideIndex,
+          ),
+        };
+      });
+    } finally {
       try {
         this.focusApp();
       } catch (error) {
         console.error("Failed to focus app after reloading slide:", error);
       }
     }
-
-    return result;
   }
 }
