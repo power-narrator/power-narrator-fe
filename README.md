@@ -328,10 +328,8 @@ Saving changes some stored timing the way PowerPoint itself does. A checked Play
 1 ms duration. Every unchecked section the app saves gets its clip length, because it is newly
 added audio. Later After Previous animations on the slide therefore start that much earlier or
 later. Unchecking by hand in PowerPoint keeps the old duration instead. The checkbox can also move
-some stored delays by 1–2 ms, and in one recorded case from 5016 to 5000 ms. These differences are
-recorded in [Saved Play duration](docs/powerpoint/mac-audio-playback.md#saved-play-duration) and
-[Ribbon checkbox findings](docs/powerpoint/mac-audio-playback.md#ribbon-checkbox-findings); whether
-they are audible in a slideshow has not been tested.
+some stored delays slightly. See
+[Saved Play duration](docs/powerpoint/mac-audio-playback.md#saved-play-duration) for details.
 
 When an audio save fails, PowerPoint may already hold part of the change. The app closes the
 presentation without saving and reopens it, so a later save cannot write the failed edits. The
