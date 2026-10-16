@@ -7,6 +7,23 @@ Private Const PLAY_ACROSS_SLIDES_SPAN As Long = 999
 Private Const CURRENT_SLIDE_SPAN As Long = 0
 ' Mac PowerPoint fails to read EffectType for some effects, such as ink replay.
 Private Const UNREADABLE_EFFECT_TYPE As Long = -1
+Private Const PLAY_ACROSS_SLIDES_CHECKBOX As String = "MediaClipPlayAcrossSlides"
+
+' The author's view of a presentation, captured before selecting its audio and restored afterward.
+Private Type EditingContext
+    Captured As Boolean
+    Target As DocumentWindow
+    PreviousWindow As DocumentWindow
+    ViewType As Long
+    SlideIndex As Long
+    SelectionType As Long
+    ' Shape ids for a shape or text selection, slide indices for a slide selection.
+    SelectedIds() As Long
+    SelectedCount As Long
+    SelectedOnNotesPage As Boolean
+    TextStart As Long
+    TextLength As Long
+End Type
 
 ' ==============================================================================================
 ' ADD-IN REBUILD INSTRUCTIONS:
@@ -618,6 +635,184 @@ Sub ExportSlideNotes()
     ExportNotesToFile pres, outputPath, slideIndex
 End Sub
 
+Private Function HasMediaPlayEffect(sld As Slide, shp As Shape) As Boolean
+    Dim seq As Sequence
+    Dim i As Long
+    Dim j As Long
+
+    For i = 0 To sld.TimeLine.InteractiveSequences.Count
+        If i = 0 Then Set seq = sld.TimeLine.MainSequence Else Set seq = sld.TimeLine.InteractiveSequences(i)
+        For j = 1 To seq.Count
+            If EffectTargetsShape(seq(j), shp) Then
+                If ReadEffectType(seq(j)) = MEDIA_PLAY_EFFECT Then
+                    HasMediaPlayEffect = True
+                    Exit Function
+                End If
+            End If
+        Next j
+    Next i
+End Function
+
+' Slide Sorter has no current slide, only selected slides; 0 when neither is available.
+Private Function WindowSlideIndex(w As DocumentWindow) As Long
+    On Error Resume Next
+    WindowSlideIndex = w.View.Slide.SlideIndex
+    If WindowSlideIndex = 0 Then WindowSlideIndex = w.Selection.SlideRange(1).SlideIndex
+End Function
+
+Private Sub CaptureEditingContext(pres As Presentation, ByRef editing As EditingContext)
+    Dim i As Long
+
+    If pres.Windows.Count = 0 Then
+        Err.Raise vbObjectError + 520, , pres.Name & " has no editing window in PowerPoint."
+    End If
+
+    On Error Resume Next
+    Set editing.PreviousWindow = ActiveWindow
+    On Error GoTo 0
+
+    Set editing.Target = pres.Windows(1)
+    editing.ViewType = editing.Target.ViewType
+    editing.SlideIndex = WindowSlideIndex(editing.Target)
+    editing.SelectionType = editing.Target.Selection.Type
+    editing.SelectedCount = 0
+
+    Select Case editing.SelectionType
+    Case ppSelectionShapes, ppSelectionText
+        editing.SelectedCount = editing.Target.Selection.ShapeRange.Count
+        ReDim editing.SelectedIds(1 To editing.SelectedCount)
+        For i = 1 To editing.SelectedCount
+            editing.SelectedIds(i) = editing.Target.Selection.ShapeRange(i).Id
+        Next i
+        If editing.SelectionType = ppSelectionText Then
+            editing.SelectedOnNotesPage = editing.Target.ActivePane.ViewType = ppViewNotesPage
+            editing.TextStart = editing.Target.Selection.TextRange.Start
+            editing.TextLength = editing.Target.Selection.TextRange.Length
+        End If
+    Case ppSelectionSlides
+        editing.SelectedCount = editing.Target.Selection.SlideRange.Count
+        ReDim editing.SelectedIds(1 To editing.SelectedCount)
+        For i = 1 To editing.SelectedCount
+            editing.SelectedIds(i) = editing.Target.Selection.SlideRange(i).SlideIndex
+        Next i
+    End Select
+
+    editing.Captured = True
+End Sub
+
+Private Function ShapeIndexWithId(shapesOnPage As Shapes, shapeId As Long) As Long
+    Dim i As Long
+
+    For i = 1 To shapesOnPage.Count
+        If shapesOnPage(i).Id = shapeId Then
+            ShapeIndexWithId = i
+            Exit Function
+        End If
+    Next i
+    Err.Raise vbObjectError + 521, , "The previously selected shape no longer exists."
+End Function
+
+Private Sub RestoreSelection(editing As EditingContext)
+    Dim pres As Presentation
+    Dim shapesOnPage As Shapes
+    Dim indices() As Variant
+    Dim i As Long
+
+    Set pres = editing.Target.Presentation
+    If editing.SelectedCount > 0 Then ReDim indices(0 To editing.SelectedCount - 1)
+    Select Case editing.SelectionType
+    Case ppSelectionShapes, ppSelectionText
+        If editing.SelectedOnNotesPage Then
+            Set shapesOnPage = pres.Slides(editing.SlideIndex).NotesPage.Shapes
+        Else
+            Set shapesOnPage = pres.Slides(editing.SlideIndex).Shapes
+        End If
+        For i = 0 To editing.SelectedCount - 1
+            indices(i) = ShapeIndexWithId(shapesOnPage, editing.SelectedIds(i + 1))
+        Next i
+        If editing.SelectionType = ppSelectionText Then
+            shapesOnPage(indices(0)).TextFrame.TextRange.Characters(editing.TextStart, editing.TextLength).Select
+        ElseIf editing.SelectedCount = 1 Then
+            shapesOnPage(indices(0)).Select
+        Else
+            shapesOnPage.Range(indices).Select
+        End If
+    Case ppSelectionSlides
+        For i = 0 To editing.SelectedCount - 1
+            indices(i) = editing.SelectedIds(i + 1)
+        Next i
+        If editing.SelectedCount = 1 Then
+            pres.Slides(indices(0)).Select
+        Else
+            pres.Slides.Range(indices).Select
+        End If
+    Case Else
+        editing.Target.Selection.Unselect
+    End Select
+End Sub
+
+' Returns why the context could not be restored, or "" once restored or when nothing was captured.
+Private Function RestoreEditingContext(ByRef editing As EditingContext) As String
+    If Not editing.Captured Then Exit Function
+    editing.Captured = False
+    On Error GoTo Failed
+
+    editing.Target.Activate
+    If editing.Target.ViewType <> editing.ViewType Then editing.Target.ViewType = editing.ViewType
+    If editing.ViewType = ppViewNormal And editing.SlideIndex > 0 Then
+        If WindowSlideIndex(editing.Target) <> editing.SlideIndex Then editing.Target.View.GotoSlide editing.SlideIndex
+    End If
+    RestoreSelection editing
+    If Not editing.PreviousWindow Is Nothing Then editing.PreviousWindow.Activate
+    Exit Function
+
+Failed:
+    RestoreEditingContext = "PowerPoint could not restore the previous editing view: " & Err.Description
+End Function
+
+' The Ribbon checkbox reflects whatever is selected, so verify the selection is exactly this audio.
+Private Sub SelectSectionAudio(editing As EditingContext, sld As Slide, shp As Shape)
+    Dim w As DocumentWindow
+
+    Set w = editing.Target
+    w.Activate
+    If w.ViewType <> ppViewNormal Then w.ViewType = ppViewNormal
+    If WindowSlideIndex(w) <> sld.SlideIndex Then w.View.GotoSlide sld.SlideIndex
+    shp.Select
+    DoEvents
+
+    If Not ActivePresentation Is sld.Parent Then
+        Err.Raise vbObjectError + 522, , "PowerPoint did not activate " & sld.Parent.Name & "."
+    End If
+    If ActiveWindow.ViewType <> ppViewNormal Then
+        Err.Raise vbObjectError + 522, , "PowerPoint did not switch to Normal view."
+    End If
+    If ActiveWindow.View.Slide.SlideIndex <> sld.SlideIndex Then
+        Err.Raise vbObjectError + 522, , "PowerPoint did not go to slide " & sld.SlideIndex & "."
+    End If
+    If ActiveWindow.Selection.Type <> ppSelectionShapes Then
+        Err.Raise vbObjectError + 522, , "PowerPoint did not select " & shp.Name & "."
+    End If
+    If ActiveWindow.Selection.ShapeRange.Count <> 1 Then
+        Err.Raise vbObjectError + 522, , "PowerPoint selected more than " & shp.Name & "."
+    End If
+    If ActiveWindow.Selection.ShapeRange(1).Id <> shp.Id Then
+        Err.Raise vbObjectError + 522, , "PowerPoint selected " & ActiveWindow.Selection.ShapeRange(1).Name & " instead of " & shp.Name & "."
+    End If
+End Sub
+
+' A checked box can outlive a deleted Play animation until reopening, so require the animation first.
+Private Function PlayAcrossSlidesChecked(editing As EditingContext, sld As Slide, shp As Shape) As Boolean
+    If Not HasMediaPlayEffect(sld, shp) Then
+        Err.Raise vbObjectError + 523, , "It has no Play animation, so Play Across Slides does not apply."
+    End If
+    SelectSectionAudio editing, sld, shp
+    If Not Application.CommandBars.GetEnabledMso(PLAY_ACROSS_SLIDES_CHECKBOX) Then
+        Err.Raise vbObjectError + 524, , "PowerPoint's Play Across Slides checkbox is unavailable."
+    End If
+    PlayAcrossSlidesChecked = Application.CommandBars.GetPressedMso(PLAY_ACROSS_SLIDES_CHECKBOX)
+End Function
+
 Sub WriteInspectionError(outputPath As String, message As String)
     Dim fileNum As Integer
 
@@ -627,8 +822,9 @@ Sub WriteInspectionError(outputPath As String, message As String)
     Close fileNum
 End Sub
 
-' Output: name<TAB>StopAfterSlides per section audio, grouped by slide, then ###EXPORT_COMPLETE###.
-' On failure, replace the report with a single ###ERROR### message.
+' Output: name<TAB>true|false (the Play Across Slides checkbox) per section audio, grouped by slide,
+' then ###EXPORT_COMPLETE###. On failure, replace the report with a single ###ERROR### message.
+' Reading a checkbox selects its audio, so the editing context is restored once afterward.
 Sub ExportSectionAudioPlayback()
     Dim pres As Presentation
     Dim sld As Slide
@@ -641,9 +837,11 @@ Sub ExportSectionAudioPlayback()
     Dim slideNumber As Long
     Dim i As Long
     Dim outputNum As Integer
-    Dim stopAfterSlides As String
     Dim context As String
     Dim errorMessage As String
+    Dim editing As EditingContext
+    Dim restoreError As String
+    Dim playsAcross As Boolean
 
     paramsPath = GetOfficeFilePath("export_audio_playback_params.txt")
     fileContent = ReadSingleLineFile(paramsPath, "Error: Could not find export_audio_playback_params.txt")
@@ -679,14 +877,22 @@ Sub ExportSectionAudioPlayback()
 
         For Each shp In sld.Shapes
             If IsSectionAudioShape(shp) Then
-                context = "Could not read the playback of " & shp.Name & " on slide " & slideNumber
-                stopAfterSlides = CStr(SectionAudioStopAfterSlides(sld, shp))
-                Print #outputNum, shp.Name & vbTab & stopAfterSlides
+                context = "Could not read the Play Across Slides checkbox of " & shp.Name & " on slide " & slideNumber
+                ' Audio without a Play animation cannot play, so its possibly stale checkbox is not read.
+                playsAcross = False
+                If HasMediaPlayEffect(sld, shp) Then
+                    If Not editing.Captured Then CaptureEditingContext pres, editing
+                    playsAcross = PlayAcrossSlidesChecked(editing, sld, shp)
+                End If
+                Print #outputNum, shp.Name & vbTab & IIf(playsAcross, "true", "false")
             End If
         Next shp
 
         Print #outputNum, "###SLIDE_END###"
     Next i
+
+    errorMessage = RestoreEditingContext(editing)
+    If Len(errorMessage) > 0 Then GoTo ReportFailure
 
     Print #outputNum, "###EXPORT_COMPLETE###"
     Close outputNum
@@ -698,6 +904,8 @@ InspectionFailed:
 
 ReportFailure:
     On Error Resume Next
+    restoreError = RestoreEditingContext(editing)
+    If Len(restoreError) > 0 Then errorMessage = errorMessage & " " & restoreError
     If outputNum <> 0 Then Close outputNum
     WriteInspectionError outputPath, errorMessage
 End Sub
