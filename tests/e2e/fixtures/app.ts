@@ -75,21 +75,19 @@ const MOCK_STRUCTURED_SLIDES: StructuredSlide[] = MOCK_SLIDES.map(
 );
 
 export type GeneratedSpeechCall = { text: string; voiceOption: Voice };
-export type SaveNotesCall = {
+export type SaveSlideCall = {
   filePath: string;
-  slides: Array<{ slideIndex: number; notes: string }>;
-};
-export type InsertAudioCall = {
-  filePath: string;
-  slidesAudio: Array<{
+  slide: {
     slideIndex: number;
-    sectionIndex: number;
-    audioData: Uint8Array;
-    playAcrossSlides: boolean;
-  }>;
+    notes: string;
+    audio: Array<{
+      slideIndex: number;
+      sectionIndex: number;
+      audioData: Uint8Array;
+      playAcrossSlides: boolean;
+    }>;
+  };
 };
-
-export type RemoveAudioCall = { filePath: string; slideIndices: number[] };
 export type GenerateVideoCall = { filePath: string; videoOutputPath: string };
 
 export const VIDEO_OUTPUT_PATH = path.join(__dirname, "../../fixtures/test-presentation-run.mp4");
@@ -97,15 +95,13 @@ export const VIDEO_OUTPUT_PATH = path.join(__dirname, "../../fixtures/test-prese
 type MainProbes = {
   discardConfirmations: unknown[];
   generatedSpeech: GeneratedSpeechCall[];
-  saveNotes: SaveNotesCall[];
-  insertAudio: InsertAudioCall[];
-  removeAudio: RemoveAudioCall[];
+  savedSlides: SaveSlideCall[];
   videoDestinationRequests: number;
   generatedVideos: GenerateVideoCall[];
 };
 
 /** External narration work the fake adapters can hold until a test releases it. */
-export type HeldWorkKind = "speech" | "saveNotes" | "insertAudio" | "removeAudio";
+export type HeldWorkKind = "speech" | "saveSlide";
 export type HeldWork = { kind: HeldWorkKind; label: string };
 
 type HeldWorkControl = {
@@ -153,9 +149,7 @@ async function installMockIpcHandlers(app: ElectronApplication) {
       const emptyProbes = (): MainProbes => ({
         discardConfirmations: [],
         generatedSpeech: [],
-        saveNotes: [],
-        insertAudio: [],
-        removeAudio: [],
+        savedSlides: [],
         videoDestinationRequests: 0,
         generatedVideos: [],
       });
@@ -223,23 +217,9 @@ async function installMockIpcHandlers(app: ElectronApplication) {
       };
 
       const powerPoint = {
-        saveNotes: (filePath: string, slides: SaveNotesCall["slides"]) => {
-          globals.__probes.saveNotes.push({ filePath, slides });
-          return settle("saveNotes", slides.map((slide) => slide.slideIndex).join(), {
-            success: true as const,
-          });
-        },
-        insertAudio: (filePath: string, slidesAudio: InsertAudioCall["slidesAudio"]) => {
-          globals.__probes.insertAudio.push({ filePath, slidesAudio });
-          return settle(
-            "insertAudio",
-            [...new Set(slidesAudio.map((audio) => audio.slideIndex))].join(),
-            { success: true as const },
-          );
-        },
-        removeAudio: (filePath: string, slideIndices: number[]) => {
-          globals.__probes.removeAudio.push({ filePath, slideIndices });
-          return settle("removeAudio", slideIndices.join(), { success: true as const });
+        saveSlideNarration: (filePath: string, slide: SaveSlideCall["slide"]) => {
+          globals.__probes.savedSlides.push({ filePath, slide });
+          return settle("saveSlide", String(slide.slideIndex), { success: true as const });
         },
       };
 
@@ -329,9 +309,7 @@ export const getDiscardConfirmationCalls = (app: ElectronApplication) =>
   readProbe(app, "discardConfirmations");
 export const getGeneratedSpeechCalls = (app: ElectronApplication) =>
   readProbe(app, "generatedSpeech");
-export const getSaveNotesCalls = (app: ElectronApplication) => readProbe(app, "saveNotes");
-export const getInsertAudioCalls = (app: ElectronApplication) => readProbe(app, "insertAudio");
-export const getRemoveAudioCalls = (app: ElectronApplication) => readProbe(app, "removeAudio");
+export const getSavedSlideCalls = (app: ElectronApplication) => readProbe(app, "savedSlides");
 export const getVideoDestinationRequests = (app: ElectronApplication) =>
   readProbe(app, "videoDestinationRequests");
 export const getGeneratedVideoCalls = (app: ElectronApplication) =>

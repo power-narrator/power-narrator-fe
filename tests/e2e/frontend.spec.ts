@@ -10,9 +10,8 @@ import {
   getGeneratedSpeechCalls,
   getGeneratedVideoCalls,
   getHeldNarrationWork,
-  getInsertAudioCalls,
   getPlaybackActivity,
-  getSaveNotesCalls,
+  getSavedSlideCalls,
   getVideoDestinationRequests,
   holdNarrationWork,
   releaseHeldNarrationWork,
@@ -102,7 +101,7 @@ test.describe("PPT Viewer UI Workflows", () => {
     app,
     win,
   }) => {
-    await holdNarrationWork(app, ["speech", "saveNotes"]);
+    await holdNarrationWork(app, ["speech", "saveSlide"]);
     await startSaveAll(win);
 
     const progress = saveAllProgress(win);
@@ -116,7 +115,7 @@ test.describe("PPT Viewer UI Workflows", () => {
 
     await releaseHeldNarrationWork(app);
     await expect(progress).toContainText("Saving to PowerPoint...");
-    await expect.poll(() => getHeldNarrationWork(app)).toEqual([{ kind: "saveNotes", label: "0" }]);
+    await expect.poll(() => getHeldNarrationWork(app)).toEqual([{ kind: "saveSlide", label: "0" }]);
     expect(await getGeneratedSpeechCalls(app)).toHaveLength(1);
 
     await releaseHeldNarrationWork(app);
@@ -126,20 +125,20 @@ test.describe("PPT Viewer UI Workflows", () => {
       .poll(() => getHeldNarrationWork(app))
       .toEqual([{ kind: "speech", label: MOCK_SLIDES[1]!.notes }]);
     await releaseHeldNarrationWork(app);
-    await expect.poll(() => getHeldNarrationWork(app)).toEqual([{ kind: "saveNotes", label: "1" }]);
+    await expect.poll(() => getHeldNarrationWork(app)).toEqual([{ kind: "saveSlide", label: "1" }]);
     await releaseHeldNarrationWork(app);
 
     await expect(progress).toBeHidden();
-    expect(await getSaveNotesCalls(app)).toEqual(
+    expect(await getSavedSlideCalls(app)).toMatchObject(
       MOCK_SLIDES.map((slide) => ({
         filePath: FIXTURE_TEST,
-        slides: [{ slideIndex: slide.slideIndex, notes: slide.notes }],
+        slide: {
+          slideIndex: slide.slideIndex,
+          notes: slide.notes,
+          audio: [{ slideIndex: slide.slideIndex, sectionIndex: 0 }],
+        },
       })),
     );
-    expect(await getInsertAudioCalls(app)).toMatchObject([
-      { filePath: FIXTURE_TEST, slidesAudio: [{ slideIndex: 0, sectionIndex: 0 }] },
-      { filePath: FIXTURE_TEST, slidesAudio: [{ slideIndex: 1, sectionIndex: 0 }] },
-    ]);
   });
 
   test("locks the viewer until the save-all run settles", async ({ app, win }) => {
@@ -198,7 +197,7 @@ test.describe("PPT Viewer UI Workflows", () => {
     await releaseHeldNarrationWork(app);
     await expect(progress).toBeHidden();
     await expect(notesEditor(win)).toHaveValue("Submitted before reload");
-    expect(await getSaveNotesCalls(app)).toHaveLength(2);
+    expect(await getSavedSlideCalls(app)).toHaveLength(2);
   });
 
   test("cancels safely while a slide generates and lets a later run finish", async ({
@@ -218,7 +217,7 @@ test.describe("PPT Viewer UI Workflows", () => {
 
     await releaseHeldNarrationWork(app);
     await expect(progress).toBeHidden();
-    expect(await getSaveNotesCalls(app)).toEqual([]);
+    expect(await getSavedSlideCalls(app)).toEqual([]);
     expect(await getGeneratedSpeechCalls(app)).toHaveLength(1);
     expect(await getAlerts(win)).toEqual([]);
     await expect(notesEditor(win)).toHaveValue("Kept after cancelling");
@@ -226,9 +225,9 @@ test.describe("PPT Viewer UI Workflows", () => {
     await holdNarrationWork(app, []);
     await startSaveAll(win);
     await expect(progress).toBeHidden();
-    expect(await getSaveNotesCalls(app)).toEqual([
-      { filePath: FIXTURE_TEST, slides: [{ slideIndex: 0, notes: "Kept after cancelling" }] },
-      { filePath: FIXTURE_TEST, slides: [{ slideIndex: 1, notes: MOCK_SLIDES[1]!.notes }] },
+    expect(await getSavedSlideCalls(app)).toMatchObject([
+      { filePath: FIXTURE_TEST, slide: { slideIndex: 0, notes: "Kept after cancelling" } },
+      { filePath: FIXTURE_TEST, slide: { slideIndex: 1, notes: MOCK_SLIDES[1]!.notes } },
     ]);
   });
 
@@ -236,14 +235,14 @@ test.describe("PPT Viewer UI Workflows", () => {
     app,
     win,
   }) => {
-    await holdNarrationWork(app, ["saveNotes"]);
+    await holdNarrationWork(app, ["saveSlide"]);
     await startGenerateVideo(win);
     const progress = saveAllProgress(win);
-    await expect.poll(() => getHeldNarrationWork(app)).toEqual([{ kind: "saveNotes", label: "0" }]);
+    await expect.poll(() => getHeldNarrationWork(app)).toEqual([{ kind: "saveSlide", label: "0" }]);
     await expect(progress).toContainText("Slide 1 of 2");
     await expect(progress).toContainText("Saving to PowerPoint...");
     await releaseHeldNarrationWork(app);
-    await expect.poll(() => getHeldNarrationWork(app)).toEqual([{ kind: "saveNotes", label: "1" }]);
+    await expect.poll(() => getHeldNarrationWork(app)).toEqual([{ kind: "saveSlide", label: "1" }]);
     await expect(progress).toContainText("Slide 2 of 2");
     expect(await getVideoDestinationRequests(app)).toBe(0);
 
@@ -253,7 +252,7 @@ test.describe("PPT Viewer UI Workflows", () => {
     await expect
       .poll(() => getGeneratedVideoCalls(app))
       .toEqual([{ filePath: FIXTURE_TEST, videoOutputPath: VIDEO_OUTPUT_PATH }]);
-    expect(await getSaveNotesCalls(app)).toHaveLength(2);
+    expect(await getSavedSlideCalls(app)).toHaveLength(2);
     await expect
       .poll(() => getAlerts(win))
       .toEqual([`Video generated successfully at: ${VIDEO_OUTPUT_PATH}`]);
@@ -277,7 +276,7 @@ test.describe("PPT Viewer UI Workflows", () => {
   ]) {
     for (const phase of [
       { name: "generating", work: "speech", label: "Generating narration..." },
-      { name: "saving", work: "saveNotes", label: "Saving to PowerPoint..." },
+      { name: "saving", work: "saveSlide", label: "Saving to PowerPoint..." },
       { name: "cancelling", work: "speech", label: "Cancelling..." },
     ] as const) {
       test(`keeps the ${closeCase.name} open while a save-all run is ${phase.name}`, async ({

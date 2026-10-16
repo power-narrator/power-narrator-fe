@@ -17,7 +17,7 @@ import {
   type PlannedNarrationSlide,
 } from "./NarrationPreparation.js";
 
-type SavePowerPoint = Pick<PptProvider, "saveNotes" | "insertAudio" | "removeAudio">;
+type SavePowerPoint = Pick<PptProvider, "saveSlideNarration">;
 
 export class SaveAllRunCancellation {
   #requested = false;
@@ -100,7 +100,7 @@ export class NarratedPresentationSaver {
 
       report("saving");
       const saved = await commitSlide(powerpoint, request.filePath, slide, synthesized.audio);
-      if (saved.success || saved.partial) {
+      if (saved.success || saved.saved !== "nothing") {
         savedNoteSlides.push(slide.slideIndex);
       }
       if (!saved.success) {
@@ -131,7 +131,7 @@ export class NarratedPresentationSaver {
     try {
       return { ready: true, planned, powerpoint: this.getPowerPoint() };
     } catch (error: unknown) {
-      return { ready: false, failure: powerPointFailure(error, false) };
+      return { ready: false, failure: powerPointFailure(error) };
     }
   }
 }
@@ -150,34 +150,20 @@ async function commitSlide(
   slide: NarratedSlideInput,
   audio: SlideAudioEntry[],
 ): Promise<NarratedSaveResult> {
-  let notesResult;
+  let result;
   try {
-    notesResult = await powerpoint.saveNotes(filePath, [
-      {
-        slideIndex: slide.slideIndex,
-        // Raw note text exists only from here on: structured sections are
-        // formatted immediately before PowerPoint takes them.
-        notes: formatNarrationSections(slide.sections),
-      },
-    ]);
+    result = await powerpoint.saveSlideNarration(filePath, {
+      slideIndex: slide.slideIndex,
+      // Raw note text exists only from here on: structured sections are
+      // formatted immediately before PowerPoint takes them.
+      notes: formatNarrationSections(slide.sections),
+      audio,
+    });
   } catch (error: unknown) {
-    return powerPointFailure(error, false);
+    return powerPointFailure(error);
   }
-  if (!notesResult.success) {
-    return { success: false, stage: "powerpoint", partial: false, message: notesResult.message };
-  }
-
-  let audioResult;
-  try {
-    audioResult =
-      audio.length > 0
-        ? await powerpoint.insertAudio(filePath, audio)
-        : await powerpoint.removeAudio(filePath, [slide.slideIndex]);
-  } catch (error: unknown) {
-    return powerPointFailure(error, true);
-  }
-  if (!audioResult.success) {
-    return { success: false, stage: "powerpoint", partial: true, message: audioResult.message };
+  if (!result.success) {
+    return { success: false, stage: "powerpoint", saved: result.saved, message: result.message };
   }
 
   return { success: true };
@@ -185,21 +171,21 @@ async function commitSlide(
 
 function preparationFailure(error: unknown): NarratedSaveResult {
   if (error instanceof NarrationPreparationError) {
-    return { success: false, stage: error.stage, partial: false, message: error.message };
+    return { success: false, stage: error.stage, saved: "nothing", message: error.message };
   }
   return {
     success: false,
     stage: "validation",
-    partial: false,
+    saved: "nothing",
     message: error instanceof Error ? error.message : "Unknown narration preparation error",
   };
 }
 
-function powerPointFailure(error: unknown, partial: boolean): NarratedSaveResult {
+function powerPointFailure(error: unknown): NarratedSaveResult {
   return {
     success: false,
     stage: "powerpoint",
-    partial,
+    saved: "nothing",
     message: error instanceof Error ? error.message : "Unknown PowerPoint error",
   };
 }

@@ -279,6 +279,30 @@ describe("XmlPptProvider slide addressing", () => {
   });
 });
 
+describe("XmlPptProvider.saveSlideNarration", () => {
+  it("saves the notes before the section audio and reports the notes saved when the audio fails", async () => {
+    const provider = new XmlPptProvider();
+    respondWithSuccess();
+    respondWithSlides([{ notes: "First", audio: [] }]);
+
+    const result = await provider.saveSlideNarration("/presentations/deck.pptx", {
+      slideIndex: toSlideIndex(3),
+      notes: "Fourth",
+      audio: [],
+    });
+
+    expect(result).toEqual({
+      success: false,
+      saved: "notes",
+      message: "Could not find slide data for slide 4",
+    });
+    expect(xmlCliCalls.map(({ ops }) => ops)).toEqual([
+      [{ op: "set_slide_notes", args: { slide_index: 3, notes: "Fourth" } }],
+      [{ op: "get_slides", args: {} }],
+    ]);
+  });
+});
+
 describe("XmlPptProvider.insertAudio", () => {
   it("saves audio against the slide index the CLI already counts from zero, whatever its playback", async () => {
     const provider = new XmlPptProvider();

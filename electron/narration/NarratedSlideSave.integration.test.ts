@@ -1,10 +1,12 @@
 import { toSlideIndex } from "../../shared/slides/slideCoordinates.js";
 import { describe, expect, it, vi } from "vitest";
-import type { BasicPptResult, SlideAudioEntry, SlideNotesEntry } from "../platform/types.js";
+import type { SavedSlideNarration } from "../../shared/types/narration.js";
+import type { SlideNarrationSaveResult } from "../platform/types.js";
 import type { SynthesizedSpeech, Voice } from "../tts/TtsProvider.js";
 import { parseNarrationSections } from "../../shared/narration/NarrationSections.js";
 import { NarrationPreparation } from "./NarrationPreparation.js";
 import { NarratedPresentationSaver } from "./NarratedPresentationSaver.js";
+import type { NarrationPowerPoint } from "./registerNarrationIpc.js";
 
 const sections = (notes: string, knownSpeakers: string[] = ["Narrator"]) =>
   parseNarrationSections(notes, knownSpeakers).map((section) => ({
@@ -20,60 +22,31 @@ const narratorVoice: Voice = {
   supportsPrompt: false,
 };
 
+/** Keeps what each save reports saved: the notes, and the section audio with them. */
 class FakePowerPointAdapter {
   readonly committedNotes = new Map<number, string>();
-  readonly insertedAudio = new Map<number, Map<number, Uint8Array>>();
-  readonly removedAudio = new Set<number>();
-  notesResult: BasicPptResult = { success: true };
-  audioResults: BasicPptResult[] = [{ success: true }];
-  removeResult: BasicPptResult = { success: true };
+  readonly sectionAudio = new Map<number, Map<number, Uint8Array>>();
+  result: SlideNarrationSaveResult = { success: true };
 
-  readonly saveNotes = vi.fn<
-    (filePath: string, slides: SlideNotesEntry[]) => Promise<BasicPptResult>
-  >((_filePath, slides) => {
-    if (this.notesResult.success) {
-      for (const slide of slides) {
+  readonly saveSlideNarration = vi.fn<NarrationPowerPoint["saveSlideNarration"]>(
+    (_filePath, slide) => {
+      const saved: SavedSlideNarration = this.result.success ? "notesAndAudio" : this.result.saved;
+      if (saved !== "nothing") {
         this.committedNotes.set(slide.slideIndex, slide.notes);
       }
-    }
-    return Promise.resolve(this.notesResult);
-  });
-
-  readonly insertAudio = vi.fn<
-    (filePath: string, slidesAudio: SlideAudioEntry[]) => Promise<BasicPptResult>
-  >((_filePath, slidesAudio) => {
-    const result = this.audioResults.shift() ?? { success: true as const };
-    if (result.success) {
-      for (const slideIndex of new Set(slidesAudio.map((audio) => audio.slideIndex))) {
-        this.insertedAudio.set(slideIndex, new Map());
-        this.removedAudio.delete(slideIndex);
+      if (saved === "notesAndAudio") {
+        this.sectionAudio.set(
+          slide.slideIndex,
+          new Map(slide.audio.map((audio) => [audio.sectionIndex, audio.audioData])),
+        );
       }
-      for (const audio of slidesAudio) {
-        this.insertedAudio.get(audio.slideIndex)!.set(audio.sectionIndex, audio.audioData);
-      }
-    }
-    return Promise.resolve(result);
-  });
-
-  readonly removeAudio = vi.fn<
-    (filePath: string, slideIndices: number[]) => Promise<BasicPptResult>
-  >((_filePath, slideIndices) => {
-    if (this.removeResult.success) {
-      for (const slideIndex of slideIndices) {
-        this.removedAudio.add(slideIndex);
-        this.insertedAudio.delete(slideIndex);
-      }
-    }
-    return Promise.resolve(this.removeResult);
-  });
+      return Promise.resolve(this.result);
+    },
+  );
 }
 
 function expectNoPowerPointMutation(powerpoint: FakePowerPointAdapter) {
-  expect({
-    notes: [...powerpoint.committedNotes],
-    audio: [...powerpoint.insertedAudio],
-    removedAudio: [...powerpoint.removedAudio],
-  }).toEqual({ notes: [], audio: [], removedAudio: [] });
+  expect(powerpoint.saveSlideNarration).not.toHaveBeenCalled();
 }
 
 function createSaver(
@@ -95,7 +68,7 @@ function createSaver(
 }
 
 describe("NarratedPresentationSaver", () => {
-  it("removes stale narration before succeeding when a slide has no narratable text", async () => {
+  it("saves the notes of a slide without narratable text together with removing its stale audio", async () => {
     const { generateSpeech, powerpoint, saver } = createSaver();
 
     await expect(
@@ -108,34 +81,29 @@ describe("NarratedPresentationSaver", () => {
 
     expect(generateSpeech).not.toHaveBeenCalled();
     expect(powerpoint.committedNotes).toEqual(new Map([[3, "[Narrator]\n  \n---\n\t"]]));
-    expect(powerpoint.removedAudio).toEqual(new Set([3]));
-    expect(powerpoint.insertedAudio).toEqual(new Map());
-    expect(powerpoint.saveNotes.mock.invocationCallOrder[0]).toBeLessThan(
-      powerpoint.removeAudio.mock.invocationCallOrder[0]!,
-    );
+    expect(powerpoint.sectionAudio).toEqual(new Map([[3, new Map()]]));
   });
 
-  it("reports a partial PowerPoint failure when stale narration cannot be removed", async () => {
-    const { powerpoint, saver } = createSaver();
-    powerpoint.removeResult = { success: false, message: "remove failed" };
+  it.each<SavedSlideNarration>(["nothing", "notes", "notesAndAudio"])(
+    "reports a PowerPoint failure that left %s saved",
+    async (saved) => {
+      const { powerpoint, saver } = createSaver();
+      powerpoint.result = { success: false, saved, message: "media rejected" };
 
-    await expect(
-      saver.saveSlide({
-        filePath: "/slides/talk.pptx",
-        slideIndex: toSlideIndex(3),
-        sections: sections("  "),
-      }),
-    ).resolves.toEqual({
-      success: false,
-      stage: "powerpoint",
-      partial: true,
-      message: "remove failed",
-    });
-
-    expect(powerpoint.committedNotes).toEqual(new Map([[3, "  "]]));
-    expect(powerpoint.removedAudio).toEqual(new Set());
-    expect(powerpoint.insertedAudio).toEqual(new Map());
-  });
+      await expect(
+        saver.saveSlide({
+          filePath: "/slides/talk.pptx",
+          slideIndex: toSlideIndex(1),
+          sections: sections("[Narrator]\nHello"),
+        }),
+      ).resolves.toEqual({
+        success: false,
+        stage: "powerpoint",
+        saved,
+        message: "media rejected",
+      });
+    },
+  );
 
   it("reports a structured synthesis failure without mutating PowerPoint", async () => {
     const { powerpoint, saver } = createSaver(
@@ -148,7 +116,7 @@ describe("NarratedPresentationSaver", () => {
         slideIndex: toSlideIndex(4),
         sections: sections("[Narrator]\nHello"),
       }),
-    ).resolves.toMatchObject({ success: false, stage: "synthesis", partial: false });
+    ).resolves.toMatchObject({ success: false, stage: "synthesis", saved: "nothing" });
     expectNoPowerPointMutation(powerpoint);
   });
 
@@ -176,43 +144,13 @@ describe("NarratedPresentationSaver", () => {
     ).resolves.toEqual({
       success: false,
       stage: "validation",
-      partial: false,
+      saved: "nothing",
       message: "settings unavailable",
     });
     expectNoPowerPointMutation(powerpoint);
   });
 
-  it.each([
-    ["notes", { success: false, message: "notes failed" }, { success: true }, false] as const,
-    ["audio", { success: true }, { success: false, message: "audio failed" }, true] as const,
-  ])(
-    "reports a structured PowerPoint failure while committing %s",
-    async (_, notesResult, audioResult, partial) => {
-      const { powerpoint, saver } = createSaver();
-      powerpoint.notesResult = notesResult;
-      powerpoint.audioResults = [audioResult];
-
-      await expect(
-        saver.saveSlide({
-          filePath: "/slides/talk.pptx",
-          slideIndex: toSlideIndex(1),
-          sections: sections("[Narrator]\nHello"),
-        }),
-      ).resolves.toEqual({
-        success: false,
-        stage: "powerpoint",
-        partial,
-        message: partial ? "audio failed" : "notes failed",
-      });
-      expect(powerpoint.committedNotes).toEqual(
-        partial ? new Map([[1, "[Narrator]\nHello"]]) : new Map(),
-      );
-      expect(powerpoint.insertedAudio).toEqual(new Map());
-      expect(powerpoint.removedAudio).toEqual(new Set());
-    },
-  );
-
-  it("saves the current slide as a single-slide presentation request", async () => {
+  it("saves the current slide's notes and section audio together", async () => {
     const { powerpoint, saver } = createSaver();
 
     await expect(
@@ -223,8 +161,9 @@ describe("NarratedPresentationSaver", () => {
       }),
     ).resolves.toEqual({ success: true });
 
+    expect(powerpoint.saveSlideNarration).toHaveBeenCalledTimes(1);
     expect(powerpoint.committedNotes).toEqual(new Map([[6, "[Narrator]\nOnly slide"]]));
-    expect(powerpoint.insertedAudio).toEqual(new Map([[6, new Map([[0, new Uint8Array([1])]])]]));
+    expect(powerpoint.sectionAudio).toEqual(new Map([[6, new Map([[0, new Uint8Array([1])]])]]));
   });
 
   it("writes untouched structured notes back byte for byte", async () => {

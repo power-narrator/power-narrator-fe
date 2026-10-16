@@ -502,7 +502,7 @@ test.each([
           outcome: {
             success: false,
             stage: "powerpoint",
-            partial: true,
+            saved: "notes",
             message: "media rejected",
           },
           savedNoteSlides: [at(0)],
@@ -548,6 +548,65 @@ test.each([
   },
 );
 
+test("Save All reports a slide whose notes and audio PowerPoint did not save and keeps it unsaved", async () => {
+  const api = installElectronApi({
+    saveNarratedPresentation: vi.fn<typeof window.electronAPI.saveNarratedPresentation>(() =>
+      Promise.resolve({
+        outcome: {
+          success: false,
+          stage: "powerpoint",
+          saved: "nothing",
+          message: "Could not insert ppt_audio_1 on slide 2.",
+        },
+        savedNoteSlides: [at(0)],
+        failedSlideIndex: at(1),
+      }),
+    ),
+  });
+  const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
+  const secondSlide: Slide = { ...loadedSlide, slideIndex: at(1), image: "slide-two.png" };
+  const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
+  await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Saved notes");
+  await screen.getByRole("button", { name: "Slide 2", exact: true }).click();
+  await screen.getByRole("textbox", { name: "Slide 2 section 1 notes" }).fill("Failed notes");
+  await startSaveAll(screen);
+
+  await vi.waitFor(() =>
+    expect(alert).toHaveBeenCalledWith(
+      "Save error on slide 2: its notes and narration audio were not saved. Could not insert ppt_audio_1 on slide 2. Earlier slides remain saved. Later slides were not changed.",
+    ),
+  );
+  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+  expect(api.confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
+  expect(api.reloadSlide).not.toHaveBeenCalled();
+  await screen.getByRole("button", { name: "Slide 1", exact: true }).click();
+  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+  await vi.waitFor(() => expect(api.reloadSlide).toHaveBeenCalledOnce());
+  expect(api.confirmDiscardNarrationChanges).toHaveBeenCalledOnce();
+});
+
+test("Save Slide reports narration PowerPoint saved before failing", async () => {
+  installElectronApi({
+    saveNarratedSlide: vi.fn<typeof window.electronAPI.saveNarratedSlide>(() =>
+      Promise.resolve({
+        success: false,
+        stage: "powerpoint",
+        saved: "notesAndAudio",
+        message: "PowerPoint could not restore the previous editing view: Invalid request.",
+      }),
+    ),
+  });
+  const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
+  const { screen } = await renderViewer(vi.fn(), [loadedSlide]);
+  await screen.getByRole("button", { name: "Save Slide", exact: true }).click();
+
+  await vi.waitFor(() =>
+    expect(alert).toHaveBeenCalledWith(
+      "Save error: PowerPoint saved the notes and narration audio. PowerPoint could not restore the previous editing view: Invalid request.",
+    ),
+  );
+});
+
 test("skips destination selection and rendering after a synthesis failure", async () => {
   const api = installElectronApi({
     saveNarratedPresentation: vi.fn<typeof window.electronAPI.saveNarratedPresentation>(() =>
@@ -555,7 +614,7 @@ test("skips destination selection and rendering after a synthesis failure", asyn
         outcome: {
           success: false,
           stage: "synthesis",
-          partial: false,
+          saved: "nothing",
           message:
             'Narration synthesis failed for slide 2, section 1, speaker "Default": quota exhausted.',
         },
