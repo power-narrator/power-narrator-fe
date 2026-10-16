@@ -5,7 +5,7 @@ import {
 } from "../../shared/slides/slideCoordinates.js";
 import type { Result } from "../../shared/types/result.js";
 import { PPT_AUDIO_PREFIX } from "./helpers.js";
-import { isIntegerText, readSlideNumber, reportLines } from "./macroReport.js";
+import { readPlayAcrossSlidesCheckbox, readSlideNumber, reportLines } from "./macroReport.js";
 import type { SectionsPlayingAcrossSlides } from "./types.js";
 
 export type SectionAudioPlaybackResult = Result<{
@@ -17,11 +17,6 @@ const SLIDE_END = "###SLIDE_END###";
 const EXPORT_COMPLETE = "###EXPORT_COMPLETE###";
 const ERROR = "###ERROR### ";
 const SECTION_AUDIO_NAME = new RegExp(`^${PPT_AUDIO_PREFIX}_([1-9]\\d*)$`);
-
-const CHECKBOX_STATES: ReadonlyMap<string, boolean> = new Map([
-  ["true", true],
-  ["false", false],
-]);
 
 export const sectionsPlayingAcrossSlidesOn = (
   playback: ReadonlyMap<SlideIndex, SectionsPlayingAcrossSlides>,
@@ -91,7 +86,7 @@ export function parseSectionAudioPlaybackReport(
       continue;
     }
 
-    const [name = "", checkbox = "", ...extraFields] = line.split("\t");
+    const [name = "", ...checkboxFields] = line.split("\t");
     const ordinal = SECTION_AUDIO_NAME.exec(name)?.[1];
     if (ordinal === undefined) {
       return {
@@ -106,20 +101,11 @@ export function parseSectionAudioPlaybackReport(
       };
     }
     namesOnSlide.add(name);
-    if (isIntegerText(checkbox)) {
-      return {
-        success: false,
-        message: `PowerPoint reported a numeric playback for ${name} on slide ${slideNumber}; the installed PowerPoint add-in does not match this app.`,
-      };
+    const playback = readPlayAcrossSlidesCheckbox(checkboxFields, name, slideNumber);
+    if (!playback.success) {
+      return playback;
     }
-    const playsAcrossSlides = CHECKBOX_STATES.get(checkbox);
-    if (playsAcrossSlides === undefined || extraFields.length > 0) {
-      return {
-        success: false,
-        message: `PowerPoint reported an unreadable playback for ${name} on slide ${slideNumber}.`,
-      };
-    }
-    if (playsAcrossSlides) {
+    if (playback.playsAcrossSlides) {
       reported.get(slideNumber)?.add(Number(ordinal) - 1);
     }
   }

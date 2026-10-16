@@ -461,8 +461,8 @@ describe("MacPptProvider.insertAudio", () => {
       playAcrossSlides: false,
     },
   ];
-  const confirmedFirst = "inserted|1|ppt_audio_1|999|1|0";
-  const confirmedThird = "inserted|3|ppt_audio_2|1|1|0";
+  const confirmedFirst = "inserted|1|ppt_audio_1|true";
+  const confirmedThird = "inserted|3|ppt_audio_2|false";
 
   /**
    * Stands in for the InsertAudio macro: the provider learns the outcome only
@@ -528,9 +528,9 @@ describe("MacPptProvider.insertAudio", () => {
       message: /ppt_audio_2 on slide 3/,
     },
     {
-      problem: "leaves an enabled section on a custom span",
+      problem: "leaves an enabled section's checkbox unchecked",
       report: [
-        "inserted|1|ppt_audio_1|2|1|0",
+        "inserted|1|ppt_audio_1|false",
         confirmedThird,
         "slide|1|ppt_audio_1",
         "slide|3|ppt_audio_2",
@@ -539,26 +539,48 @@ describe("MacPptProvider.insertAudio", () => {
       message: /playback of ppt_audio_1 on slide 1/,
     },
     {
-      problem: "leaves an enabled section waiting for its audio",
-      report: [
-        "inserted|1|ppt_audio_1|999|1|1",
-        confirmedThird,
-        "slide|1|ppt_audio_1",
-        "slide|3|ppt_audio_2",
-        "done",
-      ].join("\n"),
-      message: /playback of ppt_audio_1 on slide 1/,
-    },
-    {
-      problem: "leaves a disabled section playing across slides",
+      problem: "leaves a disabled section's checkbox checked",
       report: [
         confirmedFirst,
-        "inserted|3|ppt_audio_2|999|1|0",
+        "inserted|3|ppt_audio_2|true",
         "slide|1|ppt_audio_1",
         "slide|3|ppt_audio_2",
         "done",
       ].join("\n"),
       message: /playback of ppt_audio_2 on slide 3/,
+    },
+    {
+      problem: "reports a numeric playback, as an older add-in does",
+      report: [
+        "inserted|1|ppt_audio_1|999|1|0",
+        "inserted|3|ppt_audio_2|0|1|0",
+        "slide|1|ppt_audio_1",
+        "slide|3|ppt_audio_2",
+        "done",
+      ].join("\n"),
+      message: /numeric playback for ppt_audio_1 on slide 1.*add-in does not match/,
+    },
+    {
+      problem: "reports an unreadable checkbox",
+      report: [
+        confirmedFirst,
+        "inserted|3|ppt_audio_2|False",
+        "slide|1|ppt_audio_1",
+        "slide|3|ppt_audio_2",
+        "done",
+      ].join("\n"),
+      message: /unreadable playback for ppt_audio_2 on slide 3/,
+    },
+    {
+      problem: "reports extra playback fields",
+      report: [
+        confirmedFirst,
+        "inserted|3|ppt_audio_2|false|1|0",
+        "slide|1|ppt_audio_1",
+        "slide|3|ppt_audio_2",
+        "done",
+      ].join("\n"),
+      message: /unreadable playback for ppt_audio_2 on slide 3/,
     },
     {
       problem: "does not report a section's playback",
@@ -569,7 +591,7 @@ describe("MacPptProvider.insertAudio", () => {
         "slide|3|ppt_audio_2",
         "done",
       ].join("\n"),
-      message: /playback of ppt_audio_2 on slide 3/,
+      message: /unreadable playback for ppt_audio_2 on slide 3/,
     },
     {
       problem: "leaves obsolete section audio on a saved slide",
@@ -604,9 +626,7 @@ describe("MacPptProvider.insertAudio", () => {
 
   it("reloads the deck as last saved when the macro fails, so a later save cannot keep its edits", async () => {
     const provider = new MacPptProvider();
-    insertAudioMacroReports(
-      "error|Setting section audio playback on slide 5 changed its animation order.\n",
-    );
+    insertAudioMacroReports("error|ppt_audio_1 on slide 5 has an animation that cannot be kept.\n");
 
     await provider.insertAudio(deck, firstAndThirdSlideAudio);
 
