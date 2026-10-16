@@ -132,7 +132,9 @@ Checking by hand and checking through the add-in saved identical timing, apart f
 
 The flags and the checkbox do not map onto each other across animation setups. A checked box also does not prove a valid Play effect still exists.
 
-## Other command routes examined
+## Routes not fully explored
+
+These are options to investigate if the Ribbon checkbox route ever stops working.
 
 | Route                                                   | Outcome                                                                                                                                |
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
