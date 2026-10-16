@@ -2,6 +2,8 @@
 
 What we found about changing Play Across Slides and copying audio animations with VBA on Mac PowerPoint 16.105.3 (build 0201), tested on 2026-10-16. The decision built on these findings is [ADR 0006](../adr/0006-play-across-slides-is-a-boolean.md).
 
+This page records research, including approaches the app does not use. What the app actually does is described in the README's [Play Across Slides on Mac](../../README.md#play-across-slides-on-mac) section.
+
 Every finding comes from automating PowerPoint itself, then saving, reopening and comparing the saved presentation. The XML was only read for comparison, never edited. The findings describe what happened in the tested presentations; other PowerPoint versions or animation setups may differ. What was not tested is listed under [Evidence limits](#evidence-limits).
 
 ## Summary
@@ -73,7 +75,7 @@ The control is `MediaClipPlayAcrossSlides`. `Application.CommandBars.ExecuteMso`
 
 The calls need an active editing window in Normal view with the audio selected; switching to the Playback tab is unnecessary. They read global UI state, so with nothing or a non-audio shape selected, the disabled control can report False. A hidden presentation has no window and cannot be used. `GetEnabledMso` and `GetVisibleMso` report availability separately from the checked state, and an invalid identifier gives error 5.
 
-Toggles survived reopening, and kept unrelated ink/fade effects, other media, geometry, references and slide structure. Custom Play/Pause/Stop, self-click and external-button setups survived toggling existing audio. Replacing audio and then toggling was later verified through the add-in's save path.
+Toggles survived reopening, and kept unrelated ink/fade effects, other media, geometry, references and slide structure. Custom Play/Pause/Stop, self-click and external-button setups survived toggling existing audio. Replacing audio and then toggling was later verified through the add-in's save path. So was a save-all run over one slide of each supported setup, with mixed checkbox choices and a failed slide part-way through.
 
 Toggling also changed these stored values:
 

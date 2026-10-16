@@ -296,6 +296,49 @@ cached and newly synthesized results as `audio/mpeg`, and PowerPoint audio files
 For findings on Mac PowerPoint playback APIs, animation copying and alternative approaches, see
 the [audio API research reference](docs/powerpoint/mac-audio-playback.md).
 
+### Play Across Slides on Mac
+
+Each note section's **Play Across Slides** choice is PowerPoint's own Play Across Slides checkbox
+on the Playback tab: enabled is checked, disabled is unchecked. The app does not read or set a
+number of slides; any slide limit stays as PowerPoint stores it. Enabled lets the audio continue
+onto later slides under its other playback settings. It does not start the audio automatically or
+promise that it plays through the whole presentation. See
+[ADR 0006](docs/adr/0006-play-across-slides-is-a-boolean.md).
+
+- **Loading and reloading** read each section audio's checkbox. Section audio without a Play
+  animation cannot play, so it loads as disabled.
+- **PowerPoint moves while it works.** The checkbox applies to whatever is selected, so loading and
+  saving activate PowerPoint, switch to Normal view, visit slides and select section audio. Once
+  the batch finishes, successfully or not, the previous view, slide and selection are restored
+  (a selected audio that was replaced becomes its replacement) and the app takes focus again. Keys
+  typed into PowerPoint meanwhile reach it, so wait for the operation to finish.
+- **Saving replaces each section's audio.** The replacement takes over the old audio's Play, Pause
+  and Stop animations with their start, delay, repeat and rewind settings, its place in the slide's
+  animation order, its click triggers (on the audio itself or on another shape such as a button),
+  and its position, size, rotation, volume and mute. Only then is the checkbox clicked, and only
+  when it differs from the section's choice; the app reads it back to confirm. New section audio
+  plays after the previous one, sits beside the slide and uses 50% volume.
+- **Setups the app cannot keep fail before anything changes.** Saving reports an error when section
+  audio has animations other than Play, Pause or Stop, has animations but no Play, shares a click
+  trigger with other shapes' animations, starts on a bookmark, starts another shape's animation,
+  or has bookmarks, fades or trims. Remove that customization in PowerPoint or keep the slide out
+  of the save.
+
+Saving changes some stored timing the way PowerPoint itself does. A checked Play is stored with a
+1 ms duration. Every unchecked section the app saves gets its clip length, because it is newly
+added audio. Later After Previous animations on the slide therefore start that much earlier or
+later. Unchecking by hand in PowerPoint keeps the old duration instead. The checkbox can also move
+some stored delays by 1–2 ms, and in one recorded case from 5016 to 5000 ms. These differences are
+recorded in [Saved Play duration](docs/powerpoint/mac-audio-playback.md#saved-play-duration) and
+[Ribbon checkbox findings](docs/powerpoint/mac-audio-playback.md#ribbon-checkbox-findings); whether
+they are audible in a slideshow has not been tested.
+
+When an audio save fails, PowerPoint may already hold part of the change. The app closes the
+presentation without saving and reopens it, so a later save cannot write the failed edits. The
+slide's notes are saved just before its audio. Earlier slides of a save-all run keep everything
+they saved, and the run stops at the failed slide. If PowerPoint could not discard or reopen the
+presentation, the error says so: close the presentation without saving before you continue.
+
 ### PowerPoint add-in
 
 For VBA-backed notes and audio operations:
@@ -307,7 +350,10 @@ For VBA-backed notes and audio operations:
 The source for the bundled macros is `electron/scripts/ppt-tools.bas`. The `.ppam` is compiled
 from it by hand in PowerPoint's VBA editor, so no build step can regenerate it — both files are
 committed, and a change to one must be accompanied by a recompile of the other. The tracked
-`pre-commit` hook in `.githooks/` enforces this.
+`pre-commit` hook in `.githooks/` enforces this. The rebuild steps are at the top of the `.bas`
+file. PowerPoint loads the `.ppam` from wherever it was added, so after rebuilding, add or copy
+the new file there and restart PowerPoint. An add-in older than the app reports playback as a
+number. The app rejects that report and says the installed add-in does not match.
 
 ### XML CLI mode
 
@@ -434,6 +480,15 @@ retains the prompt but omits it from synthesis. Choose a promptable Gemini model
 Confirm `electron/scripts/ppt-tools.ppam` is installed and enabled in PowerPoint, and allow macro
 execution when prompted. XML CLI mode can perform supported notes and audio mutations without the
 VBA macros, but slide images, playback, and video export still use native PowerPoint automation.
+
+An error that the installed add-in does not match this app means PowerPoint loaded an older
+`ppt-tools.ppam`. Replace it with the one from this checkout and restart PowerPoint. An older
+add-in saves the presentation before the app can detect the mismatch, so check the audio of the
+slide that was being saved.
+
+Errors about the Play Across Slides checkbox mean PowerPoint could not show it for the section
+audio. Make sure the presentation has an open editing window and PowerPoint is not in a slideshow
+or showing a dialog, then retry.
 
 ### macOS Gatekeeper warning
 
