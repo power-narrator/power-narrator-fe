@@ -56,6 +56,7 @@ const SAVED_BEFORE_FAILURE: Record<SavedSlideNarration, string> = {
   nothing: "",
   notes: "PowerPoint notes were saved, but narration audio was not committed. ",
   notesAndAudio: "PowerPoint saved the notes and narration audio. ",
+  unknown: "PowerPoint did not confirm whether the notes and narration audio were saved. ",
 };
 
 function reportNarratedSaveFailure({ saved, message }: NarratedSaveFailure) {
@@ -67,6 +68,7 @@ const SAVE_ALL_PERSISTENCE: Record<SavedSlideNarration, string> = {
   notes:
     "its notes were saved, but its narration audio was not fully saved, so the slide's notes and audio may not match",
   notesAndAudio: "its notes and narration audio were saved",
+  unknown: "PowerPoint did not confirm whether its notes and narration audio were saved",
 };
 
 function reportSaveAllFailure({ outcome, savedNoteSlides, failedSlideIndex }: SaveAllRunResult) {

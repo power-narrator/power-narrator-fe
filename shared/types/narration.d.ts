@@ -56,8 +56,11 @@ export type SaveAllRunCallbacks = {
 
 export type NarratedSaveFailureStage = "validation" | "synthesis" | "powerpoint";
 
-/** How much of a slide's new note sections and section audio a failed save left saved. */
-export type SavedSlideNarration = "nothing" | "notes" | "notesAndAudio";
+/**
+ * How much of a slide's new note sections and section audio a failed save left saved;
+ * `unknown` when PowerPoint stopped responding before saying.
+ */
+export type SavedSlideNarration = "nothing" | "notes" | "notesAndAudio" | "unknown";
 
 export type NarratedSaveResult =
   | { success: true }

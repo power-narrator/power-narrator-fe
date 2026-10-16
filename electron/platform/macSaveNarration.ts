@@ -14,14 +14,17 @@ export type StagedSlideAudio = {
   audioPath: string;
 };
 
+/** What the macro is doing, for its messages. */
+export type NarrationSaveAction = "saving the slide" | "removing audio";
+
 /**
  * Input to the SaveNarration macro, which parses by position: append new per-section fields.
- * An empty notes path leaves the notes alone.
+ * Without a notes path the macro leaves the notes alone.
  */
 export function formatSaveNarrationParams(
   filePath: string,
   resultPath: string,
-  notesPath: string,
+  notesPath: string | undefined,
   slideNumbers: readonly SlideNumber[],
   stagedAudio: readonly StagedSlideAudio[],
 ): string {
@@ -29,7 +32,7 @@ export function formatSaveNarrationParams(
     ({ entry, audioPath }) =>
       `${slideNumberOf(entry.slideIndex)}|${audioPath}|${entry.playAcrossSlides ? 1 : 0}\n`,
   );
-  return `${filePath}|${resultPath}|${notesPath}|${slideNumbers.join(",")}\n${sectionLines.join("")}`;
+  return `${filePath}|${resultPath}|${notesPath ?? ""}|${slideNumbers.join(",")}\n${sectionLines.join("")}`;
 }
 
 export function formatNotesData(slides: readonly SlideNotesEntry[]): string {
@@ -43,14 +46,27 @@ export function formatNotesData(slides: readonly SlideNotesEntry[]): string {
 
 /**
  * How far the macro got: `editing` once it saved the presentation as it was and
- * began changing it, `saved` once it saved those changes.
+ * began changing it, `saved` once it saved those changes. `unknown` once it started
+ * but did not return or finish its report: it may still be running, and its report
+ * may not yet hold all it did. The macro opens its report before changing anything,
+ * and its params are removed once it returns or fails to, so a missing report means
+ * it changed nothing.
  */
-export type NarrationSavePhase = "unchanged" | "editing" | "saved";
+export type NarrationSavePhase = "unchanged" | "editing" | "saved" | "unknown";
 
-export function narrationSavePhase(report: string | undefined): NarrationSavePhase {
-  const kinds = new Set(reportLines(report ?? "").map((line) => line.split("|")[0]));
+export function narrationSavePhase(
+  report: string | undefined,
+  macroReturned: boolean,
+): NarrationSavePhase {
+  if (report === undefined) {
+    return "unchanged";
+  }
+  const kinds = new Set(reportLines(report).map((line) => line.split("|")[0]));
   if (kinds.has("saved")) {
     return "saved";
+  }
+  if (!macroReturned && !kinds.has("done") && !kinds.has("error")) {
+    return "unknown";
   }
   return kinds.has("editing") ? "editing" : "unchanged";
 }
@@ -58,10 +74,12 @@ export function narrationSavePhase(report: string | undefined): NarrationSavePha
 /**
  * Each `inserted` record is `inserted|slideNumber|shapeName|playsAcrossSlides`, the confirmed
  * checkbox as `true`/`false`. Every requested slide must be left with exactly its entries.
+ * The macro confirms this before its final save; checking the report again catches an
+ * add-in that does not match this app, after it saved.
  */
 export function checkSaveNarrationReport(
   report: string | undefined,
-  action: string,
+  action: NarrationSaveAction,
   slideNumbers: readonly SlideNumber[],
   slidesAudio: readonly SlideAudioEntry[],
 ): BasicPptResult {
@@ -69,7 +87,7 @@ export function checkSaveNarrationReport(
   if (!read.success) {
     return read;
   }
-  if (narrationSavePhase(report) !== "saved") {
+  if (narrationSavePhase(report, true) !== "saved") {
     return fail(`PowerPoint did not save the presentation while ${action}.`);
   }
 
