@@ -62,9 +62,14 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
+/** Restoring spies alone leaves module-factory mocks with a test's return values. */
+function resetMocks() {
   vi.resetAllMocks();
   vi.restoreAllMocks();
+}
+
+afterEach(() => {
+  resetMocks();
   spawnCalls.length = 0;
   spawnStdout = "";
   beforeSpawnClose = undefined;
@@ -363,9 +368,13 @@ describe("MacPptProvider section audio playback", () => {
     expect(appWindow.focus).toHaveBeenCalled();
   });
 
-  it("starts the next test without the focus test's app window or recorded calls", () => {
+  it("resets the app window mock between tests to no window and no recorded calls", () => {
     // oxlint-disable-next-line typescript/unbound-method
     const getAllWindows = vi.mocked(BrowserWindow.getAllWindows);
+    getAllWindows.mockReturnValue([{} as never]);
+    getAllWindows();
+
+    resetMocks();
 
     expect(getAllWindows).not.toHaveBeenCalled();
     expect(getAllWindows()).toEqual([]);
