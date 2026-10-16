@@ -5,7 +5,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseNarrationSections } from "../../../shared/narration/NarrationSections.js";
 import { toSlideIndex } from "../../../shared/slides/slideCoordinates.js";
-import type { SlideWithSrc as Slide, StructuredSlide } from "../../../electron/platform/types.js";
+import type {
+  SlideNarrationEntry,
+  SlideWithSrc as Slide,
+  StructuredSlide,
+} from "../../../electron/platform/types.js";
 import type { SpeakerMapping, Voice } from "../../../shared/types/tts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -75,19 +79,7 @@ const MOCK_STRUCTURED_SLIDES: StructuredSlide[] = MOCK_SLIDES.map(
 );
 
 export type GeneratedSpeechCall = { text: string; voiceOption: Voice };
-export type SaveSlideCall = {
-  filePath: string;
-  slide: {
-    slideIndex: number;
-    notes: string;
-    audio: Array<{
-      slideIndex: number;
-      sectionIndex: number;
-      audioData: Uint8Array;
-      playAcrossSlides: boolean;
-    }>;
-  };
-};
+export type SaveSlideCall = { filePath: string; slide: SlideNarrationEntry };
 export type GenerateVideoCall = { filePath: string; videoOutputPath: string };
 
 export const VIDEO_OUTPUT_PATH = path.join(__dirname, "../../fixtures/test-presentation-run.mp4");
