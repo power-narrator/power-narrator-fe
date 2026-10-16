@@ -585,10 +585,9 @@ describe("MacPptProvider.saveSlideNarration", () => {
       message: "The file is read-only.",
     },
     {
-      failure: "the section audio cannot be replaced as it is",
-      report:
-        "error|ppt_audio_1 on slide 3 fades in or out, which replacing its audio cannot keep.\n",
-      message: "ppt_audio_1 on slide 3 fades in or out, which replacing its audio cannot keep.",
+      failure: "the presentation has no such slide",
+      report: "error|Slide 3 does not exist.\n",
+      message: "Slide 3 does not exist.",
     },
   ])("leaves the presentation open as it was when $failure", async ({ report, message }) => {
     const provider = new MacPptProvider();
@@ -634,6 +633,10 @@ describe("MacPptProvider.saveSlideNarration", () => {
   });
 
   it.each([
+    [
+      "checking the section audio",
+      "editing\nerror|ppt_audio_1 on slide 3 fades in or out, which replacing its audio cannot keep.\n",
+    ],
     ["writing the notes", "editing\nerror|Could not write the notes of slide 3.\n"],
     [
       "changing the section audio",
