@@ -206,6 +206,40 @@ Private Sub RemoveObsoleteSectionAudio(sld As Slide, slideNumber As Integer, sli
     Next iShape
 End Sub
 
+' Each requested slide must be left with exactly its requested section audio.
+Private Sub ConfirmSectionAudio(sld As Slide, slideNumber As Integer, slideNumbers() As Integer, shapeNames() As String, entryCount As Integer)
+    Dim s As Shape
+    Dim found As Integer
+    Dim unrequested As Boolean
+    Dim expected As String
+    Dim expectedCount As Integer
+    Dim actual As String
+    Dim i As Integer
+
+    For i = 1 To entryCount
+        If slideNumbers(i) = slideNumber Then
+            If expectedCount > 0 Then expected = expected & ","
+            expected = expected & shapeNames(i)
+            expectedCount = expectedCount + 1
+        End If
+    Next i
+
+    For Each s In sld.Shapes
+        If IsSectionAudioShape(s) Then
+            If IsRequestedSectionAudio(slideNumber, s.Name, slideNumbers, shapeNames, entryCount) Then
+                found = found + 1
+            Else
+                unrequested = True
+            End If
+        End If
+    Next s
+
+    If unrequested Or found <> expectedCount Then
+        actual = ListSectionAudio(sld)
+        Err.Raise vbObjectError + 530, , "Section audio on slide " & slideNumber & " is " & IIf(Len(actual) = 0, "missing", actual) & " instead of " & IIf(Len(expected) = 0, "none", expected) & "."
+    End If
+End Sub
+
 Private Function TimelineSequence(sld As Slide, i As Long) As Sequence
     If i = 0 Then
         Set TimelineSequence = sld.TimeLine.MainSequence
@@ -556,8 +590,9 @@ End Sub
 ' slideNumber|audioPath|playAcrossSlides (1/0) per section audio. An empty notesPath leaves the notes alone.
 ' Saves the presentation as it is first, so a failure loses only this macro's edits. Then writes the
 ' notes, makes each requested slide's entries its complete section audio (no entries remove it all)
-' and saves both together. A replacement keeps the old audio's animations, media settings and
-' geometry; only the checkbox may then change.
+' and saves both together once each checkbox and each slide's remaining section audio are confirmed.
+' A replacement keeps the old audio's animations, media settings and geometry; only the checkbox
+' may then change.
 ' Results: editing once the first save succeeded, inserted|slideNumber|shapeName|playsAcrossSlides
 ' (the confirmed checkbox, true/false), slide|slideNumber|remainingNames (comma-separated), saved once
 ' the edits are saved, then done, or error|message at the point of failure.
@@ -694,6 +729,7 @@ Sub SaveNarration()
         Set sld = pres.Slides(requestedSlides(i))
         RemoveObsoleteSectionAudio sld, requestedSlides(i), slideNumbers, shapeNames, entryCount, editing
         Print #resultNum, "slide|" & requestedSlides(i) & "|" & ListSectionAudio(sld)
+        ConfirmSectionAudio sld, requestedSlides(i), slideNumbers, shapeNames, entryCount
     Next i
 
     pres.Save
