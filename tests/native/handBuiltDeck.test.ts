@@ -57,6 +57,16 @@ describe("the hand-built deck holds what its recipe says", () => {
     ]);
   });
 
+  it("plays slide 2's ppt_audio_1 at low volume and mutes its ppt_audio_2", () => {
+    expect(
+      deck.slides[1]?.sectionAudio.map(({ name, volume, muted }) => ({ name, volume, muted })),
+    ).toEqual([
+      { name: "ppt_audio_1", volume: 20000, muted: false },
+      { name: "ppt_audio_2", volume: 80000, muted: true },
+      { name: "ppt_audio_3", volume: 80000, muted: false },
+    ]);
+  });
+
   it("animates each slide's shapes as the recipe sets up", () => {
     expect(deck.slides.map(({ effects }) => effects)).toEqual([
       [

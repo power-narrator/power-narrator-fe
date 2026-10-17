@@ -5,10 +5,16 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { afterAll, beforeAll, describe, vi } from "vitest";
-import { FIRST_SLIDE_INDEX } from "../../shared/slides/slideCoordinates.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { FIRST_SLIDE_INDEX, slideIndexFromOneBased } from "../../shared/slides/slideCoordinates.js";
 import { MacPptProvider } from "../../electron/platform/MacPptProvider.js";
-import { describePptProviderContract, type PptProviderHarness } from "./pptProviderContract.js";
+import {
+  describePptProviderContract,
+  openHandBuiltDeckCopy,
+  type PptProviderHarness,
+  slideNarration,
+} from "./pptProviderContract.js";
+import { inspectPresentation, presentationDifferences } from "./presentationInspector.js";
 
 vi.mock("electron", async () => {
   const nodeOs = await import("node:os");
@@ -27,6 +33,7 @@ const run = promisify(execFile);
 const REPO = fileURLToPath(new URL("../..", import.meta.url));
 const OFFICE_CONTAINER = path.join(os.homedir(), "Library/Group Containers/UBF8T346G9.Office");
 const ADD_IN = path.join(REPO, "electron/scripts/ppt-tools.ppam");
+const FADED_AUDIO_SLIDE = slideIndexFromOneBased(4);
 
 async function osascript(args: string[]): Promise<string> {
   const { stdout } = await run("osascript", args, { timeout: 120_000 });
@@ -127,4 +134,22 @@ describe.skipIf(process.platform !== "darwin")("MacPptProvider against PowerPoin
   afterAll(() => tidy(runDir));
 
   describePptProviderContract(harness);
+
+  describe("refusing a save the add-in cannot make without losing the audio's setup", () => {
+    it("saves nothing over slide 4's faded section audio, and says so", async () => {
+      const deck = await openHandBuiltDeckCopy(harness);
+      const before = inspectPresentation(deck);
+
+      const saved = await provider.saveSlideNarration(
+        deck,
+        slideNarration(FADED_AUDIO_SLIDE, "Replaced notes.", [
+          { clip: "section-1.mp3", playAcrossSlides: true },
+        ]),
+      );
+      expect(saved).toMatchObject({ success: false, saved: "nothing" });
+      await harness.closePresentation(deck);
+
+      expect(presentationDifferences(before, inspectPresentation(deck))).toEqual([]);
+    });
+  });
 });

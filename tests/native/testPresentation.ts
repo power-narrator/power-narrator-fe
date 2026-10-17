@@ -3,11 +3,27 @@ import { strToU8, zipSync } from "fflate";
 /** Just enough of a presentation for the inspector's tests; not a general writer. */
 export type TestShape =
   | { kind: "shape"; id: number; name: string; text?: string; offset?: [number, number] }
-  | { kind: "audio" | "video"; id: number; name: string; media: Uint8Array };
+  | {
+      kind: "audio" | "video";
+      id: number;
+      name: string;
+      media: Uint8Array;
+      volume?: number;
+      muted?: boolean;
+    };
+
+/** Shapes are named by id. An effect with a trigger joins that shape's click sequence. */
+export type TestEffect = {
+  type: "play" | "pause" | "stop" | "fade";
+  target: number;
+  trigger?: number;
+  delay?: number;
+};
 
 export type TestSlide = {
   notes?: string;
   shapes?: TestShape[];
+  effects?: TestEffect[];
 };
 
 export type TestPresentationOptions = {
@@ -47,6 +63,46 @@ function shapeXml(shape: TestShape, mediaRelId: string): string {
   return `<p:pic><p:nvPicPr><p:cNvPr id="${shape.id}" name="${escapeXml(shape.name)}"/><p:cNvPicPr/><p:nvPr><a:${file} r:link="${mediaRelId}"/><p:extLst><p:ext uri="{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}"><p14:media r:embed="${mediaRelId}"/></p:ext></p:extLst></p:nvPr></p:nvPicPr><p:blipFill/><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="10" cy="10"/></a:xfrm></p:spPr></p:pic>`;
 }
 
+const PRESETS: Record<TestEffect["type"], string> = {
+  play: 'presetID="1" presetClass="mediacall"',
+  pause: 'presetID="2" presetClass="mediacall"',
+  stop: 'presetID="3" presetClass="mediacall"',
+  fade: 'presetID="10" presetClass="entr"',
+};
+
+const spTgt = (id: number) => `<p:tgtEl><p:spTgt spid="${id}"/></p:tgtEl>`;
+
+const effectXml = ({ type, target, delay = 0 }: TestEffect) =>
+  `<p:par><p:cTn fill="hold"><p:stCondLst><p:cond delay="indefinite"/></p:stCondLst><p:childTnLst><p:par><p:cTn ${PRESETS[type]} presetSubtype="0" fill="hold" nodeType="clickEffect"><p:stCondLst><p:cond delay="${delay}"/></p:stCondLst><p:childTnLst><p:cmd type="call" cmd="playFrom(0.0)"><p:cBhvr><p:cTn dur="${1000 + delay}" fill="hold"/>${spTgt(target)}</p:cBhvr></p:cmd></p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par>`;
+
+function timingXml(shapes: TestShape[], effects: TestEffect[]): string {
+  const mainEffects = effects.filter(({ trigger }) => trigger === undefined);
+  const triggers = [
+    ...new Set(effects.flatMap(({ trigger }) => (trigger === undefined ? [] : [trigger]))),
+  ];
+  const mainSeq = mainEffects.length
+    ? `<p:seq><p:cTn dur="indefinite" nodeType="mainSeq"><p:childTnLst>${mainEffects.map(effectXml).join("")}</p:childTnLst></p:cTn></p:seq>`
+    : "";
+  const clickSeqs = triggers.map(
+    (trigger) =>
+      `<p:seq><p:cTn fill="hold" nodeType="interactiveSeq"><p:stCondLst><p:cond evt="onClick" delay="0">${spTgt(trigger)}</p:cond></p:stCondLst><p:childTnLst>${effects
+        .filter((effect) => effect.trigger === trigger)
+        .map(effectXml)
+        .join("")}</p:childTnLst></p:cTn></p:seq>`,
+  );
+  const mediaNodes = shapes.flatMap((shape) =>
+    shape.kind === "audio" && (shape.volume !== undefined || shape.muted !== undefined)
+      ? [
+          `<p:audio><p:cMediaNode${shape.volume === undefined ? "" : ` vol="${shape.volume}"`}${shape.muted ? ' mute="1"' : ""}><p:cTn fill="hold" display="0"/>${spTgt(shape.id)}</p:cMediaNode></p:audio>`,
+        ]
+      : [],
+  );
+  const nodes = [mainSeq, ...clickSeqs, ...mediaNodes].join("");
+  return nodes
+    ? `<p:timing><p:tnLst><p:par><p:cTn dur="indefinite" nodeType="tmRoot"><p:childTnLst>${nodes}</p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>`
+    : "";
+}
+
 export function buildTestPresentation(
   slides: TestSlide[],
   { separator = "/" }: TestPresentationOptions = {},
@@ -79,7 +135,7 @@ export function buildTestPresentation(
     ),
   );
 
-  slides.forEach(({ notes, shapes = [] }, i) => {
+  slides.forEach(({ notes, shapes = [], effects = [] }, i) => {
     const slideNumber = i + 1;
     const rels: Array<{ id: string; type: string; target: string }> = [];
     const shapeXmls = shapes.map((shape, s) => {
@@ -108,7 +164,7 @@ export function buildTestPresentation(
 
     put(
       `ppt/slides/slide${slideNumber}.xml`,
-      `<p:sld ${NS}><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>${shapeXmls.join("")}</p:spTree></p:cSld></p:sld>`,
+      `<p:sld ${NS}><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>${shapeXmls.join("")}</p:spTree></p:cSld>${timingXml(shapes, effects)}</p:sld>`,
     );
     put(`ppt/slides/_rels/slide${slideNumber}.xml.rels`, relationships(rels));
   });
