@@ -117,7 +117,7 @@ describe("XmlPptProvider loading", () => {
       }),
     );
     respondWithSlides([
-      { notes: "First", audio: [{ name: "ppt_audio_1.mp3" }] },
+      { notes: "First", audio: [{ name: "ppt_audio_1" }] },
       { notes: "Second\r\nnotes", audio: [] },
     ]);
 
@@ -165,7 +165,7 @@ describe("XmlPptProvider.reloadSlide", () => {
     const provider = new XmlPptProvider(createNativeProvider({ reloadSlideImage }));
     respondWithSlides([
       { notes: "First slide", audio: [] },
-      { notes: "Fresh\r\nnotes", audio: [{ name: "ppt_audio_1.mp3" }] },
+      { notes: "Fresh\r\nnotes", audio: [{ name: "ppt_audio_1" }] },
     ]);
 
     const result = await provider.reloadSlide(
@@ -216,12 +216,27 @@ describe("XmlPptProvider slide addressing", () => {
     ]);
   });
 
-  it("deletes audio from the requested slide indices without renumbering them", async () => {
+  it("removes only section audio from requested slides", async () => {
     const provider = new XmlPptProvider();
     respondWithSlides([
-      { notes: "First", audio: [{ name: "ppt_audio_1.mp3" }] },
-      { notes: "Second", audio: [{ name: "ppt_audio_1.mp3" }] },
-      { notes: "Third", audio: [{ name: "ppt_audio_1.mp3" }, { name: "narrator.mp3" }] },
+      { notes: "First", audio: [{ name: "ppt_audio_1" }] },
+      { notes: "Second", audio: [{ name: "ppt_audio_1" }] },
+      {
+        notes: "Third",
+        audio: [
+          { name: "ppt_audio_12" },
+          { name: "narrator.mp3" },
+          { name: "ppt_audio_backup" },
+          { name: "ppt_audioAnything" },
+          { name: "ppt_audio_" },
+          { name: "ppt_audio_0" },
+          { name: "ppt_audio_01" },
+          { name: "ppt_audio_-1" },
+          { name: "ppt_audio_1.5" },
+          { name: "ppt_audio_1.mp3" },
+          { name: "PPT_AUDIO_1" },
+        ],
+      },
     ]);
     respondWithSuccess();
 
@@ -241,8 +256,8 @@ describe("XmlPptProvider slide addressing", () => {
         input: "/presentations/deck.pptx",
         output: "/presentations/deck.pptx",
         ops: [
-          { op: "delete_audio_for_slide", args: { slide_index: 0, name: "ppt_audio_1.mp3" } },
-          { op: "delete_audio_for_slide", args: { slide_index: 2, name: "ppt_audio_1.mp3" } },
+          { op: "delete_audio_for_slide", args: { slide_index: 0, name: "ppt_audio_1" } },
+          { op: "delete_audio_for_slide", args: { slide_index: 2, name: "ppt_audio_12" } },
         ],
       },
     ]);
@@ -304,12 +319,12 @@ describe("XmlPptProvider.saveSlideNarration", () => {
 });
 
 describe("XmlPptProvider.insertAudio", () => {
-  it("saves audio against the slide index the CLI already counts from zero, whatever its playback", async () => {
+  it("replaces section audio only on requested slides", async () => {
     const provider = new XmlPptProvider();
     respondWithSlides([
-      { notes: "First", audio: [] },
-      { notes: "Second", audio: [] },
-      { notes: "Third", audio: [] },
+      { notes: "First", audio: [{ name: "ppt_audio_1" }, { name: "ppt_audio_2" }] },
+      { notes: "Second", audio: [{ name: "ppt_audio_1" }] },
+      { notes: "Third", audio: [{ name: "ppt_audio_backup" }] },
     ]);
     respondWithSuccess();
 
@@ -328,10 +343,23 @@ describe("XmlPptProvider.insertAudio", () => {
       },
     ]);
 
-    const ops = xmlCliCalls[1]?.ops ?? [];
-    expect(ops.map((op) => ({ op: op.op, slide_index: op.args.slide_index }))).toEqual([
-      { op: "save_audio_for_slide", slide_index: 0 },
-      { op: "save_audio_for_slide", slide_index: 2 },
+    expect(xmlCliCalls[1]?.ops).toEqual([
+      { op: "delete_audio_for_slide", args: { slide_index: 0, name: "ppt_audio_1" } },
+      { op: "delete_audio_for_slide", args: { slide_index: 0, name: "ppt_audio_2" } },
+      {
+        op: "save_audio_for_slide",
+        args: {
+          slide_index: 0,
+          mp3_path: expect.stringContaining(`${path.sep}ppt_audio_1.mp3`) as unknown,
+        },
+      },
+      {
+        op: "save_audio_for_slide",
+        args: {
+          slide_index: 2,
+          mp3_path: expect.stringContaining(`${path.sep}ppt_audio_2.mp3`) as unknown,
+        },
+      },
     ]);
   });
 });

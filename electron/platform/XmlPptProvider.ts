@@ -14,7 +14,7 @@ import {
   buildSlidesWithPaths,
   buildPptAudioFileName,
   cleanupPaths,
-  isManagedPptAudioName,
+  sectionIndexFromPptAudioShapeName,
   normalizeNotes,
   resolveScriptPath,
 } from "./helpers.js";
@@ -80,7 +80,9 @@ export class XmlPptProvider implements PptProvider {
 
       const slideAudio = slide.audio || [];
       slideAudio
-        .filter((audio: XmlSlideAudio) => isManagedPptAudioName(audio.name))
+        .filter(
+          (audio: XmlSlideAudio) => sectionIndexFromPptAudioShapeName(audio.name) !== undefined,
+        )
         .forEach((audio) => {
           deleteOps.push({
             op: "delete_audio_for_slide",

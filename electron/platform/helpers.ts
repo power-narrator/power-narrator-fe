@@ -5,6 +5,7 @@ import type { SlideManifestEntry, SlideWithSrc } from "./types.js";
 
 export const APP_NAME = "power-narrator";
 export const PPT_AUDIO_PREFIX = "ppt_audio";
+const SECTION_AUDIO_NAME = new RegExp(`^${PPT_AUDIO_PREFIX}_([1-9]\\d*)$`);
 
 export function resolveScriptPath(scriptName: string): string {
   if (app.isPackaged) {
@@ -27,8 +28,9 @@ export function buildPptAudioFileName(sectionIndex: number): string {
   return `${buildPptAudioShapeName(sectionIndex)}.mp3`;
 }
 
-export function isManagedPptAudioName(name: string): boolean {
-  return name.toLowerCase().startsWith(PPT_AUDIO_PREFIX);
+export function sectionIndexFromPptAudioShapeName(name: string): number | undefined {
+  const ordinal = SECTION_AUDIO_NAME.exec(name)?.[1];
+  return ordinal === undefined ? undefined : Number(ordinal) - 1;
 }
 
 export function normalizeNotes(notes: string): string {
