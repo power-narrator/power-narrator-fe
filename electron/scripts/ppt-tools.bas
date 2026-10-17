@@ -12,7 +12,6 @@ Private Const PLAY_ACROSS_SLIDES_CHECKBOX As String = "MediaClipPlayAcrossSlides
 Private Type EditingContext
     Captured As Boolean
     Target As DocumentWindow
-    PreviousWindow As DocumentWindow
     ViewType As Long
     SlideIndex As Long
     SelectionType As Long
@@ -847,10 +846,6 @@ Private Sub CaptureEditingContext(pres As Presentation, ByRef editing As Editing
         Err.Raise vbObjectError + 520, , pres.Name & " has no editing window in PowerPoint."
     End If
 
-    On Error Resume Next
-    Set editing.PreviousWindow = ActiveWindow
-    On Error GoTo 0
-
     Set editing.Target = pres.Windows(1)
     editing.ViewType = editing.Target.ViewType
     editing.SlideIndex = WindowSlideIndex(editing.Target)
@@ -931,6 +926,7 @@ Private Sub RestoreSelection(editing As EditingContext)
     End Select
 End Sub
 
+' The target stays the active window: switching back to another deck needs PowerPoint frontmost and would repeat for every slide.
 Private Function RestoreEditingContext(ByRef editing As EditingContext) As String
     If Not editing.Captured Then Exit Function
     editing.Captured = False
@@ -942,7 +938,6 @@ Private Function RestoreEditingContext(ByRef editing As EditingContext) As Strin
         If WindowSlideIndex(editing.Target) <> editing.SlideIndex Then editing.Target.View.GotoSlide editing.SlideIndex
     End If
     RestoreSelection editing
-    If Not editing.PreviousWindow Is Nothing Then ActivateWindow editing.PreviousWindow
     Exit Function
 
 Failed:
