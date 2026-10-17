@@ -4,9 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, describe, expect, it, onTestFinished } from "vitest";
 import {
-  type SlideIndex,
   slideIndexFromOneBased,
   slideNumberOf,
+  type SlideIndex,
 } from "../../shared/slides/slideCoordinates.js";
 import type { PptProvider } from "../../electron/platform/PptProvider.js";
 import type {
@@ -16,11 +16,11 @@ import type {
   SuccessResult,
 } from "../../electron/platform/types.js";
 import {
-  type InspectedEffect,
-  type InspectedSlide,
   inspectPresentation,
   mediaDigest,
   presentationDifferences,
+  type InspectedEffect,
+  type InspectedSlide,
 } from "./presentationInspector.js";
 
 /** What a provider supplies to run the shared cases. */
@@ -41,9 +41,8 @@ const HAND_BUILT_DECK = path.join(FIXTURES, "hand-built-deck.pptx");
 const clip = (name: string) => new Uint8Array(fs.readFileSync(path.join(FIXTURES, "audio", name)));
 
 const REPLACE_MAIN_SLIDE = slideIndexFromOneBased(2);
+const REPLACE_TRIGGERS_SLIDE = slideIndexFromOneBased(3);
 const CLEAN_SLIDE = slideIndexFromOneBased(5);
-const MAIN_SEQUENCE_SLIDE = slideIndexFromOneBased(2);
-const TRIGGERS_SLIDE = slideIndexFromOneBased(3);
 
 function succeeded<T extends object>(result: Result<T>): SuccessResult<T> {
   if (!result.success) {
@@ -245,6 +244,53 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
     });
   });
 
+  describe("loading the hand-built deck", () => {
+    /** What the recipe in tests/fixtures/hand-built-deck.md sets in PowerPoint's UI. */
+    const recipe = [
+      {
+        notes: "First line of slide one.\nCafé — naïve “quotes” 日本語",
+        sectionsPlayingAcrossSlides: new Set([0]),
+      },
+      { notes: "Slide two notes.", sectionsPlayingAcrossSlides: new Set([1]) },
+      { notes: "Slide three notes.", sectionsPlayingAcrossSlides: new Set([0]) },
+      { notes: "Slide four notes.", sectionsPlayingAcrossSlides: new Set<number>() },
+      { notes: "Slide five notes.", sectionsPlayingAcrossSlides: new Set<number>() },
+    ];
+
+    it("reads each slide's image, notes and Play Across Slides choices as the author set them, slide by slide too", async () => {
+      const deck = await openDeckCopy();
+      const outputDir = imagesDir();
+
+      const { slides } = succeeded(await harness.provider.convertPptx(deck, outputDir));
+
+      expect(slides.map(({ slideIndex }) => slideIndex)).toEqual(
+        recipe.map((_, slideIndex) => slideIndex),
+      );
+      expect(slides.filter(({ image }) => !fs.existsSync(path.join(outputDir, image)))).toEqual([]);
+      expect.soft(slides.map(({ notes }) => notes)).toEqual(recipe.map(({ notes }) => notes));
+      expect(slides.map(({ sectionsPlayingAcrossSlides }) => sectionsPlayingAcrossSlides)).toEqual(
+        recipe.map(({ sectionsPlayingAcrossSlides }) => sectionsPlayingAcrossSlides),
+      );
+
+      for (const loaded of slides) {
+        const reloadDir = imagesDir();
+        const { slide } = succeeded(
+          await harness.provider.reloadSlide(deck, loaded.slideIndex, reloadDir),
+        );
+        expect(path.join(reloadDir, slide.image)).toSatisfy(fs.existsSync);
+        expect({
+          slideIndex: slide.slideIndex,
+          notes: slide.notes,
+          sectionsPlayingAcrossSlides: slide.sectionsPlayingAcrossSlides,
+        }).toEqual({
+          slideIndex: loaded.slideIndex,
+          notes: loaded.notes,
+          sectionsPlayingAcrossSlides: loaded.sectionsPlayingAcrossSlides,
+        });
+      }
+    });
+  });
+
   describe("replacing section audio", () => {
     async function replace(
       slideIndex: SlideIndex,
@@ -278,7 +324,7 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
       const notes = "First section, replaced.\n---\nSecond section, replaced.";
 
       const slide = await replace(
-        MAIN_SEQUENCE_SLIDE,
+        REPLACE_MAIN_SLIDE,
         notes,
         [
           { clip: "section-1.mp3", playAcrossSlides: true },
@@ -302,7 +348,7 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
       const notes = "First section, replaced.\n---\nSecond section, replaced.";
 
       const slide = await replace(
-        TRIGGERS_SLIDE,
+        REPLACE_TRIGGERS_SLIDE,
         notes,
         [
           { clip: "section-2.mp3", playAcrossSlides: false },
