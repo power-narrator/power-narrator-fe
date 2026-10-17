@@ -9,13 +9,21 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["**/*.test.ts"],
-          exclude: ["**/*.integration.test.ts"],
+          exclude: ["**/*.integration.test.ts", "**/*.native.test.ts"],
         },
       },
       {
         test: {
           name: "integration",
           include: ["**/*.integration.test.ts"],
+        },
+      },
+      {
+        test: {
+          name: "native",
+          include: ["**/*.native.test.ts"],
+          testTimeout: 15 * 60 * 1000,
+          hookTimeout: 5 * 60 * 1000,
         },
       },
       {

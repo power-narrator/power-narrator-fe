@@ -18,7 +18,8 @@
     "test:unit": "vitest run --project unit",
     "test:component": "vitest run --project component",
     "test:integration": "vitest run --project integration",
-    "test:e2e": "pnpm run build && playwright test"
+    "test:e2e": "pnpm run build && playwright test",
+    "test:native": "vitest run --project native --no-file-parallelism"
   },
   "dependencies": {
     "@gfazioli/mantine-split-pane": "^4.1.14",
@@ -38,10 +39,12 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "@vitest/browser-playwright": "^5.0.3",
+    "@xmldom/xmldom": "^0.9.12",
     "babel-plugin-react-compiler": "^1.0.0",
     "concurrently": "^10.0.6",
     "electron": "^44.7.0",
     "electron-builder": "^26.15.3",
+    "fflate": "^0.8.3",
     "globals": "^17.13.0",
     "oxfmt": "^0.72.0",
     "oxlint": "^1.87.0",

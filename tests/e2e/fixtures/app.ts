@@ -14,8 +14,8 @@ import type { SpeakerMapping, Voice } from "../../../shared/types/tts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const FIXTURE_ORIGINAL = path.join(__dirname, "../../fixtures/test-presentation.pptx");
-export const FIXTURE_TEST = path.join(__dirname, "../../fixtures/test-presentation-run.pptx");
+export const FIXTURE_ORIGINAL = path.join(__dirname, "../../fixtures/hand-built-deck.pptx");
+export const FIXTURE_TEST = path.join(__dirname, "../../fixtures/hand-built-deck-run.pptx");
 
 const TRANSPARENT_SLIDE_IMAGE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
@@ -82,7 +82,7 @@ export type GeneratedSpeechCall = { text: string; voiceOption: Voice };
 export type SaveSlideCall = { filePath: string; slide: SlideNarrationEntry };
 export type GenerateVideoCall = { filePath: string; videoOutputPath: string };
 
-export const VIDEO_OUTPUT_PATH = path.join(__dirname, "../../fixtures/test-presentation-run.mp4");
+export const VIDEO_OUTPUT_PATH = path.join(__dirname, "../../fixtures/hand-built-deck-run.mp4");
 
 type MainProbes = {
   discardConfirmations: unknown[];
