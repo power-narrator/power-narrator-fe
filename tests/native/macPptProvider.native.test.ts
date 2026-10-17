@@ -172,6 +172,7 @@ describe.skipIf(process.platform !== "darwin")("MacPptProvider against PowerPoin
         ]),
       );
       expect(saved).toMatchObject({ success: false, saved: "nothing" });
+      expect(presentationDifferences(before, inspectPresentation(deck))).toEqual([]);
 
       const cleanSaved = await provider.saveSlideNarration(
         deck,

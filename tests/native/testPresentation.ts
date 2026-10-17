@@ -10,6 +10,7 @@ export type TestShape =
       media: Uint8Array;
       volume?: number;
       muted?: boolean;
+      fadeInMs?: number;
     };
 
 /** Shapes are named by id. An effect with a trigger joins that shape's click sequence. */
@@ -62,7 +63,8 @@ function shapeXml(shape: TestShape, mediaRelId: string): string {
     return `<p:sp><p:nvSpPr><p:cNvPr id="${shape.id}" name="${escapeXml(shape.name)}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="100" cy="100"/></a:xfrm></p:spPr><p:txBody>${paragraphs(shape.text ?? "")}</p:txBody></p:sp>`;
   }
   const file = shape.kind === "audio" ? "audioFile" : "videoFile";
-  return `<p:pic><p:nvPicPr><p:cNvPr id="${shape.id}" name="${escapeXml(shape.name)}"/><p:cNvPicPr/><p:nvPr><a:${file} r:link="${mediaRelId}"/><p:extLst><p:ext uri="{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}"><p14:media r:embed="${mediaRelId}"/></p:ext></p:extLst></p:nvPr></p:nvPicPr><p:blipFill/><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="10" cy="10"/></a:xfrm></p:spPr></p:pic>`;
+  const fade = shape.fadeInMs === undefined ? "" : `<p14:fade in="${shape.fadeInMs}"/>`;
+  return `<p:pic><p:nvPicPr><p:cNvPr id="${shape.id}" name="${escapeXml(shape.name)}"/><p:cNvPicPr/><p:nvPr><a:${file} r:link="${mediaRelId}"/><p:extLst><p:ext uri="{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}"><p14:media r:embed="${mediaRelId}">${fade}</p14:media></p:ext></p:extLst></p:nvPr></p:nvPicPr><p:blipFill/><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="10" cy="10"/></a:xfrm></p:spPr></p:pic>`;
 }
 
 const PRESETS: Record<TestEffect["type"], string> = {

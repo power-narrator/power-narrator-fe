@@ -73,6 +73,10 @@ describe("the hand-built deck holds what its recipe says", () => {
     ]);
   });
 
+  it("has faded section audio on slide 4 for the refused-save case", () => {
+    expect(deck.slides[3]?.sectionAudio).toMatchObject([{ name: "ppt_audio_1", fadeInMs: 1000 }]);
+  });
+
   it("animates each slide's shapes as the recipe sets up", () => {
     expect(deck.slides.map(({ effects }) => effects)).toEqual([
       [

@@ -196,6 +196,25 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
       expect(inspectPresentation(deck)).toEqual(before);
       expect(await harness.isPresentationOpen(deck)).toBe(true);
 
+      const otherSlideNotes = "Another slide saved after the failure.";
+      const otherSlideSaved = await harness.provider.saveSlideNarration(
+        deck,
+        slideNarration(REPLACE_MAIN_SLIDE, otherSlideNotes, []),
+      );
+      expect(otherSlideSaved).toEqual({ success: true });
+      await harness.closePresentation(deck);
+
+      const afterOtherSlide = inspectPresentation(deck);
+      expect(afterOtherSlide.slides[REPLACE_MAIN_SLIDE]?.notes).toBe(otherSlideNotes);
+      expect(afterOtherSlide.slides[REPLACE_MAIN_SLIDE]?.sectionAudio).toEqual([]);
+      expect(
+        presentationDifferences(
+          { slides: withoutSlide(before.slides, REPLACE_MAIN_SLIDE) },
+          { slides: withoutSlide(afterOtherSlide.slides, REPLACE_MAIN_SLIDE) },
+        ),
+      ).toEqual([]);
+
+      await harness.openPresentation(deck);
       const notes = ["First section after the failure.", "---", "Second section after it."].join(
         "\n",
       );
@@ -221,7 +240,7 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
       );
       expect(clean?.otherShapes).toEqual(before.slides[CLEAN_SLIDE]?.otherShapes);
       expect(withoutSlide(after.slides, CLEAN_SLIDE)).toEqual(
-        withoutSlide(before.slides, CLEAN_SLIDE),
+        withoutSlide(afterOtherSlide.slides, CLEAN_SLIDE),
       );
 
       const { slide } = succeeded(

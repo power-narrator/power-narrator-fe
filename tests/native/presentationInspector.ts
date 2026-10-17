@@ -50,6 +50,7 @@ export type InspectedShape = {
   /** From 0 to 100000, when the media has stored playback settings. */
   volume?: number;
   muted?: boolean;
+  fadeInMs?: number;
 };
 
 export type InspectedEffect = {
@@ -210,10 +211,15 @@ function inspectShape(
     inspected.text = text;
   }
   if (mediaFile) {
-    const embedded = nvPr && elements(nvPr, NS.p14, "media")[0]?.getAttributeNS(NS.r, "embed");
+    const media = nvPr && elements(nvPr, NS.p14, "media")[0];
+    const embedded = media?.getAttributeNS(NS.r, "embed");
     const relId = embedded || mediaFile.getAttributeNS(NS.r, "link") || "";
     const part = rels.get(relId)?.target;
     inspected.media = part ? mediaDigest(pkg.bytes(part)) : "";
+    const fade = media && elements(media, NS.p14, "fade")[0];
+    if (fade?.hasAttribute("in")) {
+      inspected.fadeInMs = Number(fade.getAttribute("in"));
+    }
   }
   return { shape: inspected, mediaFile: mediaFile?.localName ?? undefined };
 }
@@ -403,9 +409,18 @@ function effectDifferences(
   ];
 }
 
-const SHAPE_PROPERTIES = ["id", "kind", "frame", "text", "media", "volume", "muted"] as const;
+const SHAPE_PROPERTIES = [
+  "id",
+  "kind",
+  "frame",
+  "text",
+  "media",
+  "volume",
+  "muted",
+  "fadeInMs",
+] as const;
 /** A provider may recreate section audio, so its id and frame are its own. */
-const SECTION_AUDIO_PROPERTIES = ["kind", "media", "volume", "muted"] as const;
+const SECTION_AUDIO_PROPERTIES = ["kind", "media", "volume", "muted", "fadeInMs"] as const;
 
 function shapeDifferences(
   label: string,
@@ -452,7 +467,7 @@ function slideDifferences(expected: InspectedSlide, actual: InspectedSlide): str
 
 /**
  * Names each slide, shape and property in which `actual` differs from `expected`, and each
- * effect removed, added, moved or retriggered. Timing values are never compared.
+ * effect removed, added, moved or retriggered. Animation durations and delays are never compared.
  */
 export function presentationDifferences(
   expected: InspectedPresentation,
