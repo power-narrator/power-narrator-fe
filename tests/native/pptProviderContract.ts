@@ -91,7 +91,7 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
       const after = inspectPresentation(deck);
       const [clean, ...otherSlidesAfter] = after.slides.toReversed();
       const [cleanBefore, ...otherSlidesBefore] = before.slides.toReversed();
-      expect(clean?.notes).toBe(notes);
+      expect.soft(clean?.notes).toBe(notes);
       expect(clean?.sectionAudio.map(({ name, media }) => ({ name, media }))).toEqual(
         clips.map((audio, sectionIndex) => ({
           name: `ppt_audio_${sectionIndex + 1}`,
@@ -104,7 +104,7 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
       const { slide } = succeeded(
         await harness.provider.reloadSlide(deck, CLEAN_SLIDE, imagesDir()),
       );
-      expect(slide.notes).toBe(notes);
+      expect.soft(slide.notes).toBe(notes);
       expect(slide.sectionsPlayingAcrossSlides).toEqual(new Set([0, 2]));
     });
   });
