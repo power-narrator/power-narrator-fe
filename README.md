@@ -420,6 +420,7 @@ src/
 
 tests/
   e2e/                         Playwright Electron workflows
+  native/                      PowerPoint provider contract run against real PowerPoint
   fixtures/                    Local presentation fixtures
 ```
 
@@ -461,8 +462,47 @@ Useful commands:
 | `pnpm run test:integration` | Run cross-module contract tests                   |
 | `pnpm run test:e2e`         | Build and run Playwright Electron tests           |
 | `pnpm run test`             | Run all four test profiles                        |
+| `pnpm run test:native`      | Run the native PowerPoint provider tests          |
 | `pnpm run build`            | Type-check and build renderer and Electron output |
 | `pnpm run dist`             | Build distributable application packages          |
+
+### Native PowerPoint provider tests
+
+`pnpm run test:native` runs the shared PowerPoint provider contract against real PowerPoint, one
+file at a time with long timeouts. It is never part of `pnpm run test`, and it needs no speech
+service or credentials. Each case works on its own copy of `tests/fixtures/hand-built-deck.pptx`
+and closes that copy without saving; the copy of a failed case is kept and its path printed.
+
+On macOS it needs:
+
+- PowerPoint for Mac;
+- the add-in built from the current `ppt-tools.bas` and loaded in PowerPoint, reloaded and
+  PowerPoint restarted after every add-in change;
+- automation permission for the app that runs the command, to control PowerPoint;
+- access for that app to the Office group container (`~/Library/Group Containers/UBF8T346G9.Office`),
+  which macOS may require granting as access to other apps' data or as Full Disk Access.
+
+A missing prerequisite fails the run with a message saying what to fix. Agent sessions must run the
+command outside their sandbox, which cannot reach the Office group container.
+
+The layout is:
+
+- `tests/native/pptProviderContract.ts`: the shared cases, registered against a provider harness;
+- `tests/native/*.native.test.ts`: one file per provider, which builds its harness, runs the
+  contract and adds that provider's own cases. The Mac file skips itself on other systems;
+- `tests/native/presentationInspector.ts`: a read-only, portable reader of saved presentations,
+  whose own tests run in the unit profile.
+
+The clips in `tests/fixtures/audio` are the first 25, 50 and 75 frames (0.6 s, 1.2 s and 1.8 s) of
+a narration MP3 from the hand-built deck, because macOS's audio converter cannot encode MP3:
+
+```sh
+unzip -p tests/fixtures/hand-built-deck.pptx ppt/media/media2.mp3 | head -c 2400 > tests/fixtures/audio/section-1.mp3
+unzip -p tests/fixtures/hand-built-deck.pptx ppt/media/media2.mp3 | head -c 4800 > tests/fixtures/audio/section-2.mp3
+unzip -p tests/fixtures/hand-built-deck.pptx ppt/media/media2.mp3 | head -c 7200 > tests/fixtures/audio/section-3.mp3
+```
+
+That MP3 has 96-byte frames with no header frame, so each cut is a complete, valid MP3.
 
 ## Troubleshooting
 
