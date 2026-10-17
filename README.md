@@ -506,6 +506,13 @@ unzip -p tests/fixtures/hand-built-deck.pptx ppt/media/media2.mp3 | head -c 7200
 
 That MP3 has 96-byte frames with no header frame, so each cut is a complete, valid MP3.
 
+`not-audio.mp3` is the input that makes a slide save fail part-way through. It is a line of text,
+not audio:
+
+```sh
+printf 'These bytes are plain text, not audio.\n' > tests/fixtures/audio/not-audio.mp3
+```
+
 ## Troubleshooting
 
 ### No Google Cloud voices appear

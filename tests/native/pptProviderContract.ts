@@ -30,6 +30,8 @@ export type PptProviderHarness = {
   openPresentation(filePath: string): Promise<void>;
   /** Closes the presentation without saving, if it is open. */
   closePresentation(filePath: string): Promise<void>;
+  /** Whether the presentation is open in the app the provider automates; always true for a file-based provider. */
+  isPresentationOpen(filePath: string): Promise<boolean>;
   /** A directory the run owns, where the app the provider automates can open files. */
   tempDir(): string;
 };
@@ -38,6 +40,7 @@ const FIXTURES = fileURLToPath(new URL("../fixtures/", import.meta.url));
 const HAND_BUILT_DECK = path.join(FIXTURES, "hand-built-deck.pptx");
 const clip = (name: string) => new Uint8Array(fs.readFileSync(path.join(FIXTURES, "audio", name)));
 
+const REPLACE_MAIN_SLIDE = slideIndexFromOneBased(2);
 const CLEAN_SLIDE = slideIndexFromOneBased(5);
 const MAIN_SEQUENCE_SLIDE = slideIndexFromOneBased(2);
 const TRIGGERS_SLIDE = slideIndexFromOneBased(3);
@@ -92,6 +95,10 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
 
   const imagesDir = () => path.join(harness.tempDir(), `images-${randomUUID()}`);
 
+  function withoutSlide(slides: InspectedSlide[], slideIndex: SlideIndex): InspectedSlide[] {
+    return slides.filter((_, index) => index !== slideIndex);
+  }
+
   describe("saving new section audio", () => {
     it("keeps each section's notes and Play Across Slides choice, and leaves the rest of the presentation alone", async () => {
       const deck = await openDeckCopy();
@@ -140,6 +147,101 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
       );
       expect.soft(slide.notes).toBe(notes);
       expect(slide.sectionsPlayingAcrossSlides).toEqual(new Set([0, 2]));
+    });
+  });
+
+  describe("removing audio", () => {
+    it("leaves the slide with no section audio and keeps its other media, unrelated effects and notes", async () => {
+      const deck = await openDeckCopy();
+      const before = inspectPresentation(deck);
+      const slideBefore = before.slides[REPLACE_MAIN_SLIDE];
+      assert(slideBefore);
+      const sectionAudioNames = new Set(slideBefore.sectionAudio.map(({ name }) => name));
+
+      const removed = await harness.provider.removeAudio(deck, [REPLACE_MAIN_SLIDE]);
+      expect(removed).toEqual({ success: true });
+      await harness.closePresentation(deck);
+
+      const after = inspectPresentation(deck);
+      const slide = after.slides[REPLACE_MAIN_SLIDE];
+      expect.soft(slide?.notes).toBe(slideBefore.notes);
+      expect(slide?.sectionAudio).toEqual([]);
+      expect(slide?.otherShapes).toEqual(slideBefore.otherShapes);
+      expect(slide?.effects).toEqual(
+        slideBefore.effects.filter(({ target }) => !sectionAudioNames.has(target)),
+      );
+      expect(withoutSlide(after.slides, REPLACE_MAIN_SLIDE)).toEqual(
+        withoutSlide(before.slides, REPLACE_MAIN_SLIDE),
+      );
+
+      const { slide: reloaded } = succeeded(
+        await harness.provider.reloadSlide(deck, REPLACE_MAIN_SLIDE, imagesDir()),
+      );
+      expect.soft(reloaded.notes).toBe(slideBefore.notes);
+      expect(reloaded.sectionsPlayingAcrossSlides).toEqual(new Set());
+    });
+  });
+
+  describe("failure part-way through a slide save", () => {
+    it("reports that nothing was saved, leaves the presentation as last saved and open, and a later save holds none of the failed edits", async () => {
+      const deck = await openDeckCopy();
+      const before = inspectPresentation(deck);
+      const failedNotes = ["Failed first section.", "---", "Failed second section."].join("\n");
+      const validClip = clip("section-1.mp3");
+
+      const failed = await harness.provider.saveSlideNarration(deck, {
+        slideIndex: CLEAN_SLIDE,
+        notes: failedNotes,
+        audio: [validClip, clip("not-audio.mp3")].map((audioData, sectionIndex) => ({
+          slideIndex: CLEAN_SLIDE,
+          sectionIndex,
+          audioData,
+          playAcrossSlides: true,
+        })),
+      });
+      expect(failed).toMatchObject({ success: false, saved: "nothing" });
+      expect(inspectPresentation(deck)).toEqual(before);
+      expect(await harness.isPresentationOpen(deck)).toBe(true);
+
+      const notes = ["First section after the failure.", "---", "Second section after it."].join(
+        "\n",
+      );
+      const clips = [clip("section-2.mp3"), clip("section-3.mp3")];
+      const saved = await harness.provider.saveSlideNarration(deck, {
+        slideIndex: CLEAN_SLIDE,
+        notes,
+        audio: clips.map((audioData, sectionIndex) => ({
+          slideIndex: CLEAN_SLIDE,
+          sectionIndex,
+          audioData,
+          playAcrossSlides: false,
+        })),
+      });
+      expect(saved).toEqual({ success: true });
+      await harness.closePresentation(deck);
+
+      const after = inspectPresentation(deck);
+      const clean = after.slides[CLEAN_SLIDE];
+      expect.soft(clean?.notes).toBe(notes);
+      expect(clean?.sectionAudio.map(({ name, media }) => ({ name, media }))).toEqual(
+        clips.map((audio, sectionIndex) => ({
+          name: `ppt_audio_${sectionIndex + 1}`,
+          media: mediaDigest(audio),
+        })),
+      );
+      expect(after.slides.flatMap(({ otherShapes }) => otherShapes)).not.toContainEqual(
+        expect.objectContaining({ media: mediaDigest(validClip) }),
+      );
+      expect(clean?.otherShapes).toEqual(before.slides[CLEAN_SLIDE]?.otherShapes);
+      expect(withoutSlide(after.slides, CLEAN_SLIDE)).toEqual(
+        withoutSlide(before.slides, CLEAN_SLIDE),
+      );
+
+      const { slide } = succeeded(
+        await harness.provider.reloadSlide(deck, CLEAN_SLIDE, imagesDir()),
+      );
+      expect.soft(slide.notes).toBe(notes);
+      expect(slide.sectionsPlayingAcrossSlides).toEqual(new Set());
     });
   });
 
