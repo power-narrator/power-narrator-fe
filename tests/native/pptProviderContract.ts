@@ -37,6 +37,9 @@ export type PptProviderHarness = {
 
 const FIXTURES = fileURLToPath(new URL("../fixtures/", import.meta.url));
 const HAND_BUILT_DECK = path.join(FIXTURES, "hand-built-deck.pptx");
+const FAILURES_DIR = fileURLToPath(
+  new URL("../../.scratch/native-powerpoint-failures/", import.meta.url),
+);
 const clip = (name: string) => new Uint8Array(fs.readFileSync(path.join(FIXTURES, "audio", name)));
 
 const REPLACE_MAIN_SLIDE = slideIndexFromOneBased(2);
@@ -65,7 +68,11 @@ export async function openHandBuiltDeckCopy(harness: PptProviderHarness): Promis
   onTestFinished(async ({ task }) => {
     await harness.closePresentation(deck);
     if (task.result?.state === "fail") {
-      console.error(`Kept the deck of the failed case "${task.name}": ${deck}`);
+      fs.mkdirSync(FAILURES_DIR, { recursive: true });
+      const failedDeck = path.join(FAILURES_DIR, path.basename(deck));
+      fs.copyFileSync(deck, failedDeck, fs.constants.COPYFILE_EXCL);
+      fs.rmSync(deck);
+      console.error(`Kept the deck of the failed case "${task.name}": ${failedDeck}`);
     } else {
       fs.rmSync(deck, { force: true });
     }

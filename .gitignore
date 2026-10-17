@@ -10,6 +10,7 @@ node_modules/
 __screenshots__/
 /.vitest-attachments/
 /.vitest/
+/.scratch/native-powerpoint-failures/
 
 # OS metadata
 .DS_Store

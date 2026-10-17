@@ -122,7 +122,7 @@ async function preflight(provider: MacPptProvider, runDir: string): Promise<void
   }
 }
 
-/** Removes what the run made, except the decks of failed cases. */
+/** Removes temporary output, keeping any deck whose closing or move failed. */
 function tidy(runDir: string): void {
   if (!fs.existsSync(runDir)) {
     return;
