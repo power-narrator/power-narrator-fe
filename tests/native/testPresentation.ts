@@ -31,6 +31,8 @@ export type TestPresentationOptions = {
   separator?: "/" | "\\";
 };
 
+type TestRelationship = { id: string; type: string; target: string };
+
 const NS = [
   'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"',
   'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"',
@@ -43,7 +45,7 @@ const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships
 const escapeXml = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
-const relationships = (rels: Array<{ id: string; type: string; target: string }>) =>
+const relationships = (rels: TestRelationship[]) =>
   `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels
     .map(({ id, type, target }) => `<Relationship Id="${id}" Type="${type}" Target="${target}"/>`)
     .join("")}</Relationships>`;
@@ -137,7 +139,7 @@ export function buildTestPresentation(
 
   slides.forEach(({ notes, shapes = [], effects = [] }, i) => {
     const slideNumber = i + 1;
-    const rels: Array<{ id: string; type: string; target: string }> = [];
+    const rels: TestRelationship[] = [];
     const shapeXmls = shapes.map((shape, s) => {
       if (shape.kind === "shape") {
         return shapeXml(shape, "");
