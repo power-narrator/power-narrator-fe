@@ -24,11 +24,6 @@ export function readPlayAcrossSlidesCheckbox(
   slideNumber: SlideNumber,
 ): Result<{ playsAcrossSlides: boolean }> {
   const [checkbox = "", ...extraFields] = fields;
-  if (isIntegerText(checkbox)) {
-    return fail(
-      `PowerPoint reported a numeric playback for ${shapeName} on slide ${slideNumber}; the installed PowerPoint add-in does not match this app.`,
-    );
-  }
   const playsAcrossSlides = CHECKBOX_STATES.get(checkbox);
   if (playsAcrossSlides === undefined || extraFields.length > 0) {
     return fail(

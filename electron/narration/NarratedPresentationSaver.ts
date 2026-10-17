@@ -154,8 +154,6 @@ async function commitSlide(
   try {
     result = await powerpoint.saveSlideNarration(filePath, {
       slideIndex: slide.slideIndex,
-      // Raw note text exists only from here on: structured sections are
-      // formatted immediately before PowerPoint takes them.
       notes: formatNarrationSections(slide.sections),
       audio,
     });

@@ -51,7 +51,6 @@ export type SlideAudioEntry = {
   playAcrossSlides: boolean;
 };
 
-/** A slide's new notes with its complete section audio, which PowerPoint saves together. */
 export type SlideNarrationEntry = {
   slideIndex: SlideIndex;
   notes: string;

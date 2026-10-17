@@ -180,7 +180,6 @@ export class XmlPptProvider implements PptProvider {
     return cliResult;
   }
 
-  /** Saves the notes first, so a failed audio change leaves them saved. */
   async saveSlideNarration(
     filePath: string,
     slide: SlideNarrationEntry,

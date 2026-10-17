@@ -11,7 +11,6 @@ type ScriptOutcome = { stdout?: string; stderr?: string; code?: number };
 const spawnCalls: Array<{ command: string; args: string[] }> = [];
 let spawnStdout = "";
 let beforeSpawnClose: (() => void) | undefined;
-/** Outcomes for particular AppleScripts, keyed by file name; others print `spawnStdout`. */
 const scriptOutcomes = new Map<string, ScriptOutcome>();
 
 vi.mock("node:child_process", () => ({
@@ -301,9 +300,9 @@ describe("MacPptProvider section audio playback", () => {
       "PowerPoint reported an unreadable playback for ppt_audio_1 on slide 1.",
     ],
     [
-      "an add-in older than the app reports a numeric playback span",
+      "the checkbox value is numeric",
       "###SLIDE_START### 1\nppt_audio_1\t83\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
-      "PowerPoint reported a numeric playback for ppt_audio_1 on slide 1; the installed PowerPoint add-in does not match this app.",
+      "PowerPoint reported an unreadable playback for ppt_audio_1 on slide 1.",
     ],
     [
       "a section audio's playback is missing",
@@ -471,10 +470,6 @@ describe("MacPptProvider.convertPptx", () => {
   });
 });
 
-/**
- * Stands in for the SaveNarration macro: the provider learns the outcome only
- * from the report the macro writes to the result path named in its params.
- */
 function saveNarrationMacroReports(report: string | undefined) {
   const request = { params: "", notes: "" };
   succeedAppleScript(() => {
@@ -644,9 +639,9 @@ describe("MacPptProvider.saveSlideNarration", () => {
       message: /playback of ppt_audio_2 on slide 3/,
     },
     {
-      problem: "reports a numeric playback, as an older add-in does",
-      report: savedThirdSlide.join("\n").replace("ppt_audio_1|true", "ppt_audio_1|999|1|0"),
-      message: /numeric playback for ppt_audio_1 on slide 3.*add-in does not match/,
+      problem: "reports a numeric checkbox value",
+      report: savedThirdSlide.join("\n").replace("ppt_audio_1|true", "ppt_audio_1|999"),
+      message: /unreadable playback for ppt_audio_1 on slide 3/,
     },
     {
       problem: "reports an unreadable checkbox",
