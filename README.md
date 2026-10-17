@@ -471,7 +471,9 @@ Useful commands:
 `pnpm run test:native` runs the shared PowerPoint provider contract against real PowerPoint, one
 file at a time with long timeouts. It is never part of `pnpm run test`, and it needs no speech
 service or credentials. Each case works on its own copy of `tests/fixtures/hand-built-deck.pptx`
-and closes that copy without saving; the copy of a failed case is kept and its path printed.
+and closes that copy without saving. Failed copies move to the gitignored
+`.scratch/native-powerpoint-failures/` folder and their paths are printed; successful copies are
+deleted. On Mac, active copies stay in the Office group container to avoid file-access prompts.
 
 On macOS it needs:
 
