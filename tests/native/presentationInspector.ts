@@ -27,6 +27,13 @@ const REL_TYPE = {
   notesSlide: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide",
 };
 
+const EFFECT_PRESETS: Record<string, string> = {
+  "mediacall/1": "play",
+  "mediacall/2": "pause",
+  "mediacall/3": "stop",
+  "entr/10": "fade",
+};
+
 const SOUND_FILES = new Set(["audioFile", "wavAudioFile", "audioCd"]);
 const MEDIA_FILES = new Set([...SOUND_FILES, "videoFile", "quickTimeFile"]);
 
@@ -42,6 +49,15 @@ export type InspectedShape = {
   media?: string;
 };
 
+export type InspectedEffect = {
+  /** A known preset's name, such as `play` or `fade`, otherwise `presetClass/presetID`. */
+  type: string;
+  /** The name of the shape it animates. */
+  target: string;
+  /** The name of the shape whose click starts it; absent in the main sequence. */
+  trigger?: string;
+};
+
 export type InspectedSlide = {
   slideNumber: number;
   notes: string;
@@ -49,6 +65,8 @@ export type InspectedSlide = {
   otherMedia: InspectedShape[];
   /** Every shape that is not section audio, other media included. */
   otherShapes: InspectedShape[];
+  /** In sequence order: the main sequence and each click-triggered sequence, as stored. */
+  effects: InspectedEffect[];
 };
 
 export type InspectedPresentation = {
@@ -197,15 +215,53 @@ function inspectShape(
   return { shape: inspected, mediaFile: mediaFile?.localName ?? undefined };
 }
 
+function inspectEffects(slideXml: Element): InspectedEffect[] {
+  const names = new Map(
+    elements(slideXml, NS.p, "cNvPr").map((cNvPr) => [
+      cNvPr.getAttribute("id") ?? "",
+      cNvPr.getAttribute("name") ?? "",
+    ]),
+  );
+  const shapeName = (target: Element | undefined) => {
+    const id = target?.getAttribute("spid") ?? "";
+    return names.get(id) ?? `#${id}`;
+  };
+
+  return elements(slideXml, NS.p, "seq").flatMap((seq) => {
+    const seqNode = children(seq).find((child) => child.localName === "cTn");
+    const clickCondition =
+      seqNode?.getAttribute("nodeType") === "interactiveSeq"
+        ? children(seqNode).find((child) => child.localName === "stCondLst")
+        : undefined;
+    const trigger = clickCondition && shapeName(elements(clickCondition, NS.p, "spTgt")[0]);
+
+    return elements(seq, NS.p, "cTn")
+      .filter((node) => node.hasAttribute("presetClass"))
+      .map((node) => {
+        const preset = `${node.getAttribute("presetClass")}/${node.getAttribute("presetID")}`;
+        const effect: InspectedEffect = {
+          type: EFFECT_PRESETS[preset] ?? preset,
+          target: shapeName(elements(node, NS.p, "spTgt")[0]),
+        };
+        if (trigger !== undefined) {
+          effect.trigger = trigger;
+        }
+        return effect;
+      });
+  });
+}
+
 function inspectSlide(pkg: Package, slidePart: string, slideNumber: number): InspectedSlide {
   const rels = pkg.relationships(slidePart);
-  const spTree = elements(pkg.xml(slidePart), NS.p, "spTree")[0];
+  const slideXml = pkg.xml(slidePart);
+  const spTree = elements(slideXml, NS.p, "spTree")[0];
   const slide: InspectedSlide = {
     slideNumber,
     notes: readNotes(pkg, slidePart),
     sectionAudio: [],
     otherMedia: [],
     otherShapes: [],
+    effects: inspectEffects(slideXml),
   };
 
   for (const element of spTree ? children(spTree) : []) {
