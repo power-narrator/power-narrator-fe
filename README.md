@@ -495,16 +495,18 @@ The layout is:
 - `tests/fixtures/hand-built-deck.md`: the recipe the deck was built from in PowerPoint's UI. Its
   fixture test, `tests/native/handBuiltDeck.test.ts`, runs in the unit profile.
 
-The clips in `tests/fixtures/audio` are the first 25, 50 and 75 frames (0.6 s, 1.2 s and 1.8 s) of
-a narration MP3 from the hand-built deck, because macOS's audio converter cannot encode MP3:
+The clips in `tests/fixtures/audio` are spoken with `say` and encoded with `lame`, because macOS's
+audio converter cannot encode MP3. Each has a different length:
 
 ```sh
-unzip -p tests/fixtures/hand-built-deck.pptx ppt/media/media2.mp3 | head -c 2400 > tests/fixtures/audio/section-1.mp3
-unzip -p tests/fixtures/hand-built-deck.pptx ppt/media/media2.mp3 | head -c 4800 > tests/fixtures/audio/section-2.mp3
-unzip -p tests/fixtures/hand-built-deck.pptx ppt/media/media2.mp3 | head -c 7200 > tests/fixtures/audio/section-3.mp3
+brew install lame
+cd tests/fixtures/audio
+say -o s1.aiff "Section one"
+say -o s2.aiff "Section two, a little longer than one"
+say -o s3.aiff "Section three, the longest of the three clips by a few words"
+for i in 1 2 3; do lame --quiet -b 64 s$i.aiff section-$i.mp3; done
+rm s?.aiff
 ```
-
-That MP3 has 96-byte frames with no header frame, so each cut is a complete, valid MP3.
 
 `not-audio.mp3` is the input that makes a slide save fail part-way through. It is a line of text,
 not audio:
