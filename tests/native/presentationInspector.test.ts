@@ -214,10 +214,28 @@ describe("comparing presentations", () => {
       ]),
     );
 
-  it("finds no difference when only timing values differ", () => {
+  it("finds no difference when only animation timing values differ", () => {
     const delayed = original.map((effect) => ({ ...effect, delay: 1500 }));
 
     expect(presentationDifferences(inspect(), inspect({ effects: delayed }))).toEqual([]);
+  });
+
+  it.each([
+    { fadeInMs: undefined, change: "removed" },
+    { fadeInMs: 500, change: "changed" },
+  ])("names a $change audio fade", ({ fadeInMs }) => {
+    const fadedAudio = (fadeInMs: number | undefined) =>
+      inspectPresentation(
+        buildTestPresentation([
+          {
+            shapes: [{ kind: "audio", id: 2, name: "ppt_audio_1", media: clip, fadeInMs }],
+          },
+        ]),
+      );
+
+    expect(presentationDifferences(fadedAudio(1000), fadedAudio(fadeInMs))).toEqual([
+      `slide 1, section audio ppt_audio_1: fadeInMs ${fadeInMs}, expected 1000`,
+    ]);
   });
 
   it("names a removed effect", () => {
