@@ -308,10 +308,12 @@ promise that it plays through the whole presentation. See
 - **Loading and reloading** read each section audio's checkbox. Section audio without a Play
   animation cannot play, so it loads as disabled.
 - **PowerPoint moves while it works.** The checkbox applies to whatever is selected, so loading and
-  saving activate PowerPoint, switch to Normal view, visit slides and select section audio. Once
-  the batch finishes, successfully or not, the previous view, slide and selection are restored
-  (a selected audio that was replaced becomes its replacement) and the app takes focus again. Keys
-  typed into PowerPoint meanwhile reach it, so wait for the operation to finish.
+  saving switch the presentation to Normal view, visit slides and select section audio. Once the
+  batch finishes, successfully or not, the previous view, slide and selection are restored (a
+  selected audio that was replaced becomes its replacement). If another presentation was active,
+  PowerPoint comes forward to switch to this one, which then stays active, and the app you were
+  using gets focus back. Keys typed into PowerPoint meanwhile reach it, so wait for the operation
+  to finish.
 - **Saving replaces each section's audio.** The replacement takes over the old audio's Play, Pause
   and Stop animations with their start, delay, repeat and rewind settings, its place in the slide's
   animation order, its click triggers (on the audio itself or on another shape such as a button),
