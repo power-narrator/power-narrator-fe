@@ -4,7 +4,7 @@ import {
   type SlideNumber,
 } from "../../shared/slides/slideCoordinates.js";
 import type { Result } from "../../shared/types/result.js";
-import { PPT_AUDIO_PREFIX } from "./helpers.js";
+import { sectionIndexFromPptAudioShapeName } from "./helpers.js";
 import { readPlayAcrossSlidesCheckbox, readSlideNumber, reportLines } from "./macroReport.js";
 import type { SectionsPlayingAcrossSlides } from "./types.js";
 
@@ -16,7 +16,6 @@ const SLIDE_START = "###SLIDE_START### ";
 const SLIDE_END = "###SLIDE_END###";
 const EXPORT_COMPLETE = "###EXPORT_COMPLETE###";
 const ERROR = "###ERROR### ";
-const SECTION_AUDIO_NAME = new RegExp(`^${PPT_AUDIO_PREFIX}_([1-9]\\d*)$`);
 
 export const sectionsPlayingAcrossSlidesOn = (
   playback: ReadonlyMap<SlideIndex, SectionsPlayingAcrossSlides>,
@@ -87,8 +86,8 @@ export function parseSectionAudioPlaybackReport(
     }
 
     const [name = "", ...checkboxFields] = line.split("\t");
-    const ordinal = SECTION_AUDIO_NAME.exec(name)?.[1];
-    if (ordinal === undefined) {
+    const sectionIndex = sectionIndexFromPptAudioShapeName(name);
+    if (sectionIndex === undefined) {
       return {
         success: false,
         message: `PowerPoint reported an unexpected shape ${name} on slide ${slideNumber}.`,
@@ -106,7 +105,7 @@ export function parseSectionAudioPlaybackReport(
       return playback;
     }
     if (playback.playsAcrossSlides) {
-      reported.get(slideNumber)?.add(Number(ordinal) - 1);
+      reported.get(slideNumber)?.add(sectionIndex);
     }
   }
 
