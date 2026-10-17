@@ -3,10 +3,25 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, describe, expect, it, onTestFinished } from "vitest";
-import { slideIndexFromOneBased } from "../../shared/slides/slideCoordinates.js";
+import {
+  type SlideIndex,
+  slideIndexFromOneBased,
+  slideNumberOf,
+} from "../../shared/slides/slideCoordinates.js";
 import type { PptProvider } from "../../electron/platform/PptProvider.js";
-import type { Result, SuccessResult } from "../../electron/platform/types.js";
-import { inspectPresentation, mediaDigest } from "./presentationInspector.js";
+import type {
+  Result,
+  SlideNarrationEntry,
+  SlideWithSrc,
+  SuccessResult,
+} from "../../electron/platform/types.js";
+import {
+  type InspectedEffect,
+  type InspectedSlide,
+  inspectPresentation,
+  mediaDigest,
+  presentationDifferences,
+} from "./presentationInspector.js";
 
 /** What a provider supplies to run the shared cases. */
 export type PptProviderHarness = {
@@ -24,6 +39,8 @@ const HAND_BUILT_DECK = path.join(FIXTURES, "hand-built-deck.pptx");
 const clip = (name: string) => new Uint8Array(fs.readFileSync(path.join(FIXTURES, "audio", name)));
 
 const CLEAN_SLIDE = slideIndexFromOneBased(5);
+const MAIN_SEQUENCE_SLIDE = slideIndexFromOneBased(2);
+const TRIGGERS_SLIDE = slideIndexFromOneBased(3);
 
 function succeeded<T extends object>(result: Result<T>): SuccessResult<T> {
   if (!result.success) {
@@ -33,28 +50,45 @@ function succeeded<T extends object>(result: Result<T>): SuccessResult<T> {
 }
 
 /**
- * Registers the promises every PowerPoint provider keeps. Each case works on its own copy
- * of a fixture deck, closed without saving afterwards; a failed case's copy is kept.
+ * Opens a copy of the hand-built deck for one case, closed without saving afterwards; a
+ * failed case's copy is kept. The name cannot match a deck the user has open, because the
+ * add-in also finds presentations by file name.
  */
+export async function openHandBuiltDeckCopy(harness: PptProviderHarness): Promise<string> {
+  const deck = path.join(harness.tempDir(), `power-narrator-native-${randomUUID()}.pptx`);
+  fs.copyFileSync(HAND_BUILT_DECK, deck);
+  onTestFinished(async ({ task }) => {
+    await harness.closePresentation(deck);
+    if (task.result?.state === "fail") {
+      console.error(`Kept the deck of the failed case "${task.name}": ${deck}`);
+    } else {
+      fs.rmSync(deck, { force: true });
+    }
+  });
+  await harness.openPresentation(deck);
+  return deck;
+}
+
+export function slideNarration(
+  slideIndex: SlideIndex,
+  notes: string,
+  sections: ReadonlyArray<{ clip: string; playAcrossSlides: boolean }>,
+): SlideNarrationEntry {
+  return {
+    slideIndex,
+    notes,
+    audio: sections.map((section, sectionIndex) => ({
+      slideIndex,
+      sectionIndex,
+      audioData: clip(section.clip),
+      playAcrossSlides: section.playAcrossSlides,
+    })),
+  };
+}
+
+/** Registers the promises every PowerPoint provider keeps. */
 export function describePptProviderContract(harness: PptProviderHarness): void {
-  /**
-   * The name cannot match a deck the user has open, because the add-in also finds
-   * presentations by file name.
-   */
-  async function openDeckCopy(): Promise<string> {
-    const deck = path.join(harness.tempDir(), `power-narrator-native-${randomUUID()}.pptx`);
-    fs.copyFileSync(HAND_BUILT_DECK, deck);
-    onTestFinished(async ({ task }) => {
-      await harness.closePresentation(deck);
-      if (task.result?.state === "fail") {
-        console.error(`Kept the deck of the failed case "${task.name}": ${deck}`);
-      } else {
-        fs.rmSync(deck, { force: true });
-      }
-    });
-    await harness.openPresentation(deck);
-    return deck;
-  }
+  const openDeckCopy = () => openHandBuiltDeckCopy(harness);
 
   const imagesDir = () => path.join(harness.tempDir(), `images-${randomUUID()}`);
 
@@ -108,4 +142,101 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
       expect(slide.sectionsPlayingAcrossSlides).toEqual(new Set([0, 2]));
     });
   });
+
+  describe("replacing section audio", () => {
+    async function replace(
+      slideIndex: SlideIndex,
+      notes: string,
+      sections: ReadonlyArray<{ clip: string; playAcrossSlides: boolean }>,
+      effects: InspectedEffect[],
+    ): Promise<SlideWithSrc> {
+      const deck = await openDeckCopy();
+      const before = inspectPresentation(deck);
+
+      const saved = await harness.provider.saveSlideNarration(
+        deck,
+        slideNarration(slideIndex, notes, sections),
+      );
+      expect(saved).toEqual({ success: true });
+      await harness.closePresentation(deck);
+
+      const expected = {
+        slides: before.slides.map((slide) =>
+          slide.slideNumber === slideNumberOf(slideIndex)
+            ? savedOver(slide, notes, sections, effects)
+            : slide,
+        ),
+      };
+      expect.soft(presentationDifferences(expected, inspectPresentation(deck))).toEqual([]);
+
+      return succeeded(await harness.provider.reloadSlide(deck, slideIndex, imagesDir())).slide;
+    }
+
+    it("on slide 2, removes the obsolete section and keeps each kept section's place, volume and mute", async () => {
+      const notes = "First section, replaced.\n---\nSecond section, replaced.";
+
+      const slide = await replace(
+        MAIN_SEQUENCE_SLIDE,
+        notes,
+        [
+          { clip: "section-1.mp3", playAcrossSlides: true },
+          { clip: "section-2.mp3", playAcrossSlides: false },
+        ],
+        [
+          { type: "play", target: "ppt_audio_1" },
+          { type: "fade", target: "Box" },
+          { type: "pause", target: "ppt_audio_1" },
+          { type: "stop", target: "ppt_audio_1" },
+          { type: "play", target: "ppt_audio_01" },
+          { type: "play", target: "ppt_audio_2" },
+        ],
+      );
+
+      expect.soft(slide.notes).toBe(notes);
+      expect(slide.sectionsPlayingAcrossSlides).toEqual(new Set([0]));
+    });
+
+    it("on slide 3, keeps each Play started by clicking its own trigger shape", async () => {
+      const notes = "First section, replaced.\n---\nSecond section, replaced.";
+
+      const slide = await replace(
+        TRIGGERS_SLIDE,
+        notes,
+        [
+          { clip: "section-2.mp3", playAcrossSlides: false },
+          { clip: "section-3.mp3", playAcrossSlides: true },
+        ],
+        [
+          { type: "play", target: "ppt_audio_1", trigger: "Button" },
+          { type: "play", target: "ppt_audio_2", trigger: "ppt_audio_2" },
+        ],
+      );
+
+      expect.soft(slide.notes).toBe(notes);
+      expect(slide.sectionsPlayingAcrossSlides).toEqual(new Set([1]));
+    });
+  });
+}
+
+/**
+ * The slide saved with new notes and clips, where each section audio keeps everything but
+ * its clip, and `effects` is how its animation should read.
+ */
+function savedOver(
+  slide: InspectedSlide,
+  notes: string,
+  sections: ReadonlyArray<{ clip: string }>,
+  effects: InspectedEffect[],
+): InspectedSlide {
+  return {
+    ...slide,
+    notes,
+    sectionAudio: sections.map((section, sectionIndex) => {
+      const name = `ppt_audio_${sectionIndex + 1}`;
+      const kept = slide.sectionAudio.find((audio) => audio.name === name);
+      assert(kept, `Slide ${slide.slideNumber} of the hand-built deck has no ${name}.`);
+      return { ...kept, media: mediaDigest(clip(section.clip)) };
+    }),
+    effects,
+  };
 }
