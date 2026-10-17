@@ -491,7 +491,9 @@ The layout is:
 - `tests/native/*.native.test.ts`: one file per provider, which builds its harness, runs the
   contract and adds that provider's own cases. The Mac file skips itself on other systems;
 - `tests/native/presentationInspector.ts`: a read-only, portable reader of saved presentations,
-  whose own tests run in the unit profile.
+  whose own tests run in the unit profile;
+- `tests/fixtures/hand-built-deck.md`: the recipe the deck was built from in PowerPoint's UI. Its
+  fixture test, `tests/native/handBuiltDeck.test.ts`, runs in the unit profile.
 
 The clips in `tests/fixtures/audio` are the first 25, 50 and 75 frames (0.6 s, 1.2 s and 1.8 s) of
 a narration MP3 from the hand-built deck, because macOS's audio converter cannot encode MP3:
