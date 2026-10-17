@@ -9,12 +9,17 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { FIRST_SLIDE_INDEX, slideIndexFromOneBased } from "../../shared/slides/slideCoordinates.js";
 import { MacPptProvider } from "../../electron/platform/MacPptProvider.js";
 import {
+  CLEAN_SLIDE,
   describePptProviderContract,
   openHandBuiltDeckCopy,
   type PptProviderHarness,
   slideNarration,
 } from "./pptProviderContract.js";
-import { inspectPresentation, presentationDifferences } from "./presentationInspector.js";
+import {
+  inspectPresentation,
+  presentationDifferences,
+  type InspectedSlide,
+} from "./presentationInspector.js";
 
 vi.mock("electron", async () => {
   const nodeOs = await import("node:os");
@@ -130,6 +135,10 @@ function tidy(runDir: string): void {
   if (fs.readdirSync(runDir).length === 0) {
     fs.rmSync(runDir, { recursive: true });
   }
+  const runsDir = path.dirname(runDir);
+  if (fs.readdirSync(runsDir).length === 0) {
+    fs.rmdirSync(runsDir);
+  }
 }
 
 describe.skipIf(process.platform !== "darwin")("MacPptProvider against PowerPoint", () => {
@@ -150,9 +159,11 @@ describe.skipIf(process.platform !== "darwin")("MacPptProvider against PowerPoin
   describePptProviderContract(harness);
 
   describe("refusing a save the add-in cannot make without losing the audio's setup", () => {
-    it("saves nothing over slide 4's faded section audio, and says so", async () => {
+    it("saves nothing over slide 4's faded section audio, says so, and a later save of another slide keeps slide 4 as it was", async () => {
       const deck = await openHandBuiltDeckCopy(harness);
       const before = inspectPresentation(deck);
+      const untouched = (slides: InspectedSlide[]) =>
+        slides.filter((_, slideIndex) => slideIndex !== CLEAN_SLIDE);
 
       const saved = await provider.saveSlideNarration(
         deck,
@@ -161,9 +172,22 @@ describe.skipIf(process.platform !== "darwin")("MacPptProvider against PowerPoin
         ]),
       );
       expect(saved).toMatchObject({ success: false, saved: "nothing" });
+
+      const cleanSaved = await provider.saveSlideNarration(
+        deck,
+        slideNarration(CLEAN_SLIDE, "Clean notes.", [
+          { clip: "section-2.mp3", playAcrossSlides: false },
+        ]),
+      );
+      expect(cleanSaved).toEqual({ success: true });
       await harness.closePresentation(deck);
 
-      expect(presentationDifferences(before, inspectPresentation(deck))).toEqual([]);
+      expect(
+        presentationDifferences(
+          { slides: untouched(before.slides) },
+          { slides: untouched(inspectPresentation(deck).slides) },
+        ),
+      ).toEqual([]);
     });
   });
 });

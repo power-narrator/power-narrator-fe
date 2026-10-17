@@ -1,10 +1,16 @@
-import path from "node:path";
-import { describe, expect, it } from "vitest";
-import { inspectPresentation } from "./presentationInspector.js";
-
-const deck = inspectPresentation(path.join(__dirname, "../fixtures/hand-built-deck.pptx"));
+import { fileURLToPath } from "node:url";
+import { beforeAll, describe, expect, it } from "vitest";
+import { inspectPresentation, type InspectedPresentation } from "./presentationInspector.js";
 
 describe("the hand-built deck holds what its recipe says", () => {
+  let deck: InspectedPresentation;
+
+  beforeAll(() => {
+    deck = inspectPresentation(
+      fileURLToPath(new URL("../fixtures/hand-built-deck.pptx", import.meta.url)),
+    );
+  });
+
   it("has five slides with their notes", () => {
     expect(deck.slides.map(({ notes }) => notes)).toEqual([
       "First line of slide one.\nCafé — naïve “quotes” 日本語",

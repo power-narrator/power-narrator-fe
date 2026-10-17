@@ -23,7 +23,6 @@ import {
   type InspectedSlide,
 } from "./presentationInspector.js";
 
-/** What a provider supplies to run the shared cases. */
 export type PptProviderHarness = {
   provider: PptProvider;
   /** Makes the presentation open in the app the provider automates; a no-op for a file-based provider. */
@@ -42,11 +41,15 @@ const clip = (name: string) => new Uint8Array(fs.readFileSync(path.join(FIXTURES
 
 const REPLACE_MAIN_SLIDE = slideIndexFromOneBased(2);
 const REPLACE_TRIGGERS_SLIDE = slideIndexFromOneBased(3);
-const CLEAN_SLIDE = slideIndexFromOneBased(5);
+export const CLEAN_SLIDE = slideIndexFromOneBased(5);
 
-function succeeded<T extends object>(result: Result<T>): SuccessResult<T> {
+export type NarrationSection = { clip: string; playAcrossSlides: boolean };
+
+const sectionAudioName = (sectionIndex: number) => `ppt_audio_${sectionIndex + 1}`;
+
+function succeeded<T extends object>(result: Result<T>, context?: string): SuccessResult<T> {
   if (!result.success) {
-    assert.fail(result.message);
+    assert.fail(context ? `${context}: ${result.message}` : result.message);
   }
   return result;
 }
@@ -74,7 +77,7 @@ export async function openHandBuiltDeckCopy(harness: PptProviderHarness): Promis
 export function slideNarration(
   slideIndex: SlideIndex,
   notes: string,
-  sections: ReadonlyArray<{ clip: string; playAcrossSlides: boolean }>,
+  sections: readonly NarrationSection[],
 ): SlideNarrationEntry {
   return {
     slideIndex,
@@ -88,7 +91,6 @@ export function slideNarration(
   };
 }
 
-/** Registers the promises every PowerPoint provider keeps. */
 export function describePptProviderContract(harness: PptProviderHarness): void {
   const openDeckCopy = () => openHandBuiltDeckCopy(harness);
 
@@ -112,34 +114,29 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
         "[Guest]",
         "Third section.",
       ].join("\n");
-      const clips = ["section-1.mp3", "section-2.mp3", "section-3.mp3"].map(clip);
-      const playAcrossSlides = [true, false, true];
+      const sections = [
+        { clip: "section-1.mp3", playAcrossSlides: true },
+        { clip: "section-2.mp3", playAcrossSlides: false },
+        { clip: "section-3.mp3", playAcrossSlides: true },
+      ];
 
-      const saved = await harness.provider.saveSlideNarration(deck, {
-        slideIndex: CLEAN_SLIDE,
-        notes,
-        audio: clips.map((audioData, sectionIndex) => ({
-          slideIndex: CLEAN_SLIDE,
-          sectionIndex,
-          audioData,
-          playAcrossSlides: playAcrossSlides[sectionIndex] ?? false,
-        })),
-      });
+      const saved = await harness.provider.saveSlideNarration(
+        deck,
+        slideNarration(CLEAN_SLIDE, notes, sections),
+      );
       expect(saved).toEqual({ success: true });
       await harness.closePresentation(deck);
 
       const after = inspectPresentation(deck);
-      const [clean, ...otherSlidesAfter] = after.slides.toReversed();
-      const [cleanBefore, ...otherSlidesBefore] = before.slides.toReversed();
+      const clean = after.slides[CLEAN_SLIDE];
       expect.soft(clean?.notes).toBe(notes);
       expect(clean?.sectionAudio.map(({ name, media }) => ({ name, media }))).toEqual(
-        clips.map((audio, sectionIndex) => ({
-          name: `ppt_audio_${sectionIndex + 1}`,
-          media: mediaDigest(audio),
-        })),
+        expectedSectionAudio(sections),
       );
-      expect(clean?.otherShapes).toEqual(cleanBefore?.otherShapes);
-      expect(otherSlidesAfter).toEqual(otherSlidesBefore);
+      expect(clean?.otherShapes).toEqual(before.slides[CLEAN_SLIDE]?.otherShapes);
+      expect(withoutSlide(after.slides, CLEAN_SLIDE)).toEqual(
+        withoutSlide(before.slides, CLEAN_SLIDE),
+      );
 
       const { slide } = succeeded(
         await harness.provider.reloadSlide(deck, CLEAN_SLIDE, imagesDir()),
@@ -186,18 +183,15 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
       const deck = await openDeckCopy();
       const before = inspectPresentation(deck);
       const failedNotes = ["Failed first section.", "---", "Failed second section."].join("\n");
-      const validClip = clip("section-1.mp3");
+      const validClip = "section-1.mp3";
 
-      const failed = await harness.provider.saveSlideNarration(deck, {
-        slideIndex: CLEAN_SLIDE,
-        notes: failedNotes,
-        audio: [validClip, clip("not-audio.mp3")].map((audioData, sectionIndex) => ({
-          slideIndex: CLEAN_SLIDE,
-          sectionIndex,
-          audioData,
-          playAcrossSlides: true,
-        })),
-      });
+      const failed = await harness.provider.saveSlideNarration(
+        deck,
+        slideNarration(CLEAN_SLIDE, failedNotes, [
+          { clip: validClip, playAcrossSlides: true },
+          { clip: "not-audio.mp3", playAcrossSlides: true },
+        ]),
+      );
       expect(failed).toMatchObject({ success: false, saved: "nothing" });
       expect(inspectPresentation(deck)).toEqual(before);
       expect(await harness.isPresentationOpen(deck)).toBe(true);
@@ -205,17 +199,14 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
       const notes = ["First section after the failure.", "---", "Second section after it."].join(
         "\n",
       );
-      const clips = [clip("section-2.mp3"), clip("section-3.mp3")];
-      const saved = await harness.provider.saveSlideNarration(deck, {
-        slideIndex: CLEAN_SLIDE,
-        notes,
-        audio: clips.map((audioData, sectionIndex) => ({
-          slideIndex: CLEAN_SLIDE,
-          sectionIndex,
-          audioData,
-          playAcrossSlides: false,
-        })),
-      });
+      const sections = [
+        { clip: "section-2.mp3", playAcrossSlides: false },
+        { clip: "section-3.mp3", playAcrossSlides: false },
+      ];
+      const saved = await harness.provider.saveSlideNarration(
+        deck,
+        slideNarration(CLEAN_SLIDE, notes, sections),
+      );
       expect(saved).toEqual({ success: true });
       await harness.closePresentation(deck);
 
@@ -223,13 +214,10 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
       const clean = after.slides[CLEAN_SLIDE];
       expect.soft(clean?.notes).toBe(notes);
       expect(clean?.sectionAudio.map(({ name, media }) => ({ name, media }))).toEqual(
-        clips.map((audio, sectionIndex) => ({
-          name: `ppt_audio_${sectionIndex + 1}`,
-          media: mediaDigest(audio),
-        })),
+        expectedSectionAudio(sections),
       );
       expect(after.slides.flatMap(({ otherShapes }) => otherShapes)).not.toContainEqual(
-        expect.objectContaining({ media: mediaDigest(validClip) }),
+        expect.objectContaining({ media: mediaDigest(clip(validClip)) }),
       );
       expect(clean?.otherShapes).toEqual(before.slides[CLEAN_SLIDE]?.otherShapes);
       expect(withoutSlide(after.slides, CLEAN_SLIDE)).toEqual(
@@ -272,22 +260,31 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
         recipe.map(({ sectionsPlayingAcrossSlides }) => sectionsPlayingAcrossSlides),
       );
 
+      const reloaded = [];
       for (const loaded of slides) {
+        const slideLabel = `slide ${slideNumberOf(loaded.slideIndex)}`;
         const reloadDir = imagesDir();
         const { slide } = succeeded(
           await harness.provider.reloadSlide(deck, loaded.slideIndex, reloadDir),
+          slideLabel,
         );
-        expect(path.join(reloadDir, slide.image)).toSatisfy(fs.existsSync);
-        expect({
+        reloaded.push({
+          slide: slideLabel,
+          imageExists: fs.existsSync(path.join(reloadDir, slide.image)),
           slideIndex: slide.slideIndex,
           notes: slide.notes,
           sectionsPlayingAcrossSlides: slide.sectionsPlayingAcrossSlides,
-        }).toEqual({
+        });
+      }
+      expect(reloaded).toEqual(
+        slides.map((loaded) => ({
+          slide: `slide ${slideNumberOf(loaded.slideIndex)}`,
+          imageExists: true,
           slideIndex: loaded.slideIndex,
           notes: loaded.notes,
           sectionsPlayingAcrossSlides: loaded.sectionsPlayingAcrossSlides,
-        });
-      }
+        })),
+      );
     });
   });
 
@@ -295,7 +292,7 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
     async function replace(
       slideIndex: SlideIndex,
       notes: string,
-      sections: ReadonlyArray<{ clip: string; playAcrossSlides: boolean }>,
+      sections: readonly NarrationSection[],
       effects: InspectedEffect[],
     ): Promise<SlideWithSrc> {
       const deck = await openDeckCopy();
@@ -366,6 +363,15 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
   });
 }
 
+function expectedSectionAudio(
+  sections: readonly NarrationSection[],
+): Array<{ name: string; media: string }> {
+  return sections.map((section, sectionIndex) => ({
+    name: sectionAudioName(sectionIndex),
+    media: mediaDigest(clip(section.clip)),
+  }));
+}
+
 /**
  * The slide saved with new notes and clips, where each section audio keeps everything but
  * its clip, and `effects` is how its animation should read.
@@ -373,14 +379,14 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
 function savedOver(
   slide: InspectedSlide,
   notes: string,
-  sections: ReadonlyArray<{ clip: string }>,
+  sections: readonly NarrationSection[],
   effects: InspectedEffect[],
 ): InspectedSlide {
   return {
     ...slide,
     notes,
     sectionAudio: sections.map((section, sectionIndex) => {
-      const name = `ppt_audio_${sectionIndex + 1}`;
+      const name = sectionAudioName(sectionIndex);
       const kept = slide.sectionAudio.find((audio) => audio.name === name);
       assert(kept, `Slide ${slide.slideNumber} of the hand-built deck has no ${name}.`);
       return { ...kept, media: mediaDigest(clip(section.clip)) };
