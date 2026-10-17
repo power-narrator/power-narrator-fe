@@ -60,6 +60,19 @@ async function closeInPowerPoint(filePath: string): Promise<void> {
   ]);
 }
 
+async function isOpenInPowerPoint(filePath: string): Promise<boolean> {
+  const open = await osascript([
+    "-e",
+    "on run argv",
+    "-e",
+    'tell application "Microsoft PowerPoint" to return (full name of presentations) contains (item 1 of argv)',
+    "-e",
+    "end run",
+    filePath,
+  ]);
+  return open === "true";
+}
+
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /** Fails the run, never skips it, when Mac PowerPoint cannot run the native cases. */
@@ -127,6 +140,7 @@ describe.skipIf(process.platform !== "darwin")("MacPptProvider against PowerPoin
     provider,
     openPresentation: openInPowerPoint,
     closePresentation: closeInPowerPoint,
+    isPresentationOpen: isOpenInPowerPoint,
     tempDir: () => runDir,
   };
 
