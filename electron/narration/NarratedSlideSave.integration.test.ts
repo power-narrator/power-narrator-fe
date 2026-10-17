@@ -22,7 +22,6 @@ const narratorVoice: Voice = {
   supportsPrompt: false,
 };
 
-/** Keeps what each save reports saved: the notes, and the section audio with them. */
 class FakePowerPointAdapter {
   readonly committedNotes = new Map<number, string>();
   readonly sectionAudio = new Map<number, Map<number, Uint8Array>>();

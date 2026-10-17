@@ -14,7 +14,6 @@ export type StagedSlideAudio = {
   audioPath: string;
 };
 
-/** What the macro is doing, for its messages. */
 export type NarrationSaveAction = "saving the slide" | "removing audio";
 
 /**
@@ -45,12 +44,9 @@ export function formatNotesData(slides: readonly SlideNotesEntry[]): string {
 }
 
 /**
- * How far the macro got: `editing` once it saved the presentation as it was and
- * began changing it, `saved` once it saved those changes. `unknown` once it started
- * but did not return or finish its report: it may still be running, and its report
- * may not yet hold all it did. The macro opens its report before changing anything,
- * and its params are removed once it returns or fails to, so a missing report means
- * it changed nothing.
+ * `editing` follows the baseline save; `saved` follows the final save. The macro
+ * creates its report before changing anything, so a missing report means no mutation.
+ * An unfinished report after a failed call is uncertain: the macro may still be running.
  */
 export type NarrationSavePhase = "unchanged" | "editing" | "saved" | "unknown";
 
@@ -71,12 +67,6 @@ export function narrationSavePhase(
   return kinds.has("editing") ? "editing" : "unchanged";
 }
 
-/**
- * Each `inserted` record is `inserted|slideNumber|shapeName|playsAcrossSlides`, the confirmed
- * checkbox as `true`/`false`. Every requested slide must be left with exactly its entries.
- * The macro confirms this before its final save; checking the report again catches an
- * add-in that does not match this app, after it saved.
- */
 export function checkSaveNarrationReport(
   report: string | undefined,
   action: NarrationSaveAction,

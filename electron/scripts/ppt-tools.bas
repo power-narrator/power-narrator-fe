@@ -4,13 +4,11 @@ Private Const MEDIA_PLAY_EFFECT As Long = 83
 Private Const MEDIA_PAUSE_EFFECT As Long = 84
 Private Const MEDIA_STOP_EFFECT As Long = 85
 Private Const SECTION_AUDIO_PREFIX As String = "ppt_audio_"
-' New section audio sits beside the slide, stacked in section order.
 Private Const NEW_AUDIO_MARGIN As Single = 20
 ' Mac PowerPoint fails to read EffectType for some effects, such as ink replay.
 Private Const UNREADABLE_EFFECT_TYPE As Long = -1
 Private Const PLAY_ACROSS_SLIDES_CHECKBOX As String = "MediaClipPlayAcrossSlides"
 
-' The author's view of a presentation, captured before selecting its audio and restored afterward.
 Private Type EditingContext
     Captured As Boolean
     Target As DocumentWindow
@@ -206,7 +204,6 @@ Private Sub RemoveObsoleteSectionAudio(sld As Slide, slideNumber As Integer, sli
     Next iShape
 End Sub
 
-' Each requested slide must be left with exactly its requested section audio.
 Private Sub ConfirmSectionAudio(sld As Slide, slideNumber As Integer, slideNumbers() As Integer, shapeNames() As String, entryCount As Integer)
     Dim s As Shape
     Dim found As Integer
@@ -270,7 +267,6 @@ End Function
 ' The audio's effect types, main-sequence positions and click triggers, for example
 ' "main:83@2,84@5|click:7:85|click:self:83" (shape 7 is an external button).
 ' Click sequences are sorted, because copying and rebuilding them can change their order.
-' Empty when the audio has no animations.
 Private Function AnimationLayout(sld As Slide, shp As Shape) As String
     Dim seq As Sequence
     Dim i As Long
@@ -319,7 +315,6 @@ Private Function AnimationLayout(sld As Slide, shp As Shape) As String
     Next i
 End Function
 
-' A click sequence started by another shape, such as a button, rather than by the audio itself.
 Private Function IsExternalTrigger(seq As Sequence, old As Shape) As Boolean
     If seq.Count = 0 Then Exit Function
     If Not EffectTargetsShape(seq(1), old) Then Exit Function
@@ -375,7 +370,6 @@ Private Sub CheckReplaceable(sld As Slide, shp As Shape)
     End With
 End Sub
 
-' New section audio plays after the previous section, so audio added together plays in section order.
 Private Sub AddSectionAudioPlay(sld As Slide, shp As Shape, ByRef newAudioInsertIndex As Integer)
     Dim eff As Effect
 
@@ -384,8 +378,7 @@ Private Sub AddSectionAudioPlay(sld As Slide, shp As Shape, ByRef newAudioInsert
     newAudioInsertIndex = newAudioInsertIndex + 1
 End Sub
 
-' Copying animations leaves the replacement's effects after every other effect; move each
-' back to the position its original held. Returns the position after the last one.
+' Copying animations appends the replacement's effects after all existing effects.
 Private Function RestoreMainPositions(sld As Slide, shp As Shape, positions As Collection) As Integer
     Dim i As Long
     Dim j As Long
@@ -588,11 +581,6 @@ End Sub
 
 ' Input: presentation|resultPath|notesPath|slideNumbers (comma-separated), then
 ' slideNumber|audioPath|playAcrossSlides (1/0) per section audio. An empty notesPath leaves the notes alone.
-' Saves the presentation as it is first, so a failure loses only this macro's edits. Then writes the
-' notes, makes each requested slide's entries its complete section audio (no entries remove it all)
-' and saves both together once each checkbox and each slide's remaining section audio are confirmed.
-' A replacement keeps the old audio's animations, media settings and geometry; only the checkbox
-' may then change.
 ' Results: editing once the first save succeeded, inserted|slideNumber|shapeName|playsAcrossSlides
 ' (the confirmed checkbox, true/false), slide|slideNumber|remainingNames (comma-separated), saved once
 ' the edits are saved, then done, or error|message at the point of failure.
@@ -943,7 +931,6 @@ Private Sub RestoreSelection(editing As EditingContext)
     End Select
 End Sub
 
-' Returns why the context could not be restored, or "" once restored or when nothing was captured.
 Private Function RestoreEditingContext(ByRef editing As EditingContext) As String
     If Not editing.Captured Then Exit Function
     editing.Captured = False
@@ -1008,7 +995,6 @@ Private Function PlayAcrossSlidesChecked(editing As EditingContext, sld As Slide
     PlayAcrossSlidesChecked = Application.CommandBars.GetPressedMso(PLAY_ACROSS_SLIDES_CHECKBOX)
 End Function
 
-' Clicks the checkbox only when it differs, then returns the checkbox PowerPoint shows.
 Private Function SetPlayAcrossSlides(editing As EditingContext, sld As Slide, shp As Shape, playAcross As Boolean) As Boolean
     SetPlayAcrossSlides = PlayAcrossSlidesChecked(editing, sld, shp)
     If SetPlayAcrossSlides = playAcross Then Exit Function
@@ -1021,7 +1007,7 @@ Private Function SetPlayAcrossSlides(editing As EditingContext, sld As Slide, sh
     End If
 End Function
 
-' Points a captured shape selection on this slide at a replacement, or drops a deleted shape (newId 0).
+' newId 0 drops a deleted shape from the captured selection.
 Private Sub ReplaceSelectedShape(ByRef editing As EditingContext, sld As Slide, oldId As Long, newId As Long)
     Dim i As Long
     Dim kept As Long

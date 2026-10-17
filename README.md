@@ -362,7 +362,7 @@ committed, and a change to one must be accompanied by a recompile of the other. 
 `pre-commit` hook in `.githooks/` enforces this. The rebuild steps are at the top of the `.bas`
 file. PowerPoint loads the `.ppam` from wherever it was added, so after rebuilding, add or copy
 the new file there and restart PowerPoint. An add-in older than the app reports playback as a
-number when loading. The app rejects that report and says the installed add-in does not match.
+number when loading. The app rejects that report as unreadable playback.
 Saving with an older add-in fails because it has no `SaveNarration` macro, before any change.
 
 ### XML CLI mode
@@ -491,8 +491,8 @@ Confirm `electron/scripts/ppt-tools.ppam` is installed and enabled in PowerPoint
 execution when prompted. XML CLI mode can perform supported notes and audio mutations without the
 VBA macros, but slide images, playback, and video export still use native PowerPoint automation.
 
-An error that the installed add-in does not match this app means PowerPoint loaded an older
-`ppt-tools.ppam`. Replace it with the one from this checkout and restart PowerPoint. An error
+An unreadable playback error can mean PowerPoint loaded an older `ppt-tools.ppam`.
+Replace it with the one from this checkout and restart PowerPoint. An error
 calling the macro `SaveNarration` means the same: the older add-in cannot save narration, and the
 presentation was left unchanged.
 

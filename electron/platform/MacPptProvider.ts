@@ -63,7 +63,6 @@ type AppleScriptResult<T = Record<string, unknown>> =
       data?: T;
     };
 
-/** How trigger-macro.applescript started the macro. */
 type MacroLaunch = {
   /** The app that was in front, set only when the launch brought PowerPoint in front of it. */
   previousApp?: string;
@@ -324,7 +323,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     this.focusApp();
   }
 
-  /** Resolves to the failure, if any. */
   private async reopen(filePath: string, slideIndex: SlideIndex): Promise<string | undefined> {
     let failure: string | undefined;
     try {
@@ -682,7 +680,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     });
   }
 
-  /** Resolves to the failure, extended with how recovery went or else with `discarded`. */
   private async discardFailedChanges(
     filePath: string,
     failure: string,
