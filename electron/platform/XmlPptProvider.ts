@@ -14,9 +14,11 @@ import {
   buildSlidesWithPaths,
   buildPptAudioFileName,
   cleanupPaths,
-  sectionIndexFromPptAudioShapeName,
+  exportedPreviewImages,
   normalizeNotes,
+  reloadedPreviewImage,
   resolveScriptPath,
+  sectionIndexFromPptAudioShapeName,
 } from "./helpers.js";
 import { completeSlideReload } from "./slideReload.js";
 import type {
@@ -27,7 +29,6 @@ import type {
   ReadSlideNotesResult,
   RunXmlCliResult,
   SlideAudioEntry,
-  SlideImageMap,
   SlidePptResult,
   SlideNarrationEntry,
   SlideNarrationSaveResult,
@@ -387,11 +388,9 @@ export class XmlPptProvider implements PptProvider {
       return queryResult;
     }
 
-    const imageResult = await this.nativeProvider.exportSlideImages(filePath, outputDir);
-    if (!imageResult.success) {
-      console.error("Slide previews are unavailable:", imageResult.message);
-    }
-    const images: SlideImageMap = imageResult.success ? imageResult.images : new Map();
+    const images = exportedPreviewImages(
+      await this.nativeProvider.exportSlideImages(filePath, outputDir),
+    );
 
     const slides = queryResult.slideData.map((slide, position) => {
       const slideIndex = toSlideIndex(position);
@@ -429,19 +428,15 @@ export class XmlPptProvider implements PptProvider {
       };
     }
 
-    const imageResult = await this.nativeProvider.reloadSlideImage(filePath, slideIndex, outputDir);
-    if (!imageResult.success) {
-      console.error(
-        `Slide ${slideNumberOf(slideIndex)} preview is unavailable:`,
-        imageResult.message,
-      );
-    }
-
+    const image = reloadedPreviewImage(
+      slideIndex,
+      await this.nativeProvider.reloadSlideImage(filePath, slideIndex, outputDir),
+    );
     return completeSlideReload(
       outputDir,
       slideIndex,
       { notes: slide.notes, sectionsPlayingAcrossSlides: NO_SECTIONS_PLAYING_ACROSS_SLIDES },
-      imageResult.success ? imageResult.image : null,
+      image,
     );
   }
 }

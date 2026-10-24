@@ -16,6 +16,8 @@ import {
   buildSlidesWithPaths,
   buildPptAudioFileName,
   cleanupPaths,
+  exportedPreviewImages,
+  reloadedPreviewImage,
   resolveScriptPath,
 } from "./helpers.js";
 import {
@@ -494,16 +496,8 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
         return playbackResult;
       }
 
-      const imageResult = await this.exportSlideImages(filePath, outputDir);
-      if (!imageResult.success) {
-        console.error("Slide previews are unavailable:", imageResult.message);
-      }
-
-      const slides = this.mergeSlideData(
-        imageResult.success ? imageResult.images : new Map(),
-        notesResult.notes,
-        playbackResult.playback,
-      );
+      const images = exportedPreviewImages(await this.exportSlideImages(filePath, outputDir));
+      const slides = this.mergeSlideData(images, notesResult.notes, playbackResult.playback);
       return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
     } catch (err: unknown) {
       return { success: false, message: getErrorMessage(err) };
@@ -748,20 +742,11 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
         return contentResult;
       }
 
-      const imageResult = await this.reloadSlideImage(filePath, slideIndex, outputDir);
-      if (!imageResult.success) {
-        console.error(
-          `Slide ${slideNumberOf(slideIndex)} preview is unavailable:`,
-          imageResult.message,
-        );
-      }
-
-      return completeSlideReload(
-        outputDir,
+      const image = reloadedPreviewImage(
         slideIndex,
-        contentResult,
-        imageResult.success ? imageResult.image : null,
+        await this.reloadSlideImage(filePath, slideIndex, outputDir),
       );
+      return completeSlideReload(outputDir, slideIndex, contentResult, image);
     } finally {
       try {
         this.focusApp();
