@@ -750,11 +750,17 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
 
       const imageResult = await this.reloadSlideImage(filePath, slideIndex, outputDir);
       if (!imageResult.success) {
-        return imageResult;
+        console.error(
+          `Slide ${slideNumberOf(slideIndex)} preview is unavailable:`,
+          imageResult.message,
+        );
       }
 
-      return await completeSlideReload(outputDir, slideIndex, imageResult.image, () =>
-        Promise.resolve(contentResult),
+      return completeSlideReload(
+        outputDir,
+        slideIndex,
+        contentResult,
+        imageResult.success ? imageResult.image : null,
       );
     } finally {
       try {

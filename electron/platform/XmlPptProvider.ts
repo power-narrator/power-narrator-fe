@@ -431,15 +431,17 @@ export class XmlPptProvider implements PptProvider {
 
     const imageResult = await this.nativeProvider.reloadSlideImage(filePath, slideIndex, outputDir);
     if (!imageResult.success) {
-      return imageResult;
+      console.error(
+        `Slide ${slideNumberOf(slideIndex)} preview is unavailable:`,
+        imageResult.message,
+      );
     }
 
-    return completeSlideReload(outputDir, slideIndex, imageResult.image, () =>
-      Promise.resolve({
-        success: true,
-        notes: slide.notes,
-        sectionsPlayingAcrossSlides: NO_SECTIONS_PLAYING_ACROSS_SLIDES,
-      }),
+    return completeSlideReload(
+      outputDir,
+      slideIndex,
+      { notes: slide.notes, sectionsPlayingAcrossSlides: NO_SECTIONS_PLAYING_ACROSS_SLIDES },
+      imageResult.success ? imageResult.image : null,
     );
   }
 }

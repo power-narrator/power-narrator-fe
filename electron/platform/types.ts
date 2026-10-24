@@ -75,10 +75,13 @@ export type ReadAllSlideNotesResult = Result<{ notes: SlideNotesMap }>;
 
 export type ReadSlideNotesResult = Result<{ notes: string }>;
 
-export type ReadSlideContentResult = Result<{
+/** The data a slide requires, without its optional preview. */
+export type SlideContent = {
   notes: string;
   sectionsPlayingAcrossSlides: SectionsPlayingAcrossSlides;
-}>;
+};
+
+export type ReadSlideContentResult = Result<SlideContent>;
 
 export type XmlSlideAudio = {
   name: string;

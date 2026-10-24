@@ -5,11 +5,8 @@ import {
   type SlideIndex,
   type SlideNumber,
 } from "../../shared/slides/slideCoordinates.js";
-import { getErrorMessage } from "./errors.js";
 import { buildSlidesWithPaths } from "./helpers.js";
-import type { ReadSlideContentResult, SlidePptResult } from "./types.js";
-
-type LoadSlideContent = () => Promise<ReadSlideContentResult>;
+import type { SlideContent, SlidePptResult } from "./types.js";
 
 function resolveSlideImagePath(outputDir: string, image: string): string | null {
   const slidesDir = path.resolve(outputDir, "slides");
@@ -44,14 +41,6 @@ function matchesSlideImage(imagePath: string, slideNumber: SlideNumber): boolean
   return imageName.startsWith(slideImagePrefix(slideNumber)) && imageName.endsWith(".png");
 }
 
-function discardSlideImage(outputDir: string, slideNumber: SlideNumber, image: string): void {
-  const imagePath = resolveSlideImagePath(outputDir, image);
-
-  if (imagePath && matchesSlideImage(imagePath, slideNumber)) {
-    removeSlideImage(imagePath);
-  }
-}
-
 function isSlideImageAvailable(
   outputDir: string,
   slideNumber: SlideNumber,
@@ -69,16 +58,13 @@ function isSlideImageAvailable(
   }
 }
 
+/** Removes every image of the slide except `keepImagePath`, or all of them when it is null. */
 function pruneSlideImageVersions(
   outputDir: string,
   slideNumber: SlideNumber,
-  keepImage: string,
+  keepImagePath: string | null,
 ): void {
   const slidesDir = path.resolve(outputDir, "slides");
-  const keepImagePath = resolveSlideImagePath(outputDir, keepImage);
-  if (!keepImagePath || !isSlideImageAvailable(outputDir, slideNumber, keepImage)) {
-    return;
-  }
 
   try {
     const slidePrefix = slideImagePrefix(slideNumber);
@@ -99,53 +85,39 @@ function pruneSlideImageVersions(
   }
 }
 
-export async function completeSlideReload(
+/**
+ * Accepts freshly read slide content, with the preview staged for it when one
+ * exported. Without a usable staged image the slide has no preview, so none
+ * of its earlier images are kept beside the fresh content.
+ */
+export function completeSlideReload(
   outputDir: string,
   slideIndex: SlideIndex,
-  stagedImage: string,
-  loadContent: LoadSlideContent,
-): Promise<SlidePptResult> {
+  content: SlideContent,
+  stagedImage: string | null,
+): SlidePptResult {
   const slideNumber = slideNumberOf(slideIndex);
-  let committed = false;
+  const image =
+    stagedImage !== null && isSlideImageAvailable(outputDir, slideNumber, stagedImage)
+      ? stagedImage
+      : null;
 
-  try {
-    if (!isSlideImageAvailable(outputDir, slideNumber, stagedImage)) {
-      return { success: false, message: "The exported slide image is not available." };
-    }
+  const [slide] = buildSlidesWithPaths(
+    [
+      {
+        slideIndex,
+        image,
+        notes: content.notes,
+        sectionsPlayingAcrossSlides: content.sectionsPlayingAcrossSlides,
+      },
+    ],
+    outputDir,
+  );
 
-    const contentResult = await loadContent();
-    if (!contentResult.success) {
-      return contentResult;
-    }
-    if (contentResult.notes === undefined) {
-      return { success: false, message: "Slide notes are not available." };
-    }
-
-    const [slide] = buildSlidesWithPaths(
-      [
-        {
-          slideIndex,
-          image: stagedImage,
-          notes: contentResult.notes,
-          sectionsPlayingAcrossSlides: contentResult.sectionsPlayingAcrossSlides,
-        },
-      ],
-      outputDir,
-    );
-
-    if (!slide) {
-      return { success: false, message: "Could not build the reloaded slide." };
-    }
-
-    pruneSlideImageVersions(outputDir, slideNumber, stagedImage);
-    committed = true;
-    return { success: true, slide };
-  } catch (error: unknown) {
-    console.error("Failed to complete slide reload:", error);
-    return { success: false, message: getErrorMessage(error) };
-  } finally {
-    if (!committed) {
-      discardSlideImage(outputDir, slideNumber, stagedImage);
-    }
+  if (!slide) {
+    return { success: false, message: "Could not build the reloaded slide." };
   }
+
+  pruneSlideImageVersions(outputDir, slideNumber, image && resolveSlideImagePath(outputDir, image));
+  return { success: true, slide };
 }

@@ -103,6 +103,19 @@ function createNativeProvider(
   };
 }
 
+/** An output directory whose slides folder already holds these images. */
+function createSlidesDir(...images: string[]): string {
+  if (!tempDir) {
+    throw new Error("Expected a temporary test directory");
+  }
+  const outputDir = path.join(tempDir, "deck");
+  fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });
+  for (const image of images) {
+    fs.writeFileSync(path.join(outputDir, "slides", image), "fixture");
+  }
+  return outputDir;
+}
+
 describe("XmlPptProvider loading", () => {
   it("loads every slide with none of its section audio playing across slides", async () => {
     const provider = new XmlPptProvider(
@@ -244,16 +257,21 @@ describe("XmlPptProvider required slide data", () => {
       { results: [{ success: true, result: [{ notes: "First", audio: [] }], message: "" }] },
       "Could not find slide data for slide 2",
     ],
-  ])("fails the reload without exporting its image when %s", async (_, response, message) => {
-    const reloadSlideImage = vi.fn<NativePlatformProvider["reloadSlideImage"]>();
-    const provider = new XmlPptProvider(createNativeProvider({ reloadSlideImage }));
-    xmlCliResponses.push(response);
+  ])(
+    "fails the reload, keeping the previous image and exporting none, when %s",
+    async (_, response, message) => {
+      const outputDir = createSlidesDir("Slide_2_previous.png");
+      const reloadSlideImage = vi.fn<NativePlatformProvider["reloadSlideImage"]>();
+      const provider = new XmlPptProvider(createNativeProvider({ reloadSlideImage }));
+      xmlCliResponses.push(response);
 
-    await expect(
-      provider.reloadSlide("/presentations/deck.pptx", toSlideIndex(1), "/tmp/deck"),
-    ).resolves.toEqual({ success: false, message });
-    expect(reloadSlideImage).not.toHaveBeenCalled();
-  });
+      await expect(
+        provider.reloadSlide("/presentations/deck.pptx", toSlideIndex(1), outputDir),
+      ).resolves.toEqual({ success: false, message });
+      expect(reloadSlideImage).not.toHaveBeenCalled();
+      expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_2_previous.png"]);
+    },
+  );
 
   it("loads genuinely blank notes as empty", async () => {
     const provider = new XmlPptProvider(
@@ -320,6 +338,34 @@ describe("XmlPptProvider.reloadSlide", () => {
     expect(fs.existsSync(stagedImage)).toBe(true);
     expect(fs.existsSync(previousImage)).toBe(false);
     expect(fs.existsSync(otherSlideImage)).toBe(true);
+  });
+  it("accepts the fresh notes without the previous image when the preview fails to export", async () => {
+    const outputDir = createSlidesDir("Slide_2_previous.png", "Slide_20_existing.png");
+    const reloadSlideImage = vi
+      .fn<NativePlatformProvider["reloadSlideImage"]>()
+      .mockResolvedValue({ success: false, message: "PowerPoint could not export the slide" });
+    const provider = new XmlPptProvider(createNativeProvider({ reloadSlideImage }));
+    respondWithSlides([
+      { notes: "First slide", audio: [] },
+      { notes: "Fresh notes", audio: [] },
+    ]);
+
+    const result = await provider.reloadSlide(
+      "/presentations/deck.pptx",
+      toSlideIndex(1),
+      outputDir,
+    );
+
+    expect(result).toEqual({
+      success: true,
+      slide: {
+        slideIndex: 1,
+        preview: null,
+        notes: "Fresh notes",
+        sectionsPlayingAcrossSlides: new Set(),
+      },
+    });
+    expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_20_existing.png"]);
   });
 });
 
