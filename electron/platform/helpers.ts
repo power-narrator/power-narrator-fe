@@ -2,7 +2,9 @@ import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { slideNumberOf, type SlideIndex } from "../../shared/slides/slideCoordinates.js";
+import { getErrorMessage } from "./errors.js";
 import type {
+  ErrorResult,
   ExportSlideImagesResult,
   ReloadSlideImageResult,
   SlideImageMap,
@@ -59,7 +61,10 @@ export function buildSlidesWithPaths(
   }));
 }
 
-export function exportedPreviewImages(imageResult: ExportSlideImagesResult): SlideImageMap {
+export async function exportedPreviewImages(
+  imageExport: Promise<ExportSlideImagesResult>,
+): Promise<SlideImageMap> {
+  const imageResult = await imageExport.catch(previewExportFailure);
   if (!imageResult.success) {
     console.error("Slide previews are unavailable:", imageResult.message);
     return new Map();
@@ -67,10 +72,11 @@ export function exportedPreviewImages(imageResult: ExportSlideImagesResult): Sli
   return imageResult.images;
 }
 
-export function reloadedPreviewImage(
+export async function reloadedPreviewImage(
   slideIndex: SlideIndex,
-  imageResult: ReloadSlideImageResult,
-): string | null {
+  imageExport: Promise<ReloadSlideImageResult>,
+): Promise<string | null> {
+  const imageResult = await imageExport.catch(previewExportFailure);
   if (!imageResult.success) {
     console.error(
       `Slide ${slideNumberOf(slideIndex)} preview is unavailable:`,
@@ -79,6 +85,10 @@ export function reloadedPreviewImage(
     return null;
   }
   return imageResult.image;
+}
+
+function previewExportFailure(error: unknown): ErrorResult {
+  return { success: false, message: getErrorMessage(error) };
 }
 
 export function cleanupPaths(...paths: Array<string | null | undefined>): void {

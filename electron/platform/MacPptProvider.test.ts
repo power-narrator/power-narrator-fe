@@ -562,6 +562,33 @@ describe("MacPptProvider.convertPptx", () => {
     });
   });
 
+  it("opens every slide without previews when the preview export folder cannot be created", async () => {
+    if (!tempDir) {
+      throw new Error("Expected a temporary test directory");
+    }
+    fs.writeFileSync(path.join(tempDir, "power-narrator"), "not a folder");
+    const provider = new MacPptProvider();
+    reportNotes("ExportAllSlideNotes", notesReport("First", "Second"));
+    reportSectionAudioPlayback(
+      "###SLIDE_START### 1\nppt_audio_1\ttrue\n###SLIDE_END###\n###SLIDE_START### 2\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+
+    await expect(
+      provider.convertPptx("/presentations/deck.pptx", "/tmp/deck"),
+    ).resolves.toMatchObject({
+      success: true,
+      slides: [
+        {
+          slideIndex: 0,
+          notes: "First",
+          sectionsPlayingAcrossSlides: new Set([0]),
+          preview: null,
+        },
+        { slideIndex: 1, notes: "Second", sectionsPlayingAcrossSlides: new Set(), preview: null },
+      ],
+    });
+  });
+
   it("treats a slide the exporter reported without an image as having no preview", async () => {
     const provider = new MacPptProvider();
     vi.spyOn(provider, "exportSlideImages").mockResolvedValue({
@@ -634,6 +661,46 @@ describe("MacPptProvider Reload All", () => {
       "Slide_2_in_use.png": "second preview",
     });
   });
+
+  it.each([
+    [
+      "the preview export folder cannot be created",
+      (tempDir: string) => fs.writeFileSync(path.join(tempDir, "power-narrator"), "not a folder"),
+    ],
+    [
+      "the preview export rejects",
+      (_: string, provider: MacPptProvider) =>
+        vi.spyOn(provider, "exportSlideImages").mockRejectedValue(new Error("PowerPoint quit")),
+    ],
+  ])(
+    "accepts the fresh notes and playback without the previous previews when %s",
+    async (_, failPreviewExport) => {
+      if (!tempDir) {
+        throw new Error("Expected a temporary test directory");
+      }
+      const provider = new MacPptProvider();
+      const outputDir = path.join(tempDir, "deck");
+      fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });
+      fs.writeFileSync(path.join(outputDir, "slides/Slide_1_in_use.png"), "first preview");
+      failPreviewExport(tempDir, provider);
+      reportNotes("ExportAllSlideNotes", notesReport("Fresh"));
+      reportSectionAudioPlayback(
+        "###SLIDE_START### 1\nppt_audio_1\ttrue\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      );
+
+      await expect(provider.convertPptx("/presentations/deck.pptx", outputDir)).resolves.toEqual({
+        success: true,
+        slides: [
+          {
+            slideIndex: 0,
+            notes: "Fresh",
+            sectionsPlayingAcrossSlides: new Set([0]),
+            preview: null,
+          },
+        ],
+      });
+    },
+  );
 });
 
 function saveNarrationMacroReports(report: string | undefined) {
@@ -849,6 +916,37 @@ describe("MacPptProvider.reloadSlide", () => {
       },
     });
     expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_3_other.png"]);
+  });
+
+  it("accepts the fresh notes and playback without the previous image when the preview export rejects", async () => {
+    const provider = new MacPptProvider();
+    const { outputDir, reloadSlideImage } = stageReloadedImage(provider);
+    fs.writeFileSync(path.join(outputDir, "slides/Slide_3_other.png"), "other");
+    reloadSlideImage.mockRejectedValue(new Error("PowerPoint quit"));
+    reportNotes(
+      "ExportSlideNotes",
+      "###SLIDE_COUNT### 3\n###SLIDE_START### 2\nFresh\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+    reportSectionAudioPlayback(
+      "###SLIDE_START### 2\nppt_audio_1\ttrue\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+
+    const result = await provider.reloadSlide(
+      "/presentations/deck.pptx",
+      toSlideIndex(1),
+      outputDir,
+    );
+
+    expect(result).toEqual({
+      success: true,
+      slide: {
+        slideIndex: 1,
+        preview: null,
+        notes: "Fresh",
+        sectionsPlayingAcrossSlides: new Set([0]),
+      },
+    });
+    expect(readSlidesDir(outputDir)).toEqual({ "Slide_3_other.png": "other" });
   });
 
   it("restores the preview and drops the previous image once the preview exports again", async () => {

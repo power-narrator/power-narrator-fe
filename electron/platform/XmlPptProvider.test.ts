@@ -205,6 +205,60 @@ describe("XmlPptProvider loading", () => {
       ],
     });
   });
+
+  it("opens every slide without previews when the preview export folder cannot be created", async () => {
+    const provider = new XmlPptProvider(
+      createNativeProvider({
+        exportSlideImages: vi.fn<NativePlatformProvider["exportSlideImages"]>(
+          () =>
+            new Promise((resolve) => {
+              const notAFolder = path.join(createSlidesDir(), "power-narrator");
+              fs.writeFileSync(notAFolder, "not a folder");
+              fs.mkdirSync(path.join(notAFolder, "deck"), { recursive: true });
+              resolve({ success: true, images: new Map() });
+            }),
+        ),
+      }),
+    );
+    respondWithSlides([
+      { notes: "First", audio: [] },
+      { notes: "Second", audio: [] },
+    ]);
+
+    await expect(
+      provider.convertPptx("/presentations/deck.pptx", "/tmp/deck"),
+    ).resolves.toMatchObject({
+      success: true,
+      slides: [
+        { slideIndex: 0, notes: "First", preview: null },
+        { slideIndex: 1, notes: "Second", preview: null },
+      ],
+    });
+  });
+
+  it("accepts the fresh notes without the previous previews when the preview export rejects during Reload All", async () => {
+    const outputDir = createSlidesDir("Slide_1_in_use.png");
+    const provider = new XmlPptProvider(
+      createNativeProvider({
+        exportSlideImages: vi
+          .fn<NativePlatformProvider["exportSlideImages"]>()
+          .mockRejectedValue(new Error("PowerPoint quit")),
+      }),
+    );
+    respondWithSlides([{ notes: "Fresh", audio: [] }]);
+
+    await expect(provider.convertPptx("/presentations/deck.pptx", outputDir)).resolves.toEqual({
+      success: true,
+      slides: [
+        {
+          slideIndex: 0,
+          notes: "Fresh",
+          sectionsPlayingAcrossSlides: new Set(),
+          preview: null,
+        },
+      ],
+    });
+  });
 });
 
 const unreadableSlideData: Array<[string, XmlCliResponse, string]> = [
@@ -375,6 +429,34 @@ describe("XmlPptProvider.reloadSlide", () => {
     const reloadSlideImage = vi
       .fn<NativePlatformProvider["reloadSlideImage"]>()
       .mockResolvedValue({ success: false, message: "PowerPoint could not export the slide" });
+    const provider = new XmlPptProvider(createNativeProvider({ reloadSlideImage }));
+    respondWithSlides([
+      { notes: "First slide", audio: [] },
+      { notes: "Fresh notes", audio: [] },
+    ]);
+
+    const result = await provider.reloadSlide(
+      "/presentations/deck.pptx",
+      toSlideIndex(1),
+      outputDir,
+    );
+
+    expect(result).toEqual({
+      success: true,
+      slide: {
+        slideIndex: 1,
+        preview: null,
+        notes: "Fresh notes",
+        sectionsPlayingAcrossSlides: new Set(),
+      },
+    });
+    expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_20_existing.png"]);
+  });
+  it("accepts the fresh notes without the previous image when the preview export rejects", async () => {
+    const outputDir = createSlidesDir("Slide_2_previous.png", "Slide_20_existing.png");
+    const reloadSlideImage = vi
+      .fn<NativePlatformProvider["reloadSlideImage"]>()
+      .mockRejectedValue(new Error("PowerPoint quit"));
     const provider = new XmlPptProvider(createNativeProvider({ reloadSlideImage }));
     respondWithSlides([
       { notes: "First slide", audio: [] },

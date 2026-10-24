@@ -498,7 +498,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
         return playbackResult;
       }
 
-      const images = exportedPreviewImages(await this.exportSlideImages(filePath, outputDir));
+      const images = await exportedPreviewImages(this.exportSlideImages(filePath, outputDir));
       const slides = this.mergeSlideData(images, notesResult.notes, playbackResult.playback);
       return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
     } catch (err: unknown) {
@@ -744,9 +744,9 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
         return contentResult;
       }
 
-      const image = reloadedPreviewImage(
+      const image = await reloadedPreviewImage(
         slideIndex,
-        await this.reloadSlideImage(filePath, slideIndex, outputDir),
+        this.reloadSlideImage(filePath, slideIndex, outputDir),
       );
       return completeSlideReload(outputDir, slideIndex, contentResult, image);
     } finally {
