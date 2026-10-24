@@ -10,6 +10,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const run = promisify(execFile);
 const REPO = fileURLToPath(new URL("../..", import.meta.url));
+/** Inside the Office group container, so sandboxed PowerPoint opens files without asking. */
+const RUNS_DIR = path.join(
+  os.homedir(),
+  "Library/Group Containers/UBF8T346G9.Office/power-narrator-native",
+);
 
 describe.skipIf(process.platform !== "darwin")("slide image export while switching decks", () => {
   let runDir: string;
@@ -18,7 +23,8 @@ describe.skipIf(process.platform !== "darwin")("slide image export while switchi
   let harness: string;
 
   beforeAll(() => {
-    runDir = fs.mkdtempSync(path.join(os.tmpdir(), "power-narrator-deck-switch-"));
+    fs.mkdirSync(RUNS_DIR, { recursive: true });
+    runDir = fs.mkdtempSync(path.join(RUNS_DIR, "deck-switch-"));
     target = path.join(runDir, "target.pptx");
     other = path.join(runDir, "other.pptx");
     fs.copyFileSync(path.join(REPO, "tests/fixtures/hand-built-deck.pptx"), target);
@@ -89,6 +95,9 @@ end run
       ]);
     }
     fs.rmSync(runDir, { recursive: true, force: true });
+    if (fs.readdirSync(RUNS_DIR).length === 0) {
+      fs.rmdirSync(RUNS_DIR);
+    }
   });
 
   it.each(["before-count", "during-export", "in-background"])(
