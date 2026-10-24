@@ -13,9 +13,9 @@ Private Type EditingContext
     Captured As Boolean
     Target As DocumentWindow
     ViewType As Long
-    SlideIndex As Long
+    SlideNumber As Long
     SelectionType As Long
-    ' Shape ids for a shape or text selection, slide indices for a slide selection.
+    ' Shape ids for a shape or text selection, slide numbers for a slide selection.
     SelectedIds() As Long
     SelectedCount As Long
     SelectedOnNotesPage As Boolean
@@ -268,21 +268,21 @@ Failed:
     Err.Raise errorNumber, , errorMessage
 End Function
 
-Function SlideNotesBlock(slideIndex As Integer, notesText As String) As String
+Function SlideNotesBlock(slideNumber As Integer, notesText As String) As String
     Dim normalizedText As String
 
     normalizedText = NormalizeLineBreaks(notesText)
-    SlideNotesBlock = "###SLIDE_START### " & slideIndex & vbLf
+    SlideNotesBlock = "###SLIDE_START### " & slideNumber & vbLf
     If Len(normalizedText) > 0 Then SlideNotesBlock = SlideNotesBlock & normalizedText & vbLf
     SlideNotesBlock = SlideNotesBlock & "###SLIDE_END###" & vbLf
 End Function
 
-Sub ExportNotesToFile(pres As Presentation, outputPath As String, Optional slideIndex As Integer = 0)
+Sub ExportNotesToFile(pres As Presentation, outputPath As String, Optional slideNumber As Integer = 0)
     Dim content As String
     Dim i As Integer
 
-    If slideIndex > 0 Then
-        content = SlideNotesBlock(slideIndex, GetSlideNotesText(pres.Slides(slideIndex)))
+    If slideNumber > 0 Then
+        content = SlideNotesBlock(slideNumber, GetSlideNotesText(pres.Slides(slideNumber)))
     Else
         For i = 1 To pres.Slides.Count
             content = content & SlideNotesBlock(i, GetSlideNotesText(pres.Slides(i)))
@@ -933,7 +933,7 @@ Sub ExportSlideNotes()
     Dim targetPath As String
     Dim fileContent As String
     Dim params() As String
-    Dim slideIndex As Integer
+    Dim slideNumber As Integer
 
     paramsPath = GetOfficeFilePath("export_slide_notes_params.txt")
     fileContent = ReadSingleLineFile(paramsPath, "Error: Could not find export_slide_notes_params.txt")
@@ -943,18 +943,18 @@ Sub ExportSlideNotes()
     If UBound(params) < 2 Then Exit Sub
 
     targetPath = params(0)
-    slideIndex = CInt(params(1))
+    slideNumber = CInt(params(1))
     outputPath = params(2)
 
     Set pres = GetPresentationOrShowError(targetPath)
     If pres Is Nothing Then Exit Sub
 
-    If slideIndex < 1 Or slideIndex > pres.Slides.Count Then
-        MsgBox "Invalid slide index: " & slideIndex
+    If slideNumber < 1 Or slideNumber > pres.Slides.Count Then
+        MsgBox "Invalid slide number: " & slideNumber
         Exit Sub
     End If
 
-    ExportNotesToFile pres, outputPath, slideIndex
+    ExportNotesToFile pres, outputPath, slideNumber
 End Sub
 
 Private Function HasMediaPlayEffect(sld As Slide, shp As Shape) As Boolean
@@ -976,10 +976,10 @@ Private Function HasMediaPlayEffect(sld As Slide, shp As Shape) As Boolean
 End Function
 
 ' Slide Sorter has no current slide, only selected slides; 0 when neither is available.
-Private Function WindowSlideIndex(w As DocumentWindow) As Long
+Private Function WindowSlideNumber(w As DocumentWindow) As Long
     On Error Resume Next
-    WindowSlideIndex = w.View.Slide.SlideIndex
-    If WindowSlideIndex = 0 Then WindowSlideIndex = w.Selection.SlideRange(1).SlideIndex
+    WindowSlideNumber = w.View.Slide.SlideIndex
+    If WindowSlideNumber = 0 Then WindowSlideNumber = w.Selection.SlideRange(1).SlideIndex
 End Function
 
 ' Activating a window raises it above other apps' windows even when it is already active.
@@ -1007,7 +1007,7 @@ Private Sub CaptureEditingContext(pres As Presentation, ByRef editing As Editing
 
     Set editing.Target = pres.Windows(1)
     editing.ViewType = editing.Target.ViewType
-    editing.SlideIndex = WindowSlideIndex(editing.Target)
+    editing.SlideNumber = WindowSlideNumber(editing.Target)
     editing.SelectionType = editing.Target.Selection.Type
     editing.SelectedCount = 0
 
@@ -1057,9 +1057,9 @@ Private Sub RestoreSelection(editing As EditingContext)
     Select Case editing.SelectionType
     Case ppSelectionShapes, ppSelectionText
         If editing.SelectedOnNotesPage Then
-            Set shapesOnPage = pres.Slides(editing.SlideIndex).NotesPage.Shapes
+            Set shapesOnPage = pres.Slides(editing.SlideNumber).NotesPage.Shapes
         Else
-            Set shapesOnPage = pres.Slides(editing.SlideIndex).Shapes
+            Set shapesOnPage = pres.Slides(editing.SlideNumber).Shapes
         End If
         For i = 0 To editing.SelectedCount - 1
             indices(i) = ShapeIndexWithId(shapesOnPage, editing.SelectedIds(i + 1))
@@ -1093,8 +1093,8 @@ Private Function RestoreEditingContext(ByRef editing As EditingContext) As Strin
 
     ActivateWindow editing.Target
     If editing.Target.ViewType <> editing.ViewType Then editing.Target.ViewType = editing.ViewType
-    If editing.ViewType = ppViewNormal And editing.SlideIndex > 0 Then
-        If WindowSlideIndex(editing.Target) <> editing.SlideIndex Then editing.Target.View.GotoSlide editing.SlideIndex
+    If editing.ViewType = ppViewNormal And editing.SlideNumber > 0 Then
+        If WindowSlideNumber(editing.Target) <> editing.SlideNumber Then editing.Target.View.GotoSlide editing.SlideNumber
     End If
     RestoreSelection editing
     Exit Function
@@ -1110,7 +1110,7 @@ Private Sub SelectSectionAudio(editing As EditingContext, sld As Slide, shp As S
     Set w = editing.Target
     ActivateWindow w
     If w.ViewType <> ppViewNormal Then w.ViewType = ppViewNormal
-    If WindowSlideIndex(w) <> sld.SlideIndex Then w.View.GotoSlide sld.SlideIndex
+    If WindowSlideNumber(w) <> sld.SlideIndex Then w.View.GotoSlide sld.SlideIndex
     shp.Select
     DoEvents
 
@@ -1167,7 +1167,7 @@ Private Sub ReplaceSelectedShape(ByRef editing As EditingContext, sld As Slide, 
     Dim kept As Long
 
     If editing.SelectionType <> ppSelectionShapes Then Exit Sub
-    If editing.SelectedOnNotesPage Or editing.SlideIndex <> sld.SlideIndex Then Exit Sub
+    If editing.SelectedOnNotesPage Or editing.SlideNumber <> sld.SlideIndex Then Exit Sub
 
     For i = 1 To editing.SelectedCount
         If editing.SelectedIds(i) <> oldId Then
