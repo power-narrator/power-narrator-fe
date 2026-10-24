@@ -8,7 +8,6 @@ import {
   trySlideIndexFromOneBased,
   slideNumberOf,
   type SlideIndex,
-  type SlideNumber,
 } from "../../shared/slides/slideCoordinates.js";
 import { getErrorMessage } from "./errors.js";
 import {
@@ -383,12 +382,15 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
 
   private readNotesReport(
     outputPath: string,
-    requestedSlides?: readonly SlideNumber[],
+    requestedSlides?: readonly SlideIndex[],
   ): NotesReportResult {
     if (!fs.existsSync(outputPath)) {
       return { success: false, message: "PowerPoint did not report slide notes." };
     }
-    return parseNotesReport(fs.readFileSync(outputPath, "utf8"), requestedSlides);
+    return parseNotesReport(
+      fs.readFileSync(outputPath, "utf8"),
+      requestedSlides?.map(slideNumberOf),
+    );
   }
 
   async readAllSlideNotes(filePath: string): Promise<ReadAllSlideNotesResult> {
@@ -431,7 +433,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
         return { success: false, message: scriptResult.message || "Failed to export slide notes." };
       }
 
-      const notesResult = this.readNotesReport(outputPath, [slideNumberOf(slideIndex)]);
+      const notesResult = this.readNotesReport(outputPath, [slideIndex]);
       if (!notesResult.success) {
         return notesResult;
       }
