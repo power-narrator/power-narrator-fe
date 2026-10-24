@@ -1,15 +1,7 @@
-import {
-  AspectRatio,
-  Box,
-  Center,
-  Image,
-  ScrollArea,
-  Stack,
-  Text,
-  UnstyledButton,
-} from "@mantine/core";
+import { AspectRatio, Box, Image, ScrollArea, Stack, UnstyledButton } from "@mantine/core";
 import { slideNumberOf, type SlideIndex } from "../../../shared/slides/slideCoordinates";
 import type { Slide } from "../../types/electron";
+import { PreviewUnavailablePlaceholder } from "./PreviewUnavailablePlaceholder";
 
 type SlideThumbnailListProps = {
   slides: readonly Pick<Slide, "slideIndex" | "preview">[];
@@ -46,11 +38,11 @@ export function SlideThumbnailList({
                 <Image src={slide.preview.src} alt="" radius={isActive ? "none" : "sm"} />
               ) : (
                 <AspectRatio ratio={16 / 9}>
-                  <Center bg="gray.8" bdrs={isActive ? undefined : "sm"}>
-                    <Text size="xs" c="dimmed" ta="center">
-                      Preview unavailable
-                    </Text>
-                  </Center>
+                  <PreviewUnavailablePlaceholder
+                    size="xs"
+                    bg="gray.8"
+                    bdrs={isActive ? undefined : "sm"}
+                  />
                 </AspectRatio>
               )}
             </UnstyledButton>
