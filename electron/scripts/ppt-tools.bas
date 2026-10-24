@@ -97,76 +97,185 @@ EmptyNotes:
     GetSlideNotesText = ""
 End Function
 
-Function SlideNotesBlock(slideIndex As Integer, notesText As String) As String
-    Dim normalizedText As String
-
-    normalizedText = Replace(notesText, vbCrLf, vbLf)
-    normalizedText = Replace(normalizedText, vbCr, vbLf)
-
-    SlideNotesBlock = "###SLIDE_START### " & slideIndex & vbLf
-    If Len(normalizedText) > 0 Then SlideNotesBlock = SlideNotesBlock & normalizedText & vbLf
-    SlideNotesBlock = SlideNotesBlock & "###SLIDE_END###" & vbLf
+Private Function NormalizeLineBreaks(text As String) As String
+    NormalizeLineBreaks = Replace(Replace(text, vbCrLf, vbLf), vbCr, vbLf)
 End Function
 
-' Print # writes in the legacy Mac encoding, which cannot hold most Unicode text.
+' Print # and Line Input use the legacy Mac encoding, which cannot hold most Unicode text,
+' so notes files are encoded and decoded as UTF-8 by hand.
 Private Function Utf8Bytes(text As String) As Byte()
-    Dim bytes() As Byte
-    Dim count As Long
+    Dim encoded() As Byte
+    Dim encodedLength As Long
     Dim i As Long
-    Dim code As Long
-    Dim low As Long
+    Dim codePoint As Long
+    Dim lowSurrogate As Long
 
-    ReDim bytes(0 To 3 * Len(text) - 1)
+    ReDim encoded(0 To 3 * Len(text) - 1)
     i = 1
     Do While i <= Len(text)
-        code = AscW(Mid$(text, i, 1)) And &HFFFF&
-        If code >= &HD800& And code <= &HDBFF& And i < Len(text) Then
-            low = AscW(Mid$(text, i + 1, 1)) And &HFFFF&
-            If low >= &HDC00& And low <= &HDFFF& Then
-                code = &H10000 + (code - &HD800&) * &H400& + (low - &HDC00&)
+        codePoint = AscW(Mid(text, i, 1)) And &HFFFF&
+        If codePoint >= &HD800& And codePoint <= &HDFFF& Then
+            lowSurrogate = 0
+            If codePoint <= &HDBFF& And i < Len(text) Then lowSurrogate = AscW(Mid(text, i + 1, 1)) And &HFFFF&
+            If lowSurrogate >= &HDC00& And lowSurrogate <= &HDFFF& Then
+                codePoint = &H10000& + (codePoint - &HD800&) * &H400& + (lowSurrogate - &HDC00&)
                 i = i + 1
+            Else
+                codePoint = &HFFFD&
             End If
         End If
 
-        If code < &H80& Then
-            bytes(count) = code
-            count = count + 1
-        ElseIf code < &H800& Then
-            bytes(count) = &HC0& Or (code \ &H40&)
-            bytes(count + 1) = &H80& Or (code And &H3F&)
-            count = count + 2
-        ElseIf code < &H10000 Then
-            bytes(count) = &HE0& Or (code \ &H1000&)
-            bytes(count + 1) = &H80& Or ((code \ &H40&) And &H3F&)
-            bytes(count + 2) = &H80& Or (code And &H3F&)
-            count = count + 3
+        If codePoint < &H80& Then
+            encoded(encodedLength) = codePoint
+            encodedLength = encodedLength + 1
+        ElseIf codePoint < &H800& Then
+            encoded(encodedLength) = &HC0& Or (codePoint \ &H40&)
+            encoded(encodedLength + 1) = &H80& Or (codePoint And &H3F&)
+            encodedLength = encodedLength + 2
+        ElseIf codePoint < &H10000& Then
+            encoded(encodedLength) = &HE0& Or (codePoint \ &H1000&)
+            encoded(encodedLength + 1) = &H80& Or ((codePoint \ &H40&) And &H3F&)
+            encoded(encodedLength + 2) = &H80& Or (codePoint And &H3F&)
+            encodedLength = encodedLength + 3
         Else
-            bytes(count) = &HF0& Or (code \ &H40000)
-            bytes(count + 1) = &H80& Or ((code \ &H1000&) And &H3F&)
-            bytes(count + 2) = &H80& Or ((code \ &H40&) And &H3F&)
-            bytes(count + 3) = &H80& Or (code And &H3F&)
-            count = count + 4
+            encoded(encodedLength) = &HF0& Or (codePoint \ &H40000&)
+            encoded(encodedLength + 1) = &H80& Or ((codePoint \ &H1000&) And &H3F&)
+            encoded(encodedLength + 2) = &H80& Or ((codePoint \ &H40&) And &H3F&)
+            encoded(encodedLength + 3) = &H80& Or (codePoint And &H3F&)
+            encodedLength = encodedLength + 4
         End If
         i = i + 1
     Loop
 
-    ReDim Preserve bytes(0 To count - 1)
-    Utf8Bytes = bytes
+    ReDim Preserve encoded(0 To encodedLength - 1)
+    Utf8Bytes = encoded
 End Function
 
-Private Sub WriteUtf8File(outputPath As String, text As String)
-    Dim outputNum As Integer
-    Dim bytes() As Byte
+Private Function DecodeUtf8(bytes() As Byte) As String
+    Dim decoded As String
+    Dim decodedLength As Long
+    Dim byteCount As Long
+    Dim i As Long
+    Dim j As Long
+    Dim leadByte As Long
+    Dim continuationCount As Long
+    Dim minCodePoint As Long
+    Dim codePoint As Long
 
-    If Dir(outputPath) <> "" Then Kill outputPath
-    outputNum = FreeFile
-    Open outputPath For Binary Access Write As outputNum
-    If Len(text) > 0 Then
-        bytes = Utf8Bytes(text)
-        Put #outputNum, , bytes
+    byteCount = UBound(bytes) + 1
+    If byteCount >= 3 Then
+        If bytes(0) = &HEF& And bytes(1) = &HBB& And bytes(2) = &HBF& Then i = 3
     End If
-    Close outputNum
+
+    decoded = String(byteCount, " ")
+    Do While i < byteCount
+        leadByte = bytes(i)
+        If leadByte < &H80& Then
+            codePoint = leadByte
+            continuationCount = 0
+            minCodePoint = 0
+        ElseIf leadByte >= &HC0& And leadByte < &HE0& Then
+            codePoint = leadByte And &H1F&
+            continuationCount = 1
+            minCodePoint = &H80&
+        ElseIf leadByte >= &HE0& And leadByte < &HF0& Then
+            codePoint = leadByte And &HF&
+            continuationCount = 2
+            minCodePoint = &H800&
+        ElseIf leadByte >= &HF0& And leadByte < &HF8& Then
+            codePoint = leadByte And &H7&
+            continuationCount = 3
+            minCodePoint = &H10000&
+        Else
+            Err.Raise vbObjectError + 531, , "The notes are not valid UTF-8 at byte " & i & "."
+        End If
+        If i + continuationCount >= byteCount Then
+            Err.Raise vbObjectError + 531, , "The notes end inside a UTF-8 character."
+        End If
+        For j = 1 To continuationCount
+            If (bytes(i + j) And &HC0&) <> &H80& Then
+                Err.Raise vbObjectError + 531, , "The notes are not valid UTF-8 at byte " & (i + j) & "."
+            End If
+            codePoint = codePoint * &H40& + (bytes(i + j) And &H3F&)
+        Next j
+        If codePoint < minCodePoint Or codePoint > &H10FFFF& Or (codePoint >= &HD800& And codePoint <= &HDFFF&) Then
+            Err.Raise vbObjectError + 531, , "The notes are not valid UTF-8 at byte " & i & "."
+        End If
+        i = i + continuationCount + 1
+
+        If codePoint >= &H10000& Then
+            codePoint = codePoint - &H10000&
+            decodedLength = decodedLength + 1
+            Mid(decoded, decodedLength, 1) = ChrW(&HD800& + codePoint \ &H400&)
+            decodedLength = decodedLength + 1
+            Mid(decoded, decodedLength, 1) = ChrW(&HDC00& + (codePoint And &H3FF&))
+        Else
+            decodedLength = decodedLength + 1
+            Mid(decoded, decodedLength, 1) = ChrW(codePoint)
+        End If
+    Loop
+
+    DecodeUtf8 = Left(decoded, decodedLength)
+End Function
+
+Private Sub WriteUtf8File(filePath As String, text As String)
+    Dim fileNum As Integer
+    Dim bytes() As Byte
+    Dim errorNumber As Long
+    Dim errorMessage As String
+
+    If Len(text) > 0 Then bytes = Utf8Bytes(text)
+    If Dir(filePath) <> "" Then Kill filePath
+    fileNum = FreeFile
+    Open filePath For Binary Access Write As fileNum
+    On Error GoTo Failed
+    If Len(text) > 0 Then Put #fileNum, , bytes
+    Close fileNum
+    Exit Sub
+
+Failed:
+    errorNumber = Err.Number
+    errorMessage = Err.Description
+    Close fileNum
+    Err.Raise errorNumber, , errorMessage
 End Sub
+
+Private Function ReadUtf8File(filePath As String) As String
+    Dim fileNum As Integer
+    Dim byteCount As Long
+    Dim bytes() As Byte
+    Dim errorNumber As Long
+    Dim errorMessage As String
+
+    fileNum = FreeFile
+    Open filePath For Binary Access Read As fileNum
+    On Error GoTo Failed
+    byteCount = LOF(fileNum)
+    If byteCount > 0 Then
+        ReDim bytes(0 To byteCount - 1)
+        Get #fileNum, , bytes
+    End If
+    Close fileNum
+    On Error GoTo 0
+
+    If byteCount > 0 Then ReadUtf8File = DecodeUtf8(bytes)
+    Exit Function
+
+Failed:
+    errorNumber = Err.Number
+    errorMessage = Err.Description
+    Close fileNum
+    Err.Raise errorNumber, , errorMessage
+End Function
+
+Function SlideNotesBlock(slideIndex As Integer, notesText As String) As String
+    Dim normalizedText As String
+
+    normalizedText = NormalizeLineBreaks(notesText)
+    SlideNotesBlock = "###SLIDE_START### " & slideIndex & vbLf
+    If Len(normalizedText) > 0 Then SlideNotesBlock = SlideNotesBlock & normalizedText & vbLf
+    SlideNotesBlock = SlideNotesBlock & "###SLIDE_END###" & vbLf
+End Function
 
 Sub ExportNotesToFile(pres As Presentation, outputPath As String, Optional slideIndex As Integer = 0)
     Dim content As String
@@ -577,80 +686,8 @@ Function ReadEffectType(eff As Effect) As Long
     ReadEffectType = eff.EffectType
 End Function
 
-' Line Input decodes with the legacy Mac encoding, which garbles the UTF-8 the provider writes.
-Private Function ReadUtf8File(filePath As String) As String
-    Dim fileNum As Integer
-    Dim byteCount As Long
-    Dim bytes() As Byte
-
-    fileNum = FreeFile
-    Open filePath For Binary Access Read As fileNum
-    byteCount = LOF(fileNum)
-    If byteCount > 0 Then
-        ReDim bytes(0 To byteCount - 1)
-        Get fileNum, , bytes
-    End If
-    Close fileNum
-
-    If byteCount > 0 Then ReadUtf8File = DecodeUtf8(bytes, byteCount)
-End Function
-
-Private Function DecodeUtf8(bytes() As Byte, byteCount As Long) As String
-    Dim decoded As String
-    Dim decodedLength As Long
-    Dim i As Long
-    Dim j As Long
-    Dim leadByte As Long
-    Dim continuationCount As Long
-    Dim codePoint As Long
-
-    decoded = String$(byteCount, " ")
-    Do While i < byteCount
-        leadByte = bytes(i)
-        If leadByte < &H80 Then
-            codePoint = leadByte
-            continuationCount = 0
-        ElseIf leadByte >= &HC0 And leadByte < &HE0 Then
-            codePoint = leadByte And &H1F
-            continuationCount = 1
-        ElseIf leadByte >= &HE0 And leadByte < &HF0 Then
-            codePoint = leadByte And &HF
-            continuationCount = 2
-        ElseIf leadByte >= &HF0 And leadByte < &HF8 Then
-            codePoint = leadByte And &H7
-            continuationCount = 3
-        Else
-            Err.Raise vbObjectError + 531, , "The notes are not valid UTF-8 at byte " & i & "."
-        End If
-        If i + continuationCount >= byteCount Then
-            Err.Raise vbObjectError + 531, , "The notes end inside a UTF-8 character."
-        End If
-        For j = 1 To continuationCount
-            If (bytes(i + j) And &HC0) <> &H80 Then
-                Err.Raise vbObjectError + 531, , "The notes are not valid UTF-8 at byte " & (i + j) & "."
-            End If
-            codePoint = codePoint * &H40& + (bytes(i + j) And &H3F)
-        Next j
-        i = i + continuationCount + 1
-
-        If codePoint >= &H10000 Then
-            codePoint = codePoint - &H10000
-            decodedLength = decodedLength + 1
-            Mid$(decoded, decodedLength, 1) = ChrW(&HD800& + codePoint \ &H400&)
-            decodedLength = decodedLength + 1
-            Mid$(decoded, decodedLength, 1) = ChrW(&HDC00& + (codePoint And &H3FF&))
-        Else
-            decodedLength = decodedLength + 1
-            Mid$(decoded, decodedLength, 1) = ChrW(codePoint)
-        End If
-    Loop
-
-    DecodeUtf8 = Left$(decoded, decodedLength)
-End Function
-
 ' Notes data is UTF-8 holding "###SLIDE_START### <slide number>", the notes lines, then "###SLIDE_END###" per slide.
 Private Sub WriteNotesFromFile(pres As Presentation, dataPath As String)
-    Dim dataText As String
     Dim dataLines() As String
     Dim lineIndex As Long
     Dim lineData As String
@@ -660,8 +697,8 @@ Private Sub WriteNotesFromFile(pres As Presentation, dataPath As String)
     Dim isFirstLine As Boolean
     Dim errorMessage As String
 
-    dataText = Replace(ReadUtf8File(dataPath), vbCrLf, vbLf)
-    dataLines = Split(Replace(dataText, vbCr, vbLf), vbLf)
+    On Error GoTo ReadFailed
+    dataLines = Split(NormalizeLineBreaks(ReadUtf8File(dataPath)), vbLf)
     On Error GoTo Failed
 
     For lineIndex = LBound(dataLines) To UBound(dataLines)
@@ -690,6 +727,10 @@ Private Sub WriteNotesFromFile(pres As Presentation, dataPath As String)
         End If
     Next lineIndex
     Exit Sub
+
+ReadFailed:
+    errorMessage = "Could not read the notes file: " & Err.Description
+    Err.Raise vbObjectError + 529, , errorMessage
 
 Failed:
     errorMessage = "Could not write the notes of slide " & slideNumber & ": " & Err.Description
