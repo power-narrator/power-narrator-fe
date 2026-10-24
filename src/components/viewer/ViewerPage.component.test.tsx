@@ -903,6 +903,36 @@ test("reloads every slide when the reload-all discard warning is accepted", asyn
   await vi.waitFor(() => expect(editor.element()).toHaveValue("Reloaded narration"));
 });
 
+test("keeps the loaded notes and preview when reloading every slide fails", async () => {
+  const alerted = vi.spyOn(window, "alert").mockImplementation(() => {});
+  installElectronApi({
+    convertPptx: vi.fn<typeof window.electronAPI.convertPptx>(() =>
+      Promise.resolve({
+        success: false,
+        message: "Could not read the notes of slide 1: Automation error",
+      }),
+    ),
+    confirmDiscardNarrationChanges: vi.fn<typeof window.electronAPI.confirmDiscardNarrationChanges>(
+      () => Promise.resolve(true),
+    ),
+  });
+  const { screen } = await renderViewer();
+
+  await screen.getByRole("button", { name: "Reload All Slides", exact: true }).click();
+
+  await vi.waitFor(() =>
+    expect(alerted).toHaveBeenCalledWith(
+      "Sync error: Could not read the notes of slide 1: Automation error",
+    ),
+  );
+  await expect
+    .element(screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }))
+    .toHaveValue("Loaded narration");
+  await expect
+    .element(screen.getByRole("img", { name: "Slide 1 preview" }))
+    .toHaveAttribute("src", "slide-one");
+});
+
 const promptableVoice = {
   provider: "gcp",
   voiceId: "Achernar",
