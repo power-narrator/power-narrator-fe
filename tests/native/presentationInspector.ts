@@ -465,10 +465,7 @@ function slideDifferences(expected: InspectedSlide, actual: InspectedSlide): str
   ];
 }
 
-/**
- * Names each slide, shape and property in which `actual` differs from `expected`, and each
- * effect removed, added, moved or retriggered. Animation durations and delays are never compared.
- */
+/** Animation durations and delays are never compared. */
 export function presentationDifferences(
   expected: InspectedPresentation,
   actual: InspectedPresentation,

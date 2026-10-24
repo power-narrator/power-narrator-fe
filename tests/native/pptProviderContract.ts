@@ -398,10 +398,6 @@ function expectedSectionAudio(
   }));
 }
 
-/**
- * The slide saved with new notes and clips, where each section audio keeps everything but
- * its clip, and `effects` is how its animation should read.
- */
 function savedOver(
   slide: InspectedSlide,
   notes: string,
