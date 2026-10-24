@@ -1,7 +1,14 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { SlideManifestEntry, SlideWithSrc } from "./types.js";
+import { slideNumberOf, type SlideIndex } from "../../shared/slides/slideCoordinates.js";
+import type {
+  ExportSlideImagesResult,
+  ReloadSlideImageResult,
+  SlideImageMap,
+  SlideManifestEntry,
+  SlideWithSrc,
+} from "./types.js";
 
 export const APP_NAME = "power-narrator";
 export const PPT_AUDIO_PREFIX = "ppt_audio";
@@ -50,6 +57,28 @@ export function buildSlidesWithPaths(
       : null,
     notes: normalizeNotes(slide.notes),
   }));
+}
+
+export function exportedPreviewImages(imageResult: ExportSlideImagesResult): SlideImageMap {
+  if (!imageResult.success) {
+    console.error("Slide previews are unavailable:", imageResult.message);
+    return new Map();
+  }
+  return imageResult.images;
+}
+
+export function reloadedPreviewImage(
+  slideIndex: SlideIndex,
+  imageResult: ReloadSlideImageResult,
+): string | null {
+  if (!imageResult.success) {
+    console.error(
+      `Slide ${slideNumberOf(slideIndex)} preview is unavailable:`,
+      imageResult.message,
+    );
+    return null;
+  }
+  return imageResult.image;
 }
 
 export function cleanupPaths(...paths: Array<string | null | undefined>): void {
