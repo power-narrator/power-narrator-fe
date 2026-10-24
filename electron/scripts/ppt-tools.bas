@@ -77,11 +77,25 @@ Function ReadSingleLineFile(filePath As String, missingMessage As String) As Str
     Close fileNum
 End Function
 
-' A notes page without a notes placeholder has empty notes; any other read failure is raised.
+' The notes live in the notes page's body placeholder; Nothing when the page has none
+' with a text frame. Read failures are raised.
+Function NotesBodyPlaceholder(sld As Slide) As Shape
+    Dim notesShape As Shape
+
+    For Each notesShape In sld.NotesPage.Shapes.Placeholders
+        If notesShape.PlaceholderFormat.Type = ppPlaceholderBody Then
+            If notesShape.HasTextFrame Then Set NotesBodyPlaceholder = notesShape
+            Exit Function
+        End If
+    Next notesShape
+End Function
+
+' A notes page without a body placeholder has empty notes; any other read failure is raised.
 Function GetSlideNotesText(sld As Slide) As String
-    If sld.NotesPage.Shapes.Count > 1 Then
-        GetSlideNotesText = sld.NotesPage.Shapes(2).TextFrame.TextRange.Text
-    End If
+    Dim notesBody As Shape
+
+    Set notesBody = NotesBodyPlaceholder(sld)
+    If Not notesBody Is Nothing Then GetSlideNotesText = notesBody.TextFrame.TextRange.Text
 End Function
 
 Private Function NormalizeLineBreaks(text As String) As String
@@ -705,6 +719,7 @@ Private Sub WriteNotesFromFile(pres As Presentation, dataPath As String)
     Dim notesText As String
     Dim isReading As Boolean
     Dim isFirstLine As Boolean
+    Dim notesBody As Shape
     Dim errorMessage As String
 
     On Error GoTo ReadFailed
@@ -722,10 +737,11 @@ Private Sub WriteNotesFromFile(pres As Presentation, dataPath As String)
             If slideNumber < 1 Or slideNumber > pres.Slides.Count Then
                 Err.Raise vbObjectError + 516, , "Slide " & slideNumber & " does not exist."
             End If
-            If pres.Slides(slideNumber).NotesPage.Shapes.Count < 2 Then
+            Set notesBody = NotesBodyPlaceholder(pres.Slides(slideNumber))
+            If notesBody Is Nothing Then
                 Err.Raise vbObjectError + 528, , "Slide " & slideNumber & " has no notes placeholder."
             End If
-            pres.Slides(slideNumber).NotesPage.Shapes(2).TextFrame.TextRange.Text = notesText
+            notesBody.TextFrame.TextRange.Text = notesText
             isReading = False
         ElseIf isReading Then
             If isFirstLine Then
