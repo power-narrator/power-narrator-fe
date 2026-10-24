@@ -7,7 +7,7 @@ import type {
   ReloadSlideImageResult,
   SlideImageMap,
   SlideManifestEntry,
-  SlideWithSrc,
+  SlideWithNotes,
 } from "./types.js";
 
 export const APP_NAME = "power-narrator";
@@ -47,7 +47,7 @@ export function normalizeNotes(notes: string): string {
 export function buildSlidesWithPaths(
   slides: SlideManifestEntry[],
   outputDir: string,
-): SlideWithSrc[] {
+): SlideWithNotes[] {
   const timestamp = Date.now();
 
   return slides.map(({ image, ...slide }) => ({

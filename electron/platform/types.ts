@@ -34,7 +34,7 @@ export type SlideNotesEntry = {
   notes: string;
 };
 
-export type SlideWithSrc = Omit<SlideManifestEntry, "image"> & {
+export type SlideWithNotes = Omit<SlideManifestEntry, "image"> & {
   preview: SlidePreview | null;
 };
 
@@ -63,9 +63,9 @@ export type SlideNarrationSaveResult =
   | SuccessResult
   | (ErrorResult & { saved: SavedSlideNarration });
 
-export type SlidesPptResult = Result<{ slides: SlideWithSrc[] }>;
+export type SlidesPptResult = Result<{ slides: SlideWithNotes[] }>;
 
-export type SlidePptResult = Result<{ slide: SlideWithSrc }>;
+export type SlidePptResult = Result<{ slide: SlideWithNotes }>;
 
 export type ExportSlideImagesResult = Result<{ images: SlideImageMap }>;
 

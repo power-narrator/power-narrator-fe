@@ -12,7 +12,7 @@ import type { PptProvider } from "../../electron/platform/PptProvider.js";
 import type {
   Result,
   SlideNarrationEntry,
-  SlideWithSrc,
+  SlideWithNotes,
   SuccessResult,
 } from "../../electron/platform/types.js";
 import {
@@ -325,7 +325,7 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
       notes: string,
       sections: readonly NarrationSection[],
       effects: InspectedEffect[],
-    ): Promise<SlideWithSrc> {
+    ): Promise<SlideWithNotes> {
       const deck = await openDeckCopy();
       const before = inspectPresentation(deck);
 
