@@ -60,12 +60,24 @@ vi.mock("electron", () => ({
 
 let tempDir: string | undefined;
 
+function testDir(): string {
+  if (!tempDir) {
+    throw new Error("Expected a temporary test directory");
+  }
+  return tempDir;
+}
+
+/** A file where the preview export folder goes stops the export before any AppleScript runs. */
+function blockPreviewExportFolder(): void {
+  fs.writeFileSync(path.join(testDir(), "power-narrator"), "not a folder");
+}
+
 beforeEach(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "power-narrator-mac-provider-"));
   // `app.getPath` is an Electron-owned method; mocking it requires an unbound reference.
   // oxlint-disable-next-line typescript/unbound-method
   vi.mocked(app.getPath).mockReturnValue(tempDir);
-  fs.mkdirSync(path.join(tempDir, "Library/Group Containers/UBF8T346G9.Office"), {
+  fs.mkdirSync(path.join(testDir(), "Library/Group Containers/UBF8T346G9.Office"), {
     recursive: true,
   });
 });
@@ -97,10 +109,7 @@ describe("MacPptProvider.reloadSlideImage", () => {
       success: true,
       data: { image: "slides/Slide_7_uuid.png" },
     });
-    if (!tempDir) {
-      throw new Error("Expected a temporary test directory");
-    }
-    const outputDir = path.join(tempDir, "deck");
+    const outputDir = path.join(testDir(), "deck");
 
     const result = await provider.reloadSlideImage(
       "/presentations/deck.pptx",
@@ -122,11 +131,7 @@ describe("MacPptProvider.reloadSlideImage", () => {
 });
 
 function officeContainerPath(fileName: string): string {
-  if (!tempDir) {
-    throw new Error("Expected a temporary test directory");
-  }
-
-  return path.join(tempDir, "Library/Group Containers/UBF8T346G9.Office", fileName);
+  return path.join(testDir(), "Library/Group Containers/UBF8T346G9.Office", fileName);
 }
 
 function openAppWindow() {
@@ -195,12 +200,8 @@ describe("MacPptProvider presentation lifecycle", () => {
 
 describe("MacPptProvider.exportSlideImages", () => {
   it("reads the manifest's 1-based slide numbers as slide indices", async () => {
-    if (!tempDir) {
-      throw new Error("Expected a temporary test directory");
-    }
-
     const provider = new MacPptProvider();
-    const manifestPath = path.join(tempDir, "images.json");
+    const manifestPath = path.join(testDir(), "images.json");
     fs.writeFileSync(
       manifestPath,
       JSON.stringify([
@@ -465,10 +466,7 @@ describe("MacPptProvider section audio playback", () => {
   });
 
   it("reads the playback of the reloaded slide only", async () => {
-    if (!tempDir) {
-      throw new Error("Expected a temporary test directory");
-    }
-    const outputDir = path.join(tempDir, "deck");
+    const outputDir = path.join(testDir(), "deck");
     fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });
     fs.writeFileSync(path.join(outputDir, "slides/Slide_2_staged.png"), "fixture");
     const provider = new MacPptProvider();
@@ -555,10 +553,7 @@ describe("MacPptProvider.convertPptx", () => {
   });
 
   it("opens every slide without previews when the preview export folder cannot be created", async () => {
-    if (!tempDir) {
-      throw new Error("Expected a temporary test directory");
-    }
-    fs.writeFileSync(path.join(tempDir, "power-narrator"), "not a folder");
+    blockPreviewExportFolder();
     const provider = new MacPptProvider();
     reportNotes("ExportAllSlideNotes", notesReport("First", "Second"));
     reportSectionAudioPlayback(
@@ -633,11 +628,8 @@ describe("MacPptProvider Reload All", () => {
       "###ERROR### Target presentation has no editing window\n",
     ],
   ])("leaves the previews in use untouched on disk when %s", async (_, notes, playback) => {
-    if (!tempDir) {
-      throw new Error("Expected a temporary test directory");
-    }
     const provider = new MacPptProvider();
-    const outputDir = path.join(tempDir, "deck");
+    const outputDir = path.join(testDir(), "deck");
     fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });
     fs.writeFileSync(path.join(outputDir, "slides/Slide_1_in_use.png"), "first preview");
     fs.writeFileSync(path.join(outputDir, "slides/Slide_2_in_use.png"), "second preview");
@@ -655,26 +647,20 @@ describe("MacPptProvider Reload All", () => {
   });
 
   it.each([
-    [
-      "the preview export folder cannot be created",
-      (tempDir: string) => fs.writeFileSync(path.join(tempDir, "power-narrator"), "not a folder"),
-    ],
+    ["the preview export folder cannot be created", blockPreviewExportFolder],
     [
       "the preview export rejects",
-      (_: string, provider: MacPptProvider) =>
+      (provider: MacPptProvider) =>
         vi.spyOn(provider, "exportSlideImages").mockRejectedValue(new Error("PowerPoint quit")),
     ],
   ])(
     "accepts the fresh notes and playback without the previous previews when %s",
     async (_, failPreviewExport) => {
-      if (!tempDir) {
-        throw new Error("Expected a temporary test directory");
-      }
       const provider = new MacPptProvider();
-      const outputDir = path.join(tempDir, "deck");
+      const outputDir = path.join(testDir(), "deck");
       fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });
       fs.writeFileSync(path.join(outputDir, "slides/Slide_1_in_use.png"), "first preview");
-      failPreviewExport(tempDir, provider);
+      failPreviewExport(provider);
       reportNotes("ExportAllSlideNotes", notesReport("Fresh"));
       reportSectionAudioPlayback(
         "###SLIDE_START### 1\nppt_audio_1\ttrue\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
@@ -802,10 +788,7 @@ describe("MacPptProvider notes reports", () => {
 
 describe("MacPptProvider.reloadSlide", () => {
   function stageReloadedImage(provider: MacPptProvider) {
-    if (!tempDir) {
-      throw new Error("Expected a temporary test directory");
-    }
-    const outputDir = path.join(tempDir, "deck");
+    const outputDir = path.join(testDir(), "deck");
     fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });
     fs.writeFileSync(path.join(outputDir, "slides/Slide_2_previous.png"), "previous");
     const reloadSlideImage = vi.spyOn(provider, "reloadSlideImage").mockImplementation(() => {
