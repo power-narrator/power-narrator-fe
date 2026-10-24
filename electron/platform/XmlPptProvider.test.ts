@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toSlideIndex } from "../../shared/slides/slideCoordinates.js";
+import { MacPptProvider } from "./MacPptProvider.js";
 import { XmlPptProvider } from "./XmlPptProvider.js";
 import type { NativePlatformProvider } from "./PptProvider.js";
 import type { XmlCliOperation, XmlCliResponse, XmlSlideData } from "./types.js";
@@ -16,9 +17,11 @@ type XmlCliRequest = {
 
 const xmlCliCalls: XmlCliRequest[] = [];
 const xmlCliResponses: XmlCliResponse[] = [];
+const spawnedCommands: string[] = [];
 
 vi.mock("node:child_process", () => ({
-  spawn: (_command: string, [requestPath, responsePath]: string[]) => {
+  spawn: (command: string, [requestPath, responsePath]: string[]) => {
+    spawnedCommands.push(path.basename(command));
     xmlCliCalls.push(JSON.parse(fs.readFileSync(requestPath!, "utf8")) as XmlCliRequest);
     const listeners = new Map<string, (value: string | number) => void>();
 
@@ -50,6 +53,13 @@ vi.mock("electron", () => ({
 
 let tempDir: string | undefined;
 
+function testDir(): string {
+  if (!tempDir) {
+    throw new Error("Expected a temporary test directory");
+  }
+  return tempDir;
+}
+
 beforeEach(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "power-narrator-xml-provider-"));
   // `app.getPath` is an Electron-owned method; mocking it requires an unbound reference.
@@ -61,6 +71,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   xmlCliCalls.length = 0;
   xmlCliResponses.length = 0;
+  spawnedCommands.length = 0;
   if (tempDir) {
     fs.rmSync(tempDir, { recursive: true, force: true });
     tempDir = undefined;
@@ -103,6 +114,26 @@ function createNativeProvider(
   };
 }
 
+/** An output directory whose slides folder already holds these images. */
+function createSlidesDir(...images: string[]): string {
+  const outputDir = path.join(testDir(), "deck");
+  fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });
+  for (const image of images) {
+    fs.writeFileSync(path.join(outputDir, "slides", image), "fixture");
+  }
+  return outputDir;
+}
+
+const previewExportFailures: Array<[string, () => Promise<never>]> = [
+  ["rejects", () => Promise.reject(new Error("PowerPoint quit"))],
+  [
+    "throws before returning a promise",
+    () => {
+      throw new Error("PowerPoint quit");
+    },
+  ],
+];
+
 describe("XmlPptProvider loading", () => {
   it("loads every slide with none of its section audio playing across slides", async () => {
     const provider = new XmlPptProvider(
@@ -128,27 +159,238 @@ describe("XmlPptProvider loading", () => {
       slides: [
         {
           slideIndex: 0,
-          image: "slides/Slide_1.png",
+          preview: { image: "slides/Slide_1.png" },
           notes: "First",
           sectionsPlayingAcrossSlides: new Set(),
         },
         {
           slideIndex: 1,
-          image: "slides/Slide_2.png",
+          preview: { image: "slides/Slide_2.png" },
           notes: "Second\nnotes",
           sectionsPlayingAcrossSlides: new Set(),
         },
       ],
     });
   });
+
+  it("keeps all 72 slides with their notes when only 10 previews export", async () => {
+    const previewed = [0, 7, 15, 22, 30, 38, 45, 53, 60, 71];
+    const provider = new XmlPptProvider(
+      createNativeProvider({
+        exportSlideImages: vi.fn<NativePlatformProvider["exportSlideImages"]>().mockResolvedValue({
+          success: true,
+          images: new Map(
+            previewed.map((i) => [toSlideIndex(i), { image: `slides/Slide_${i + 1}.png` }]),
+          ),
+        }),
+      }),
+    );
+    const notes = Array.from({ length: 72 }, (_, i) => `Notes ${i + 1}`);
+    respondWithSlides(notes.map((text) => ({ notes: text, audio: [] })));
+
+    const result = await provider.convertPptx("/presentations/deck.pptx", "/tmp/deck");
+
+    if (!result.success) {
+      throw new Error(result.message);
+    }
+    expect(result.slides.map(({ slideIndex, notes }) => ({ slideIndex, notes }))).toEqual(
+      notes.map((text, i) => ({ slideIndex: i, notes: text })),
+    );
+    expect(result.slides.filter(({ preview }) => preview === null)).toHaveLength(62);
+    expect(result.slides[7]?.preview).toMatchObject({ image: "slides/Slide_8.png" });
+  });
+
+  it("opens every slide without previews when the whole image export fails", async () => {
+    const provider = new XmlPptProvider(
+      createNativeProvider({
+        exportSlideImages: vi
+          .fn<NativePlatformProvider["exportSlideImages"]>()
+          .mockResolvedValue({ success: false, message: "PowerPoint could not export images" }),
+      }),
+    );
+    respondWithSlides([
+      { notes: "First", audio: [] },
+      { notes: "Second", audio: [] },
+    ]);
+
+    await expect(
+      provider.convertPptx("/presentations/deck.pptx", "/tmp/deck"),
+    ).resolves.toMatchObject({
+      success: true,
+      slides: [
+        { slideIndex: 0, notes: "First", preview: null },
+        { slideIndex: 1, notes: "Second", preview: null },
+      ],
+    });
+  });
+
+  it("opens every slide without previews when the preview export folder cannot be created", async () => {
+    fs.writeFileSync(path.join(testDir(), "power-narrator"), "not a folder");
+    const macProvider = new MacPptProvider();
+    vi.spyOn(macProvider, "closePresentation").mockResolvedValue(toSlideIndex(0));
+    vi.spyOn(macProvider, "reopenPresentation").mockResolvedValue();
+    const provider = new XmlPptProvider(macProvider);
+    respondWithSlides([
+      { notes: "First", audio: [] },
+      { notes: "Second", audio: [] },
+    ]);
+
+    await expect(
+      provider.convertPptx("/presentations/deck.pptx", "/tmp/deck"),
+    ).resolves.toMatchObject({
+      success: true,
+      slides: [
+        { slideIndex: 0, notes: "First", preview: null },
+        { slideIndex: 1, notes: "Second", preview: null },
+      ],
+    });
+    expect(spawnedCommands).toEqual(["power-narrator-cli"]);
+  });
+
+  it.each(previewExportFailures)(
+    "accepts the fresh notes without the previous previews when the preview export %s during Reload All",
+    async (_, failPreviewExport) => {
+      const outputDir = createSlidesDir("Slide_1_in_use.png");
+      const provider = new XmlPptProvider(
+        createNativeProvider({
+          exportSlideImages: vi.fn<NativePlatformProvider["exportSlideImages"]>(failPreviewExport),
+        }),
+      );
+      respondWithSlides([{ notes: "Fresh", audio: [] }]);
+
+      await expect(provider.convertPptx("/presentations/deck.pptx", outputDir)).resolves.toEqual({
+        success: true,
+        slides: [
+          {
+            slideIndex: 0,
+            notes: "Fresh",
+            sectionsPlayingAcrossSlides: new Set(),
+            preview: null,
+          },
+        ],
+      });
+    },
+  );
+});
+
+const unreadableSlideData: Array<[string, XmlCliResponse, string]> = [
+  [
+    "the CLI cannot read the slides",
+    { results: [{ success: false, result: null, message: "Bad zip file" }] },
+    "Failed to query slide content: Bad zip file",
+  ],
+  [
+    "the CLI omits the operation status",
+    {
+      results: [{ result: [{ notes: "First", audio: [] }], message: "" }],
+    },
+    "Failed to query slide content: the slide report did not confirm success",
+  ],
+  [
+    "the CLI reports an invalid operation status",
+    {
+      results: [{ success: "true", result: [{ notes: "First", audio: [] }], message: "" }],
+    },
+    "Failed to query slide content: the slide report did not confirm success",
+  ],
+  [
+    "the CLI reports no slide list",
+    { results: [{ success: true, result: {}, message: "" }] },
+    "Could not find slide data",
+  ],
+  [
+    "a slide's notes are missing",
+    {
+      results: [
+        { success: true, result: [{ notes: "First", audio: [] }, { audio: [] }], message: "" },
+      ],
+    },
+    "Could not read the notes of slide 2.",
+  ],
+  [
+    "a slide entry is unreadable",
+    { results: [{ success: true, result: [{ notes: "First", audio: [] }, null], message: "" }] },
+    "Could not read the notes of slide 2.",
+  ],
+];
+
+describe("XmlPptProvider required slide data", () => {
+  it.each(unreadableSlideData)(
+    "fails the load, exporting no slide images and leaving the previews in use on disk, when %s",
+    async (_, response, message) => {
+      const outputDir = createSlidesDir();
+      fs.writeFileSync(path.join(outputDir, "slides/Slide_1_in_use.png"), "first preview");
+      fs.writeFileSync(path.join(outputDir, "slides/Slide_2_in_use.png"), "second preview");
+      const exportSlideImages = vi.fn<NativePlatformProvider["exportSlideImages"]>(() => {
+        fs.rmSync(path.join(outputDir, "slides"), { recursive: true, force: true });
+        fs.mkdirSync(path.join(outputDir, "slides"));
+        return Promise.resolve({ success: true, images: new Map() });
+      });
+      const provider = new XmlPptProvider(createNativeProvider({ exportSlideImages }));
+      xmlCliResponses.push(response);
+
+      await expect(provider.convertPptx("/presentations/deck.pptx", outputDir)).resolves.toEqual({
+        success: false,
+        message,
+      });
+      expect(exportSlideImages).not.toHaveBeenCalled();
+      const slidesDir = path.join(outputDir, "slides");
+      expect(
+        Object.fromEntries(
+          fs
+            .readdirSync(slidesDir)
+            .map((name) => [name, fs.readFileSync(path.join(slidesDir, name), "utf8")]),
+        ),
+      ).toEqual({
+        "Slide_1_in_use.png": "first preview",
+        "Slide_2_in_use.png": "second preview",
+      });
+    },
+  );
+
+  it.each<[string, XmlCliResponse, string]>([
+    ...unreadableSlideData,
+    [
+      "the presentation has no such slide",
+      { results: [{ success: true, result: [{ notes: "First", audio: [] }], message: "" }] },
+      "Could not find slide data for slide 2",
+    ],
+  ])(
+    "fails the reload, keeping the previous image and exporting none, when %s",
+    async (_, response, message) => {
+      const outputDir = createSlidesDir("Slide_2_previous.png");
+      const reloadSlideImage = vi.fn<NativePlatformProvider["reloadSlideImage"]>();
+      const provider = new XmlPptProvider(createNativeProvider({ reloadSlideImage }));
+      xmlCliResponses.push(response);
+
+      await expect(
+        provider.reloadSlide("/presentations/deck.pptx", toSlideIndex(1), outputDir),
+      ).resolves.toEqual({ success: false, message });
+      expect(reloadSlideImage).not.toHaveBeenCalled();
+      expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_2_previous.png"]);
+    },
+  );
+
+  it("loads genuinely blank notes as empty", async () => {
+    const provider = new XmlPptProvider(
+      createNativeProvider({
+        exportSlideImages: vi.fn<NativePlatformProvider["exportSlideImages"]>().mockResolvedValue({
+          success: true,
+          images: new Map([[toSlideIndex(0), { image: "slides/Slide_1.png" }]]),
+        }),
+      }),
+    );
+    respondWithSlides([{ notes: "", audio: [] }]);
+
+    await expect(
+      provider.convertPptx("/presentations/deck.pptx", "/tmp/deck"),
+    ).resolves.toMatchObject({ success: true, slides: [{ slideIndex: 0, notes: "" }] });
+  });
 });
 
 describe("XmlPptProvider.reloadSlide", () => {
   it("uses the requested slide notes, with no section audio playing across slides, and commits only its staged image", async () => {
-    if (!tempDir) {
-      throw new Error("Expected a temporary test directory");
-    }
-    const outputDir = path.join(tempDir, "deck");
+    const outputDir = path.join(testDir(), "deck");
     const slidesDir = path.join(outputDir, "slides");
     fs.mkdirSync(slidesDir, { recursive: true });
 
@@ -183,7 +425,7 @@ describe("XmlPptProvider.reloadSlide", () => {
       success: true,
       slide: {
         slideIndex: 1,
-        image: "slides/Slide_2_staged.png",
+        preview: { image: "slides/Slide_2_staged.png" },
         notes: "Fresh\nnotes",
         sectionsPlayingAcrossSlides: new Set(),
       },
@@ -191,6 +433,84 @@ describe("XmlPptProvider.reloadSlide", () => {
     expect(fs.existsSync(stagedImage)).toBe(true);
     expect(fs.existsSync(previousImage)).toBe(false);
     expect(fs.existsSync(otherSlideImage)).toBe(true);
+  });
+
+  it("accepts the fresh notes without the previous image when the preview fails to export", async () => {
+    const outputDir = createSlidesDir("Slide_2_previous.png", "Slide_20_existing.png");
+    const reloadSlideImage = vi
+      .fn<NativePlatformProvider["reloadSlideImage"]>()
+      .mockResolvedValue({ success: false, message: "PowerPoint could not export the slide" });
+    const provider = new XmlPptProvider(createNativeProvider({ reloadSlideImage }));
+    respondWithSlides([
+      { notes: "First slide", audio: [] },
+      { notes: "Fresh notes", audio: [] },
+    ]);
+
+    const result = await provider.reloadSlide(
+      "/presentations/deck.pptx",
+      toSlideIndex(1),
+      outputDir,
+    );
+
+    expect(result).toEqual({
+      success: true,
+      slide: {
+        slideIndex: 1,
+        preview: null,
+        notes: "Fresh notes",
+        sectionsPlayingAcrossSlides: new Set(),
+      },
+    });
+    expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_20_existing.png"]);
+  });
+
+  it.each(previewExportFailures)(
+    "accepts the fresh notes without the previous image when the preview export %s",
+    async (_, failPreviewExport) => {
+      const outputDir = createSlidesDir("Slide_2_previous.png", "Slide_20_existing.png");
+      const reloadSlideImage = vi.fn<NativePlatformProvider["reloadSlideImage"]>(failPreviewExport);
+      const provider = new XmlPptProvider(createNativeProvider({ reloadSlideImage }));
+      respondWithSlides([
+        { notes: "First slide", audio: [] },
+        { notes: "Fresh notes", audio: [] },
+      ]);
+
+      const result = await provider.reloadSlide(
+        "/presentations/deck.pptx",
+        toSlideIndex(1),
+        outputDir,
+      );
+
+      expect(result).toEqual({
+        success: true,
+        slide: {
+          slideIndex: 1,
+          preview: null,
+          notes: "Fresh notes",
+          sectionsPlayingAcrossSlides: new Set(),
+        },
+      });
+      expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_20_existing.png"]);
+    },
+  );
+
+  it("reports a failure instead of throwing when the reloaded slide cannot be built", async () => {
+    const unencodableImage = "slides/Slide_2_\uD800.png";
+    const outputDir = createSlidesDir();
+    fs.writeFileSync(path.join(outputDir, unencodableImage), "staged");
+    const reloadSlideImage = vi
+      .fn<NativePlatformProvider["reloadSlideImage"]>()
+      .mockResolvedValue({ success: true, image: unencodableImage });
+    const provider = new XmlPptProvider(createNativeProvider({ reloadSlideImage }));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    respondWithSlides([
+      { notes: "First slide", audio: [] },
+      { notes: "Fresh notes", audio: [] },
+    ]);
+
+    await expect(
+      provider.reloadSlide("/presentations/deck.pptx", toSlideIndex(1), outputDir),
+    ).resolves.toEqual({ success: false, message: "URI malformed" });
   });
 });
 

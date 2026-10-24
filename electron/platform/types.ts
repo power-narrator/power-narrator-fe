@@ -1,9 +1,11 @@
 import type { SlideIndex } from "../../shared/slides/slideCoordinates.js";
 import type { ErrorResult, Result, SuccessResult } from "../../shared/types/result.js";
 import type { SavedSlideNarration } from "../../shared/types/narration.js";
+import type { SlidePreview } from "../../shared/types/slides.js";
 
 export type { ErrorResult, Result, SuccessResult };
 export type {
+  SlidePreview,
   StructuredSlide,
   StructuredSlideResult,
   StructuredSlidesResult,
@@ -22,7 +24,7 @@ export type SectionsPlayingAcrossSlides = ReadonlySet<number>;
 
 export type SlideManifestEntry = {
   slideIndex: SlideIndex;
-  image: string;
+  image: string | null;
   notes: string;
   sectionsPlayingAcrossSlides: SectionsPlayingAcrossSlides;
 };
@@ -32,8 +34,8 @@ export type SlideNotesEntry = {
   notes: string;
 };
 
-export type SlideWithSrc = SlideManifestEntry & {
-  src: string;
+export type SlideWithNotes = Omit<SlideManifestEntry, "image"> & {
+  preview: SlidePreview | null;
 };
 
 /**
@@ -61,9 +63,9 @@ export type SlideNarrationSaveResult =
   | SuccessResult
   | (ErrorResult & { saved: SavedSlideNarration });
 
-export type SlidesPptResult = Result<{ slides: SlideWithSrc[] }>;
+export type SlidesPptResult = Result<{ slides: SlideWithNotes[] }>;
 
-export type SlidePptResult = Result<{ slide: SlideWithSrc }>;
+export type SlidePptResult = Result<{ slide: SlideWithNotes }>;
 
 export type ExportSlideImagesResult = Result<{ images: SlideImageMap }>;
 
@@ -73,10 +75,13 @@ export type ReadAllSlideNotesResult = Result<{ notes: SlideNotesMap }>;
 
 export type ReadSlideNotesResult = Result<{ notes: string }>;
 
-export type ReadSlideContentResult = Result<{
+/** The data a slide requires, without its optional preview. */
+export type SlideContent = {
   notes: string;
   sectionsPlayingAcrossSlides: SectionsPlayingAcrossSlides;
-}>;
+};
+
+export type ReadSlideContentResult = Result<SlideContent>;
 
 export type XmlSlideAudio = {
   name: string;
@@ -98,10 +103,11 @@ export type XmlCliOperation = {
   args: Record<string, string | number>;
 };
 
+/** Parsed from the CLI's response JSON, so no field is guaranteed to be present or well-typed. */
 export type XmlCliOperationResult = {
-  success: boolean;
-  result: unknown;
-  message: string;
+  success?: unknown;
+  result?: unknown;
+  message?: unknown;
 };
 
 export type XmlCliResponse = {

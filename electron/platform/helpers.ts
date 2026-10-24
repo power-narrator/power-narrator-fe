@@ -1,7 +1,17 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { SlideManifestEntry, SlideWithSrc } from "./types.js";
+import { slideNumberOf, type SlideIndex } from "../../shared/slides/slideCoordinates.js";
+import { getErrorMessage } from "./errors.js";
+import type {
+  ErrorResult,
+  ExportSlideImagesResult,
+  ReloadSlideImageResult,
+  Result,
+  SlideImageMap,
+  SlideManifestEntry,
+  SlideWithNotes,
+} from "./types.js";
 
 export const APP_NAME = "power-narrator";
 export const PPT_AUDIO_PREFIX = "ppt_audio";
@@ -40,22 +50,56 @@ export function normalizeNotes(notes: string): string {
 export function buildSlidesWithPaths(
   slides: SlideManifestEntry[],
   outputDir: string,
-): SlideWithSrc[] {
+): SlideWithNotes[] {
   const timestamp = Date.now();
 
-  return slides.flatMap((slide) => {
-    if (!slide.image) {
-      return [];
-    }
+  return slides.map(({ image, ...slide }) => ({
+    ...slide,
+    preview: image
+      ? { image, src: `${resolveSlideAssetUrl(path.join(outputDir, image))}?t=${timestamp}` }
+      : null,
+    notes: normalizeNotes(slide.notes),
+  }));
+}
 
-    return [
-      {
-        ...slide,
-        src: `${resolveSlideAssetUrl(path.join(outputDir, slide.image))}?t=${timestamp}`,
-        notes: normalizeNotes(slide.notes || ""),
-      },
-    ];
-  });
+export async function exportedPreviewImages(
+  exportImages: () => Promise<ExportSlideImagesResult>,
+): Promise<SlideImageMap> {
+  const imageResult = await settlePreviewExport(exportImages);
+  if (!imageResult.success) {
+    console.error("Slide previews are unavailable:", imageResult.message);
+    return new Map();
+  }
+  return imageResult.images;
+}
+
+export async function reloadedPreviewImage(
+  slideIndex: SlideIndex,
+  exportImage: () => Promise<ReloadSlideImageResult>,
+): Promise<string | null> {
+  const imageResult = await settlePreviewExport(exportImage);
+  if (!imageResult.success) {
+    console.error(
+      `Slide ${slideNumberOf(slideIndex)} preview is unavailable:`,
+      imageResult.message,
+    );
+    return null;
+  }
+  return imageResult.image;
+}
+
+async function settlePreviewExport<T extends object>(
+  exportPreview: () => Promise<Result<T>>,
+): Promise<Result<T>> {
+  try {
+    return await exportPreview();
+  } catch (error) {
+    return toPreviewExportError(error);
+  }
+}
+
+function toPreviewExportError(error: unknown): ErrorResult {
+  return { success: false, message: getErrorMessage(error) };
 }
 
 export function cleanupPaths(...paths: Array<string | null | undefined>): void {

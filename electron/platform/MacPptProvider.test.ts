@@ -12,15 +12,24 @@ const spawnCalls: Array<{ command: string; args: string[] }> = [];
 let spawnStdout = "";
 let beforeSpawnClose: (() => void) | undefined;
 const scriptOutcomes = new Map<string, ScriptOutcome>();
+/** What each fake macro does while trigger-macro.applescript runs it, keyed by macro name. */
+const macroRuns = new Map<string, () => void>();
+/** What each fake AppleScript does while it runs, keyed by script file name. */
+const scriptRuns = new Map<string, (args: string[]) => void>();
 
 vi.mock("node:child_process", () => ({
   spawn: (command: string, args: string[]) => {
     spawnCalls.push({ command, args });
     const listeners = new Map<string, (value: unknown) => void>();
-    const outcome = scriptOutcomes.get(path.basename(args[0] ?? "")) ?? { stdout: spawnStdout };
+    const script = path.basename(args[0] ?? "");
+    const outcome = scriptOutcomes.get(script) ?? { stdout: spawnStdout };
 
     queueMicrotask(() => {
       beforeSpawnClose?.();
+      scriptRuns.get(script)?.(args.slice(1));
+      if (script === "trigger-macro.applescript") {
+        macroRuns.get(args[1] ?? "")?.();
+      }
       if (outcome.stdout) {
         listeners.get("stdout")?.(outcome.stdout);
       }
@@ -51,12 +60,24 @@ vi.mock("electron", () => ({
 
 let tempDir: string | undefined;
 
+function testDir(): string {
+  if (!tempDir) {
+    throw new Error("Expected a temporary test directory");
+  }
+  return tempDir;
+}
+
+/** A file where the preview export folder goes stops the export before any AppleScript runs. */
+function blockPreviewExportFolder(): void {
+  fs.writeFileSync(path.join(testDir(), "power-narrator"), "not a folder");
+}
+
 beforeEach(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "power-narrator-mac-provider-"));
   // `app.getPath` is an Electron-owned method; mocking it requires an unbound reference.
   // oxlint-disable-next-line typescript/unbound-method
   vi.mocked(app.getPath).mockReturnValue(tempDir);
-  fs.mkdirSync(path.join(tempDir, "Library/Group Containers/UBF8T346G9.Office"), {
+  fs.mkdirSync(path.join(testDir(), "Library/Group Containers/UBF8T346G9.Office"), {
     recursive: true,
   });
 });
@@ -73,6 +94,8 @@ afterEach(() => {
   spawnStdout = "";
   beforeSpawnClose = undefined;
   scriptOutcomes.clear();
+  macroRuns.clear();
+  scriptRuns.clear();
   if (tempDir) {
     fs.rmSync(tempDir, { recursive: true, force: true });
     tempDir = undefined;
@@ -86,10 +109,7 @@ describe("MacPptProvider.reloadSlideImage", () => {
       success: true,
       data: { image: "slides/Slide_7_uuid.png" },
     });
-    if (!tempDir) {
-      throw new Error("Expected a temporary test directory");
-    }
-    const outputDir = path.join(tempDir, "deck");
+    const outputDir = path.join(testDir(), "deck");
 
     const result = await provider.reloadSlideImage(
       "/presentations/deck.pptx",
@@ -111,11 +131,7 @@ describe("MacPptProvider.reloadSlideImage", () => {
 });
 
 function officeContainerPath(fileName: string): string {
-  if (!tempDir) {
-    throw new Error("Expected a temporary test directory");
-  }
-
-  return path.join(tempDir, "Library/Group Containers/UBF8T346G9.Office", fileName);
+  return path.join(testDir(), "Library/Group Containers/UBF8T346G9.Office", fileName);
 }
 
 function openAppWindow() {
@@ -184,12 +200,8 @@ describe("MacPptProvider presentation lifecycle", () => {
 
 describe("MacPptProvider.exportSlideImages", () => {
   it("reads the manifest's 1-based slide numbers as slide indices", async () => {
-    if (!tempDir) {
-      throw new Error("Expected a temporary test directory");
-    }
-
     const provider = new MacPptProvider();
-    const manifestPath = path.join(tempDir, "images.json");
+    const manifestPath = path.join(testDir(), "images.json");
     fs.writeFileSync(
       manifestPath,
       JSON.stringify([
@@ -218,7 +230,8 @@ describe("MacPptProvider.exportSlideImages", () => {
  */
 function reportSectionAudioPlayback(report: string | null) {
   const request = { slideNumbers: "" };
-  succeedAppleScript(() => {
+  spawnStdout = JSON.stringify({ success: true, data: {} });
+  macroRuns.set("ExportSectionAudioPlayback", () => {
     const [, slideNumbers, outputPath] = fs
       .readFileSync(officeContainerPath("export_audio_playback_params.txt"), "utf8")
       .split("|");
@@ -230,8 +243,49 @@ function reportSectionAudioPlayback(report: string | null) {
   return request;
 }
 
-function stubSlideExport(provider: MacPptProvider, slideIndices: number[]) {
-  vi.spyOn(provider, "exportSlideImages").mockResolvedValue({
+const NOTES_PARAMS = {
+  ExportAllSlideNotes: "export_all_notes_params.txt",
+  ExportSlideNotes: "export_slide_notes_params.txt",
+};
+
+/** Plays a notes export macro, which writes its report to the last path in its parameters. */
+function reportNotes(macro: keyof typeof NOTES_PARAMS, report: string | null) {
+  const request = { params: "" };
+  spawnStdout = JSON.stringify({ success: true, data: {} });
+  macroRuns.set(macro, () => {
+    request.params = fs.readFileSync(officeContainerPath(NOTES_PARAMS[macro]), "utf8");
+    if (report !== null) {
+      fs.writeFileSync(request.params.split("|").at(-1)!, report);
+    }
+  });
+  return request;
+}
+
+/** A complete notes report for a presentation whose slides have these notes, in order. */
+function notesReport(...notes: string[]): string {
+  return [
+    `###SLIDE_COUNT### ${notes.length}`,
+    ...notes.flatMap((text, i) => [
+      `###SLIDE_START### ${i + 1}`,
+      ...(text ? [text] : []),
+      "###SLIDE_END###",
+    ]),
+    "###EXPORT_COMPLETE###",
+    "",
+  ].join("\n");
+}
+
+/** A complete playback report for slides with no section audio. */
+function noPlaybackReport(...slideNumbers: number[]): string {
+  return [
+    ...slideNumbers.flatMap((n) => [`###SLIDE_START### ${n}`, "###SLIDE_END###"]),
+    "###EXPORT_COMPLETE###",
+    "",
+  ].join("\n");
+}
+
+function stubImageExport(provider: MacPptProvider, slideIndices: number[]) {
+  return vi.spyOn(provider, "exportSlideImages").mockResolvedValue({
     success: true,
     images: new Map(
       slideIndices.map((index) => [
@@ -240,10 +294,15 @@ function stubSlideExport(provider: MacPptProvider, slideIndices: number[]) {
       ]),
     ),
   });
+}
+
+function stubSlideExport(provider: MacPptProvider, slideIndices: number[]) {
+  const imageExport = stubImageExport(provider, slideIndices);
   vi.spyOn(provider, "readAllSlideNotes").mockResolvedValue({
     success: true,
     notes: new Map(slideIndices.map((index) => [toSlideIndex(index), `Slide ${index + 1}`])),
   });
+  return imageExport;
 }
 
 describe("MacPptProvider section audio playback", () => {
@@ -350,18 +409,19 @@ describe("MacPptProvider section audio playback", () => {
       "PowerPoint did not report section audio playback for slide 1.",
     ],
     ["no report is written", null, "PowerPoint did not report section audio playback."],
-  ])("fails the load when %s", async (_, report, message) => {
+  ])("fails the load without exporting slide images when %s", async (_, report, message) => {
     const provider = new MacPptProvider();
-    stubSlideExport(provider, [0]);
+    const imageExport = stubSlideExport(provider, [0]);
     reportSectionAudioPlayback(report);
 
     await expect(provider.convertPptx("/presentations/deck.pptx", "/tmp/deck")).resolves.toEqual({
       success: false,
       message,
     });
+    expect(imageExport).not.toHaveBeenCalled();
   });
 
-  it("returns focus to the app after the slide images were exported but PowerPoint fails to read the checkboxes", async () => {
+  it("returns focus to the app when PowerPoint fails to read the checkboxes", async () => {
     const appWindow = openAppWindow();
     const provider = new MacPptProvider();
     stubSlideExport(provider, [0]);
@@ -406,10 +466,7 @@ describe("MacPptProvider section audio playback", () => {
   });
 
   it("reads the playback of the reloaded slide only", async () => {
-    if (!tempDir) {
-      throw new Error("Expected a temporary test directory");
-    }
-    const outputDir = path.join(tempDir, "deck");
+    const outputDir = path.join(testDir(), "deck");
     fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });
     fs.writeFileSync(path.join(outputDir, "slides/Slide_2_staged.png"), "fixture");
     const provider = new MacPptProvider();
@@ -437,37 +494,191 @@ describe("MacPptProvider section audio playback", () => {
 });
 
 describe("MacPptProvider.convertPptx", () => {
-  it("keeps each slide's own index when only some slides exported", async () => {
+  it("keeps all 72 slides with their notes and settings when only 10 previews export", async () => {
     const provider = new MacPptProvider();
-    reportSectionAudioPlayback(
-      "###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 4\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    const previewed = [0, 7, 15, 22, 30, 38, 45, 53, 60, 71];
+    stubImageExport(provider, previewed);
+    const notes = Array.from({ length: 72 }, (_, i) => `Notes ${i + 1}`);
+    reportNotes("ExportAllSlideNotes", notesReport(...notes));
+    const playback = reportSectionAudioPlayback(
+      [
+        "###SLIDE_START### 5\nppt_audio_1\ttrue\n###SLIDE_END###",
+        ...notes.flatMap((_, i) =>
+          i === 4 ? [] : [`###SLIDE_START### ${i + 1}`, "###SLIDE_END###"],
+        ),
+        "###EXPORT_COMPLETE###",
+        "",
+      ].join("\n"),
     );
-    vi.spyOn(provider, "exportSlideImages").mockResolvedValue({
-      success: true,
-      images: new Map([
-        [toSlideIndex(3), { image: "slides/Slide_4_uuid.png" }],
-        [toSlideIndex(0), { image: "slides/Slide_1_uuid.png" }],
-      ]),
-    });
-    vi.spyOn(provider, "readAllSlideNotes").mockResolvedValue({
-      success: true,
-      notes: new Map([
-        [toSlideIndex(0), "First"],
-        [toSlideIndex(3), "Fourth"],
-      ]),
-    });
 
     const result = await provider.convertPptx("/presentations/deck.pptx", "/tmp/deck");
 
-    expect(result.success).toBe(true);
     if (!result.success) {
       throw new Error(result.message);
     }
-    expect(result.slides.map(({ slideIndex, notes }) => ({ slideIndex, notes }))).toEqual([
-      { slideIndex: 0, notes: "First" },
-      { slideIndex: 3, notes: "Fourth" },
-    ]);
+    expect(playback.slideNumbers.split(",")).toHaveLength(72);
+    expect(result.slides).toHaveLength(72);
+    expect(result.slides.map(({ slideIndex, notes }) => ({ slideIndex, notes }))).toEqual(
+      notes.map((text, i) => ({ slideIndex: i, notes: text })),
+    );
+    expect(result.slides.filter(({ preview }) => preview === null)).toHaveLength(62);
+    expect(result.slides[4]).toMatchObject({
+      preview: null,
+      sectionsPlayingAcrossSlides: new Set([0]),
+    });
+    expect(result.slides[7]?.preview?.image).toBe("slides/Slide_8_uuid.png");
+    expect(result.slides[7]?.preview?.src).toContain(
+      encodeURIComponent("/tmp/deck/slides/Slide_8_uuid.png"),
+    );
   });
+
+  it("opens every slide without previews when the whole image export fails", async () => {
+    const provider = new MacPptProvider();
+    vi.spyOn(provider, "exportSlideImages").mockResolvedValue({
+      success: false,
+      message: "PowerPoint could not export images",
+    });
+    reportNotes("ExportAllSlideNotes", notesReport("First", "Second"));
+    reportSectionAudioPlayback(noPlaybackReport(1, 2));
+
+    await expect(
+      provider.convertPptx("/presentations/deck.pptx", "/tmp/deck"),
+    ).resolves.toMatchObject({
+      success: true,
+      slides: [
+        { slideIndex: 0, notes: "First", preview: null },
+        { slideIndex: 1, notes: "Second", preview: null },
+      ],
+    });
+  });
+
+  it("opens every slide without previews when the preview export folder cannot be created", async () => {
+    blockPreviewExportFolder();
+    const provider = new MacPptProvider();
+    reportNotes("ExportAllSlideNotes", notesReport("First", "Second"));
+    reportSectionAudioPlayback(
+      "###SLIDE_START### 1\nppt_audio_1\ttrue\n###SLIDE_END###\n###SLIDE_START### 2\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+
+    await expect(
+      provider.convertPptx("/presentations/deck.pptx", "/tmp/deck"),
+    ).resolves.toMatchObject({
+      success: true,
+      slides: [
+        {
+          slideIndex: 0,
+          notes: "First",
+          sectionsPlayingAcrossSlides: new Set([0]),
+          preview: null,
+        },
+        { slideIndex: 1, notes: "Second", sectionsPlayingAcrossSlides: new Set(), preview: null },
+      ],
+    });
+  });
+
+  it("treats a slide the exporter reported without an image as having no preview", async () => {
+    const provider = new MacPptProvider();
+    vi.spyOn(provider, "exportSlideImages").mockResolvedValue({
+      success: true,
+      images: new Map([
+        [toSlideIndex(0), { image: "" }],
+        [toSlideIndex(1), { image: "slides/Slide_2_uuid.png" }],
+      ]),
+    });
+    reportNotes("ExportAllSlideNotes", notesReport("First", "Second"));
+    reportSectionAudioPlayback(noPlaybackReport(1, 2));
+
+    await expect(
+      provider.convertPptx("/presentations/deck.pptx", "/tmp/deck"),
+    ).resolves.toMatchObject({
+      success: true,
+      slides: [
+        { slideIndex: 0, preview: null },
+        { slideIndex: 1, preview: { image: "slides/Slide_2_uuid.png" } },
+      ],
+    });
+  });
+});
+
+/** Like the real export script, a whole-deck export rebuilds the slides folder before writing. */
+function rebuildSlidesOnImageExport() {
+  scriptRuns.set("export-slide-images.applescript", ([, outputDir, slideNumber]) => {
+    if (slideNumber === undefined) {
+      fs.rmSync(path.join(outputDir!, "slides"), { recursive: true, force: true });
+      fs.mkdirSync(path.join(outputDir!, "slides"), { recursive: true });
+    }
+  });
+}
+
+function readSlidesDir(outputDir: string): Record<string, string> {
+  const slidesDir = path.join(outputDir, "slides");
+  return Object.fromEntries(
+    fs
+      .readdirSync(slidesDir)
+      .map((name) => [name, fs.readFileSync(path.join(slidesDir, name), "utf8")]),
+  );
+}
+
+describe("MacPptProvider Reload All", () => {
+  it.each([
+    ["the notes cannot be read", "###ERROR### Automation error\n", noPlaybackReport(1, 2)],
+    [
+      "the Play Across Slides checkboxes cannot be read",
+      notesReport("First", "Second"),
+      "###ERROR### Target presentation has no editing window\n",
+    ],
+  ])("leaves the previews in use untouched on disk when %s", async (_, notes, playback) => {
+    const provider = new MacPptProvider();
+    const outputDir = path.join(testDir(), "deck");
+    fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });
+    fs.writeFileSync(path.join(outputDir, "slides/Slide_1_in_use.png"), "first preview");
+    fs.writeFileSync(path.join(outputDir, "slides/Slide_2_in_use.png"), "second preview");
+    rebuildSlidesOnImageExport();
+    reportNotes("ExportAllSlideNotes", notes);
+    reportSectionAudioPlayback(playback);
+
+    const result = await provider.convertPptx("/presentations/deck.pptx", outputDir);
+
+    expect(result.success).toBe(false);
+    expect(readSlidesDir(outputDir)).toEqual({
+      "Slide_1_in_use.png": "first preview",
+      "Slide_2_in_use.png": "second preview",
+    });
+  });
+
+  it.each([
+    ["the preview export folder cannot be created", blockPreviewExportFolder],
+    [
+      "the preview export rejects",
+      (provider: MacPptProvider) =>
+        vi.spyOn(provider, "exportSlideImages").mockRejectedValue(new Error("PowerPoint quit")),
+    ],
+  ])(
+    "accepts the fresh notes and playback without the previous previews when %s",
+    async (_, failPreviewExport) => {
+      const provider = new MacPptProvider();
+      const outputDir = path.join(testDir(), "deck");
+      fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });
+      fs.writeFileSync(path.join(outputDir, "slides/Slide_1_in_use.png"), "first preview");
+      failPreviewExport(provider);
+      reportNotes("ExportAllSlideNotes", notesReport("Fresh"));
+      reportSectionAudioPlayback(
+        "###SLIDE_START### 1\nppt_audio_1\ttrue\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      );
+
+      await expect(provider.convertPptx("/presentations/deck.pptx", outputDir)).resolves.toEqual({
+        success: true,
+        slides: [
+          {
+            slideIndex: 0,
+            notes: "Fresh",
+            sectionsPlayingAcrossSlides: new Set([0]),
+            preview: null,
+          },
+        ],
+      });
+    },
+  );
 });
 
 function saveNarrationMacroReports(report: string | undefined) {
@@ -484,6 +695,276 @@ function saveNarrationMacroReports(report: string | undefined) {
   });
   return request;
 }
+
+describe("MacPptProvider notes reports", () => {
+  it("loads genuinely blank notes as empty", async () => {
+    const provider = new MacPptProvider();
+    stubImageExport(provider, [0, 1]);
+    reportNotes("ExportAllSlideNotes", notesReport("", "Second"));
+    reportSectionAudioPlayback(noPlaybackReport(1, 2));
+
+    const result = await provider.convertPptx("/presentations/deck.pptx", "/tmp/deck");
+
+    expect(result).toMatchObject({
+      success: true,
+      slides: [
+        { slideIndex: 0, notes: "" },
+        { slideIndex: 1, notes: "Second" },
+      ],
+    });
+  });
+
+  it.each([
+    [
+      "PowerPoint cannot read a slide's notes",
+      "###ERROR### Could not read the notes of slide 2: Automation error\n",
+      "Could not read the notes of slide 2: Automation error",
+    ],
+    [
+      "the report stops before completing",
+      "###SLIDE_COUNT### 2\n###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 2\n###SLIDE_END###\n",
+      "PowerPoint did not finish reporting slide notes.",
+    ],
+    ["the report is empty", "", "PowerPoint did not report how many slides the presentation has."],
+    [
+      "the slide count is missing",
+      "###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 2\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint did not report how many slides the presentation has.",
+    ],
+    [
+      "the slide count is unreadable",
+      "###SLIDE_COUNT### two\n###EXPORT_COMPLETE###\n",
+      "PowerPoint did not report how many slides the presentation has.",
+    ],
+    [
+      "a slide is missing from the report",
+      "###SLIDE_COUNT### 2\n###SLIDE_START### 1\nFirst\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint did not report the notes of slide 2.",
+    ],
+    [
+      "a slide's notes are not closed",
+      "###SLIDE_COUNT### 2\n###SLIDE_START### 1\nFirst\n###SLIDE_START### 2\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint did not finish reporting the notes of slide 1.",
+    ],
+    [
+      "the last slide's notes are not closed",
+      "###SLIDE_COUNT### 2\n###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 2\nSecond\n###EXPORT_COMPLETE###\n",
+      "PowerPoint did not finish reporting the notes of slide 2.",
+    ],
+    [
+      "a slide's number is unreadable",
+      "###SLIDE_COUNT### 2\n###SLIDE_START### first\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported notes for an unreadable slide: first",
+    ],
+    [
+      "a slide is reported twice",
+      "###SLIDE_COUNT### 2\n###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 2\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported the notes of slide 1 more than once.",
+    ],
+    [
+      "a slide is beyond the reported slide count",
+      "###SLIDE_COUNT### 2\n###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 2\n###SLIDE_END###\n###SLIDE_START### 3\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported notes for slide 3 of a 2-slide presentation.",
+    ],
+    [
+      "notes are reported outside any slide",
+      "###SLIDE_COUNT### 2\nStray\n###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 2\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported notes outside a slide: Stray",
+    ],
+    ["no report is written", null, "PowerPoint did not report slide notes."],
+  ])("fails the load without exporting slide images when %s", async (_, report, message) => {
+    const provider = new MacPptProvider();
+    const imageExport = stubImageExport(provider, [0, 1]);
+    reportNotes("ExportAllSlideNotes", report);
+    reportSectionAudioPlayback(noPlaybackReport(1, 2));
+
+    await expect(provider.convertPptx("/presentations/deck.pptx", "/tmp/deck")).resolves.toEqual({
+      success: false,
+      message,
+    });
+    expect(imageExport).not.toHaveBeenCalled();
+  });
+});
+
+describe("MacPptProvider.reloadSlide", () => {
+  function stageReloadedImage(provider: MacPptProvider) {
+    const outputDir = path.join(testDir(), "deck");
+    fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });
+    fs.writeFileSync(path.join(outputDir, "slides/Slide_2_previous.png"), "previous");
+    const reloadSlideImage = vi.spyOn(provider, "reloadSlideImage").mockImplementation(() => {
+      fs.writeFileSync(path.join(outputDir, "slides/Slide_2_staged.png"), "staged");
+      return Promise.resolve({ success: true, image: "slides/Slide_2_staged.png" });
+    });
+    return { outputDir, reloadSlideImage };
+  }
+
+  it("reads the 1-based slide's notes, accepting genuinely blank notes", async () => {
+    const provider = new MacPptProvider();
+    const { outputDir } = stageReloadedImage(provider);
+    const notes = reportNotes(
+      "ExportSlideNotes",
+      "###SLIDE_COUNT### 3\n###SLIDE_START### 2\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+    reportSectionAudioPlayback(noPlaybackReport(2));
+
+    const result = await provider.reloadSlide(
+      "/presentations/deck.pptx",
+      toSlideIndex(1),
+      outputDir,
+    );
+
+    expect(notes.params.split("|").slice(0, 2)).toEqual(["/presentations/deck.pptx", "2"]);
+    expect(result).toMatchObject({
+      success: true,
+      slide: { slideIndex: 1, preview: { image: "slides/Slide_2_staged.png" }, notes: "" },
+    });
+  });
+
+  it.each([
+    [
+      "PowerPoint cannot read the slide's notes",
+      "###ERROR### Could not read the notes of slide 2: Automation error\n",
+      noPlaybackReport(2),
+      "Could not read the notes of slide 2: Automation error",
+    ],
+    [
+      "PowerPoint reports another slide's notes",
+      "###SLIDE_COUNT### 3\n###SLIDE_START### 1\nFirst\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      noPlaybackReport(2),
+      "PowerPoint did not report the notes of slide 2.",
+    ],
+    [
+      "PowerPoint cannot read the slide's Play Across Slides checkboxes",
+      "###SLIDE_COUNT### 3\n###SLIDE_START### 2\nSecond\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "###ERROR### Target presentation has no editing window\n",
+      "Target presentation has no editing window",
+    ],
+  ])(
+    "keeps the previous image and exports no new one when %s",
+    async (_, notesReportText, playbackReport, message) => {
+      const provider = new MacPptProvider();
+      const { outputDir, reloadSlideImage } = stageReloadedImage(provider);
+      reportNotes("ExportSlideNotes", notesReportText);
+      reportSectionAudioPlayback(playbackReport);
+
+      const result = await provider.reloadSlide(
+        "/presentations/deck.pptx",
+        toSlideIndex(1),
+        outputDir,
+      );
+
+      expect(result).toEqual({ success: false, message });
+      expect(reloadSlideImage).not.toHaveBeenCalled();
+      expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_2_previous.png"]);
+    },
+  );
+
+  it("accepts the fresh notes and playback without the previous image when the preview fails to export", async () => {
+    const provider = new MacPptProvider();
+    const { outputDir, reloadSlideImage } = stageReloadedImage(provider);
+    fs.writeFileSync(path.join(outputDir, "slides/Slide_3_other.png"), "other");
+    reloadSlideImage.mockResolvedValue({
+      success: false,
+      message: "PowerPoint could not export the slide image",
+    });
+    reportNotes(
+      "ExportSlideNotes",
+      "###SLIDE_COUNT### 3\n###SLIDE_START### 2\nFresh\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+    reportSectionAudioPlayback(
+      "###SLIDE_START### 2\nppt_audio_1\ttrue\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+
+    const result = await provider.reloadSlide(
+      "/presentations/deck.pptx",
+      toSlideIndex(1),
+      outputDir,
+    );
+
+    expect(result).toEqual({
+      success: true,
+      slide: {
+        slideIndex: 1,
+        preview: null,
+        notes: "Fresh",
+        sectionsPlayingAcrossSlides: new Set([0]),
+      },
+    });
+    expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_3_other.png"]);
+  });
+
+  it("accepts the fresh notes and playback without the previous image when the preview export rejects", async () => {
+    const provider = new MacPptProvider();
+    const { outputDir, reloadSlideImage } = stageReloadedImage(provider);
+    fs.writeFileSync(path.join(outputDir, "slides/Slide_3_other.png"), "other");
+    reloadSlideImage.mockRejectedValue(new Error("PowerPoint quit"));
+    reportNotes(
+      "ExportSlideNotes",
+      "###SLIDE_COUNT### 3\n###SLIDE_START### 2\nFresh\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+    reportSectionAudioPlayback(
+      "###SLIDE_START### 2\nppt_audio_1\ttrue\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+
+    const result = await provider.reloadSlide(
+      "/presentations/deck.pptx",
+      toSlideIndex(1),
+      outputDir,
+    );
+
+    expect(result).toEqual({
+      success: true,
+      slide: {
+        slideIndex: 1,
+        preview: null,
+        notes: "Fresh",
+        sectionsPlayingAcrossSlides: new Set([0]),
+      },
+    });
+    expect(readSlidesDir(outputDir)).toEqual({ "Slide_3_other.png": "other" });
+  });
+
+  it("restores the preview and drops the previous image once the preview exports again", async () => {
+    const provider = new MacPptProvider();
+    const { outputDir } = stageReloadedImage(provider);
+    reportNotes(
+      "ExportSlideNotes",
+      "###SLIDE_COUNT### 3\n###SLIDE_START### 2\nFresh\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+    reportSectionAudioPlayback(noPlaybackReport(2));
+
+    const result = await provider.reloadSlide(
+      "/presentations/deck.pptx",
+      toSlideIndex(1),
+      outputDir,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      slide: { slideIndex: 1, notes: "Fresh", preview: { image: "slides/Slide_2_staged.png" } },
+    });
+    expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_2_staged.png"]);
+  });
+  it("reports a failure instead of throwing when the reloaded slide cannot be built", async () => {
+    const provider = new MacPptProvider();
+    const { outputDir, reloadSlideImage } = stageReloadedImage(provider);
+    const unencodableImage = "slides/Slide_2_\uD800.png";
+    reloadSlideImage.mockImplementation(() => {
+      fs.writeFileSync(path.join(outputDir, unencodableImage), "staged");
+      return Promise.resolve({ success: true, image: unencodableImage });
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    reportNotes(
+      "ExportSlideNotes",
+      "###SLIDE_COUNT### 3\n###SLIDE_START### 2\nFresh\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+    reportSectionAudioPlayback(noPlaybackReport(2));
+
+    await expect(
+      provider.reloadSlide("/presentations/deck.pptx", toSlideIndex(1), outputDir),
+    ).resolves.toEqual({ success: false, message: "URI malformed" });
+  });
+});
 
 describe("MacPptProvider.saveSlideNarration", () => {
   const deck = "/presentations/deck.pptx";

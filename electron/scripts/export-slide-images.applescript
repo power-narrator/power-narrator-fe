@@ -69,24 +69,23 @@ end parseSlideNumber
 on locateOrOpenPresentation(inputPath)
 	tell application "Microsoft PowerPoint"
 		launch -- Start without activating/stealing focus
+		set openPaths to full name of every presentation
+		if openPaths is missing value then set openPaths to {}
+		-- Opening an already-open deck raises its window.
+		if openPaths does not contain inputPath then open (POSIX file inputPath)
 
-		set pres to missing value
-		try
-			repeat with p in presentations
-				if full name of p contains inputPath then
-					set pres to p
-					exit repeat
-				end if
-			end repeat
-		end try
-
-		if pres is missing value then
-			open (POSIX file inputPath)
-			set pres to active presentation
-		end if
-
-		return pres
+		set openPaths to full name of every presentation
+		set openNames to name of every presentation
+		repeat with i from 1 to count of openPaths
+			if item i of openPaths is inputPath then
+				-- An active-presentation or collection-index reference follows window switches.
+				set pres to presentation (item i of openNames)
+				if full name of pres is not inputPath then error "Could not uniquely identify the target presentation."
+				return pres
+			end if
+		end repeat
 	end tell
+	error "Could not find the target presentation: " & inputPath
 end locateOrOpenPresentation
 
 on prepareOutputDirectory(outputDir, slidesDir, rebuildSlidesDir)

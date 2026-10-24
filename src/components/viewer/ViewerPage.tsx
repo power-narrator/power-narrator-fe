@@ -14,6 +14,7 @@ import { getSpeakerNames } from "../../../shared/narration/speaker";
 import { slideNumberOf, type SlideIndex } from "../../../shared/slides/slideCoordinates";
 import { getErrorMessage } from "../../utils/errors";
 import { NotesSectionList } from "./NotesSectionList";
+import { PreviewUnavailableWarning } from "./PreviewUnavailableWarning";
 import { SlideActionsBar, type SlideActionBarKey } from "./SlideActionsBar";
 import { SlidePreviewPane } from "./SlidePreviewPane";
 import { SlideThumbnailList } from "./SlideThumbnailList";
@@ -411,6 +412,8 @@ export function ViewerPage({
         }}
       />
 
+      <PreviewUnavailableWarning slides={slides} />
+
       <Split mih={0} flex={1}>
         <Split.Pane initialWidth="10%">
           <SlideThumbnailList
@@ -427,7 +430,7 @@ export function ViewerPage({
             <Split.Pane initialHeight="30%">
               {activeSlideNumber !== undefined && (
                 <SlidePreviewPane
-                  activeSlideSrc={editor.activeSlideSrc}
+                  preview={editor.activeSlidePreview}
                   slideNumber={activeSlideNumber}
                 />
               )}

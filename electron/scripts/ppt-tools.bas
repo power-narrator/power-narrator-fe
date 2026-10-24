@@ -77,24 +77,25 @@ Function ReadSingleLineFile(filePath As String, missingMessage As String) As Str
     Close fileNum
 End Function
 
-Function GetPresentationOrShowError(targetPath As String) As Presentation
-    Set GetPresentationOrShowError = GetPresentation(targetPath)
+' The notes live in the notes page's body placeholder; Nothing when the page has none
+' with a text frame. Read failures are raised.
+Function NotesBodyPlaceholder(sld As Slide) As Shape
+    Dim notesShape As Shape
 
-    If GetPresentationOrShowError Is Nothing Then
-        MsgBox "Error: Presentation not found: " & targetPath
-    End If
+    For Each notesShape In sld.NotesPage.Shapes.Placeholders
+        If notesShape.PlaceholderFormat.Type = ppPlaceholderBody Then
+            If notesShape.HasTextFrame Then Set NotesBodyPlaceholder = notesShape
+            Exit Function
+        End If
+    Next notesShape
 End Function
 
+' A notes page without a body placeholder has empty notes; any other read failure is raised.
 Function GetSlideNotesText(sld As Slide) As String
-    On Error GoTo EmptyNotes
+    Dim notesBody As Shape
 
-    If sld.NotesPage.Shapes.Count > 1 Then
-        GetSlideNotesText = sld.NotesPage.Shapes(2).TextFrame.TextRange.Text
-        Exit Function
-    End If
-
-EmptyNotes:
-    GetSlideNotesText = ""
+    Set notesBody = NotesBodyPlaceholder(sld)
+    If Not notesBody Is Nothing Then GetSlideNotesText = notesBody.TextFrame.TextRange.Text
 End Function
 
 Private Function NormalizeLineBreaks(text As String) As String
@@ -277,19 +278,42 @@ Function SlideNotesBlock(slideNumber As Integer, notesText As String) As String
     SlideNotesBlock = SlideNotesBlock & "###SLIDE_END###" & vbLf
 End Function
 
+Private Sub WriteNotesExportError(outputPath As String, message As String)
+    WriteUtf8File outputPath, "###ERROR### " & Replace(NormalizeLineBreaks(message), vbLf, " ") & vbLf
+End Sub
+
+' Output: ###SLIDE_COUNT### n, then one notes block per exported slide, then ###EXPORT_COMPLETE###.
+' On failure, the report is a single ###ERROR### message instead.
 Sub ExportNotesToFile(pres As Presentation, outputPath As String, Optional slideNumber As Integer = 0)
     Dim content As String
     Dim i As Integer
+    Dim context As String
 
+    On Error GoTo ExportFailed
+
+    context = "Could not count the slides"
+    content = "###SLIDE_COUNT### " & pres.Slides.Count & vbLf
     If slideNumber > 0 Then
-        content = SlideNotesBlock(slideNumber, GetSlideNotesText(pres.Slides(slideNumber)))
+        If slideNumber > pres.Slides.Count Then
+            WriteNotesExportError outputPath, "Invalid slide number: " & slideNumber
+            Exit Sub
+        End If
+        context = "Could not read the notes of slide " & slideNumber
+        content = content & SlideNotesBlock(slideNumber, GetSlideNotesText(pres.Slides(slideNumber)))
     Else
         For i = 1 To pres.Slides.Count
+            context = "Could not read the notes of slide " & i
             content = content & SlideNotesBlock(i, GetSlideNotesText(pres.Slides(i)))
         Next i
     End If
+    content = content & "###EXPORT_COMPLETE###" & vbLf
 
+    context = "Could not write the notes report"
     WriteUtf8File outputPath, content
+    Exit Sub
+
+ExportFailed:
+    WriteNotesExportError outputPath, context & ": " & Err.Description
 End Sub
 
 Function GetSectionIndex(audioTag As String) As Integer
@@ -695,6 +719,7 @@ Private Sub WriteNotesFromFile(pres As Presentation, dataPath As String)
     Dim notesText As String
     Dim isReading As Boolean
     Dim isFirstLine As Boolean
+    Dim notesBody As Shape
     Dim errorMessage As String
 
     On Error GoTo ReadFailed
@@ -712,10 +737,11 @@ Private Sub WriteNotesFromFile(pres As Presentation, dataPath As String)
             If slideNumber < 1 Or slideNumber > pres.Slides.Count Then
                 Err.Raise vbObjectError + 516, , "Slide " & slideNumber & " does not exist."
             End If
-            If pres.Slides(slideNumber).NotesPage.Shapes.Count < 2 Then
+            Set notesBody = NotesBodyPlaceholder(pres.Slides(slideNumber))
+            If notesBody Is Nothing Then
                 Err.Raise vbObjectError + 528, , "Slide " & slideNumber & " has no notes placeholder."
             End If
-            pres.Slides(slideNumber).NotesPage.Shapes(2).TextFrame.TextRange.Text = notesText
+            notesBody.TextFrame.TextRange.Text = notesText
             isReading = False
         ElseIf isReading Then
             If isFirstLine Then
@@ -920,8 +946,11 @@ Sub ExportAllSlideNotes()
     targetPath = params(0)
     outputPath = params(1)
 
-    Set pres = GetPresentationOrShowError(targetPath)
-    If pres Is Nothing Then Exit Sub
+    Set pres = GetPresentation(targetPath)
+    If pres Is Nothing Then
+        WriteNotesExportError outputPath, "Presentation not found: " & targetPath
+        Exit Sub
+    End If
 
     ExportNotesToFile pres, outputPath
 End Sub
@@ -943,14 +972,16 @@ Sub ExportSlideNotes()
     If UBound(params) < 2 Then Exit Sub
 
     targetPath = params(0)
-    slideNumber = CInt(params(1))
     outputPath = params(2)
+    If Not params(1) Like "[1-9]*" Or params(1) Like "*[!0-9]*" Or Len(params(1)) > 4 Then
+        WriteNotesExportError outputPath, "Invalid slide number: " & params(1)
+        Exit Sub
+    End If
+    slideNumber = CInt(params(1))
 
-    Set pres = GetPresentationOrShowError(targetPath)
-    If pres Is Nothing Then Exit Sub
-
-    If slideNumber < 1 Or slideNumber > pres.Slides.Count Then
-        MsgBox "Invalid slide number: " & slideNumber
+    Set pres = GetPresentation(targetPath)
+    If pres Is Nothing Then
+        WriteNotesExportError outputPath, "Presentation not found: " & targetPath
         Exit Sub
     End If
 

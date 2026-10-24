@@ -1,9 +1,10 @@
-import { Box, Image, ScrollArea, Stack, UnstyledButton } from "@mantine/core";
+import { AspectRatio, Box, Image, ScrollArea, Stack, UnstyledButton } from "@mantine/core";
 import { slideNumberOf, type SlideIndex } from "../../../shared/slides/slideCoordinates";
 import type { Slide } from "../../types/electron";
+import { PreviewUnavailablePlaceholder } from "./PreviewUnavailablePlaceholder";
 
 type SlideThumbnailListProps = {
-  slides: readonly Pick<Slide, "slideIndex" | "src">[];
+  slides: readonly Pick<Slide, "slideIndex" | "preview">[];
   activeSlideIndex: SlideIndex | undefined;
   onSelectSlide: (slideIndex: SlideIndex) => void;
 };
@@ -33,7 +34,17 @@ export function SlideThumbnailList({
               <Box pos="absolute" top={4} left={4} bg="rgba(0,0,0,0.6)" p="2 6" bdrs="xs" fz="xs">
                 {slideNumber}
               </Box>
-              <Image src={slide.src} alt="" radius={isActive ? "none" : "sm"} />
+              {slide.preview ? (
+                <Image src={slide.preview.src} alt="" radius={isActive ? "none" : "sm"} />
+              ) : (
+                <AspectRatio ratio={16 / 9}>
+                  <PreviewUnavailablePlaceholder
+                    size="xs"
+                    bg="gray.8"
+                    bdrs={isActive ? undefined : "sm"}
+                  />
+                </AspectRatio>
+              )}
             </UnstyledButton>
           );
         })}

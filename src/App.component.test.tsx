@@ -2,6 +2,7 @@ import { MantineProvider } from "@mantine/core";
 import "@mantine/core/styles.css";
 import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
+import { toSlideIndex } from "../shared/slides/slideCoordinates";
 import type { Slide } from "./types/electron";
 import App from "./App";
 
@@ -68,6 +69,26 @@ test("moves from file selection through loading to a viewer and back", async () 
   await expect
     .element(screen.getByRole("button", { name: "Select PowerPoint File" }))
     .toBeVisible();
+});
+
+test("opens the viewer when the presentation loaded without any previews", async () => {
+  installApi(
+    () => Promise.resolve("presentation.pptx"),
+    () =>
+      Promise.resolve({
+        success: true,
+        slides: [0, 1].map((slideIndex) => ({
+          slideIndex: toSlideIndex(slideIndex),
+          preview: null,
+          sections: [],
+        })),
+      }),
+  );
+  const screen = await renderApp();
+
+  await screen.getByRole("button", { name: "Select PowerPoint File" }).click();
+
+  await expect.element(screen.getByText("presentation.pptx: 2 slides")).toBeVisible();
 });
 
 test("shows a conversion error and returns to file selection", async () => {

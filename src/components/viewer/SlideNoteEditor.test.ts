@@ -24,8 +24,7 @@ function slide(
   const slideNumber = slideNumberOf(slideIndex);
   return {
     slideIndex,
-    image: `slide-${slideNumber}.png`,
-    src: `slide-${slideNumber}`,
+    preview: { image: `slide-${slideNumber}.png`, src: `slide-${slideNumber}` },
     sections: parseNarrationSections(notes, knownSpeakers).map((section) => ({
       ...section,
       playAcrossSlides: false,
@@ -58,8 +57,7 @@ describe("opening an editing session", () => {
       [
         {
           slideIndex: at(0),
-          image: "slide-1.png",
-          src: "slide-1",
+          preview: { image: "slide-1.png", src: "slide-1" },
           sections: [{ speaker: "Bob", text: "Parsed", playAcrossSlides: false }],
         },
       ],

@@ -5,7 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
+import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
 import { FIRST_SLIDE_INDEX, slideIndexFromOneBased } from "../../shared/slides/slideCoordinates.js";
 import { MacPptProvider } from "../../electron/platform/MacPptProvider.js";
 import {
@@ -162,6 +163,117 @@ describe.skipIf(process.platform !== "darwin")("MacPptProvider against PowerPoin
   afterAll(() => tidy(runDir));
 
   describePptProviderContract(harness);
+
+  describe("reporting slide notes", () => {
+    it("reports every slide's notes, with blank notes as empty", async () => {
+      const deck = await openHandBuiltDeckCopy(harness);
+      expect(await provider.saveSlideNarration(deck, slideNarration(CLEAN_SLIDE, "", []))).toEqual({
+        success: true,
+      });
+
+      const all = await provider.readAllSlideNotes(deck);
+      const one = await provider.readSlideNotes(deck, CLEAN_SLIDE);
+
+      expect(all).toEqual({
+        success: true,
+        notes: new Map([
+          [slideIndexFromOneBased(1), "First line of slide one.\nCafé — naïve “quotes” 日本語"],
+          [slideIndexFromOneBased(2), "Slide two notes."],
+          [slideIndexFromOneBased(3), "Slide three notes."],
+          [slideIndexFromOneBased(4), "Slide four notes."],
+          [CLEAN_SLIDE, ""],
+        ]),
+      });
+      expect(one).toEqual({ success: true, notes: "" });
+    });
+
+    type NotesPageLayout = "body first" | "no body";
+
+    async function openDeckWithNotesPages(
+      layouts: ReadonlyMap<number, NotesPageLayout>,
+    ): Promise<string> {
+      const entries = unzipSync(
+        fs.readFileSync(path.join(REPO, "tests/fixtures/hand-built-deck.pptx")),
+      );
+      for (const [slideNumber, layout] of layouts) {
+        const name = `ppt/notesSlides/notesSlide${slideNumber}.xml`;
+        const xml = strFromU8(entries[name]!);
+        const shapes = xml.match(/<p:sp>.*?<\/p:sp>/g) ?? [];
+        const [image, body, numberPlaceholder] = shapes;
+        const rearranged =
+          layout === "body first"
+            ? [body!, image!, numberPlaceholder!]
+            : [image!, numberPlaceholder!];
+        const start = xml.indexOf(image!);
+        const end = xml.indexOf(numberPlaceholder!) + numberPlaceholder!.length;
+        entries[name] = strToU8(xml.slice(0, start) + rearranged.join("") + xml.slice(end));
+      }
+      const deck = path.join(runDir, `power-narrator-native-${randomUUID()}.pptx`);
+      fs.writeFileSync(deck, zipSync(entries));
+      onTestFinished(async () => {
+        await closeInPowerPoint(deck);
+        fs.rmSync(deck, { force: true });
+      });
+      await openInPowerPoint(deck);
+      return deck;
+    }
+
+    it("reads the notes body placeholder wherever it sits on the notes page, and a page without one as empty", async () => {
+      const deck = await openDeckWithNotesPages(
+        new Map([
+          [2, "body first"],
+          [3, "no body"],
+        ]),
+      );
+
+      const all = await provider.readAllSlideNotes(deck);
+
+      if (!all.success) {
+        throw new Error(all.message);
+      }
+      expect(all.notes.get(slideIndexFromOneBased(2))).toBe("Slide two notes.");
+      expect(all.notes.get(slideIndexFromOneBased(3))).toBe("");
+    });
+
+    it("saves notes into the body placeholder wherever it sits on the notes page", async () => {
+      const deck = await openDeckWithNotesPages(new Map([[5, "body first"]]));
+
+      expect(
+        await provider.saveSlideNarration(
+          deck,
+          slideNarration(CLEAN_SLIDE, "Rewritten notes.", []),
+        ),
+      ).toEqual({ success: true });
+      expect(await provider.readSlideNotes(deck, CLEAN_SLIDE)).toEqual({
+        success: true,
+        notes: "Rewritten notes.",
+      });
+    });
+
+    it("refuses to save notes for a notes page without a body placeholder", async () => {
+      const deck = await openDeckWithNotesPages(new Map([[5, "no body"]]));
+
+      const saved = await provider.saveSlideNarration(
+        deck,
+        slideNarration(CLEAN_SLIDE, "Rewritten notes.", []),
+      );
+
+      if (saved.success) {
+        throw new Error("Expected the save to fail");
+      }
+      expect(saved.saved).toBe("nothing");
+      expect(saved.message).toContain("Slide 5 has no notes placeholder.");
+    });
+
+    it("reports a slide the presentation does not have as an error rather than a dialog", async () => {
+      const deck = await openHandBuiltDeckCopy(harness);
+
+      await expect(provider.readSlideNotes(deck, slideIndexFromOneBased(99))).resolves.toEqual({
+        success: false,
+        message: "Invalid slide number: 99",
+      });
+    });
+  });
 
   describe("refusing a save the add-in cannot make without losing the audio's setup", () => {
     it("saves nothing over slide 4's faded section audio, says so, and a later save of another slide keeps slide 4 as it was", async () => {

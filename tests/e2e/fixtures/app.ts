@@ -7,7 +7,7 @@ import { parseNarrationSections } from "../../../shared/narration/NarrationSecti
 import { toSlideIndex } from "../../../shared/slides/slideCoordinates.js";
 import type {
   SlideNarrationEntry,
-  SlideWithSrc as Slide,
+  SlideWithNotes as Slide,
   StructuredSlide,
 } from "../../../electron/platform/types.js";
 import type { SpeakerMapping, Voice } from "../../../shared/types/tts.js";
@@ -23,15 +23,13 @@ const TRANSPARENT_SLIDE_IMAGE =
 export const MOCK_SLIDES: Slide[] = [
   {
     slideIndex: toSlideIndex(0),
-    image: "slide-1.png",
-    src: TRANSPARENT_SLIDE_IMAGE,
+    preview: { image: "slide-1.png", src: TRANSPARENT_SLIDE_IMAGE },
     notes: "Initial notes for slide 1",
     sectionsPlayingAcrossSlides: new Set(),
   },
   {
     slideIndex: toSlideIndex(1),
-    image: "slide-2.png",
-    src: TRANSPARENT_SLIDE_IMAGE,
+    preview: { image: "slide-2.png", src: TRANSPARENT_SLIDE_IMAGE },
     notes: "Initial notes for slide 2\nLine 2",
     sectionsPlayingAcrossSlides: new Set(),
   },

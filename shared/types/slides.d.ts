@@ -8,9 +8,13 @@ import type { Result } from "./result.js";
  */
 export type StructuredSlide = {
   slideIndex: SlideIndex;
+  preview: SlidePreview | null;
+  sections: NarrationSection[];
+};
+
+export type SlidePreview = {
   image: string;
   src: string;
-  sections: NarrationSection[];
 };
 
 export type StructuredSlidesResult = Result<{ slides: StructuredSlide[] }>;
