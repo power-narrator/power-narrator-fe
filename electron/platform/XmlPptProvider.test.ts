@@ -214,6 +214,20 @@ const unreadableSlideData: Array<[string, XmlCliResponse, string]> = [
     "Failed to query slide content: Bad zip file",
   ],
   [
+    "the CLI omits the operation status",
+    {
+      results: [{ result: [{ notes: "First", audio: [] }], message: "" }],
+    } as unknown as XmlCliResponse,
+    "Failed to query slide content: the slide report did not confirm success",
+  ],
+  [
+    "the CLI reports an invalid operation status",
+    {
+      results: [{ success: "true", result: [{ notes: "First", audio: [] }], message: "" }],
+    } as unknown as XmlCliResponse,
+    "Failed to query slide content: the slide report did not confirm success",
+  ],
+  [
     "the CLI reports no slide list",
     { results: [{ success: true, result: {}, message: "" }] },
     "Could not find slide data",

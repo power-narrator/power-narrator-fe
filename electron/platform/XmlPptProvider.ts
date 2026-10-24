@@ -65,6 +65,12 @@ export class XmlPptProvider implements PptProvider {
     if (firstResult?.success === false) {
       return { success: false, message: "Failed to query slide content: " + firstResult.message };
     }
+    if (firstResult && firstResult.success !== true) {
+      return {
+        success: false,
+        message: "Failed to query slide content: the slide report did not confirm success",
+      };
+    }
     if (!firstResult || !Array.isArray(firstResult.result)) {
       return { success: false, message: "Could not find slide data" };
     }
