@@ -8,7 +8,7 @@ type PreviewUnavailableWarningProps = {
 };
 
 function formatSlideNumberRanges(slideNumbers: readonly SlideNumber[]): string {
-  const ranges: Array<[first: number, last: number]> = [];
+  const ranges: Array<[first: SlideNumber, last: SlideNumber]> = [];
   for (const slideNumber of slideNumbers) {
     const current = ranges.at(-1);
     if (current && current[1] + 1 === slideNumber) {
