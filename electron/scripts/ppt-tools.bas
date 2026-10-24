@@ -529,9 +529,82 @@ Function ReadEffectType(eff As Effect) As Long
     ReadEffectType = eff.EffectType
 End Function
 
-' Notes data holds "###SLIDE_START### <slide number>", the notes lines, then "###SLIDE_END###" per slide.
+' Line Input decodes with the legacy Mac encoding, which garbles the UTF-8 the provider writes.
+Private Function ReadUtf8File(filePath As String) As String
+    Dim fileNum As Integer
+    Dim byteCount As Long
+    Dim bytes() As Byte
+
+    fileNum = FreeFile
+    Open filePath For Binary Access Read As fileNum
+    byteCount = LOF(fileNum)
+    If byteCount > 0 Then
+        ReDim bytes(0 To byteCount - 1)
+        Get fileNum, , bytes
+    End If
+    Close fileNum
+
+    If byteCount > 0 Then ReadUtf8File = DecodeUtf8(bytes, byteCount)
+End Function
+
+Private Function DecodeUtf8(bytes() As Byte, byteCount As Long) As String
+    Dim decoded As String
+    Dim decodedLength As Long
+    Dim i As Long
+    Dim j As Long
+    Dim leadByte As Long
+    Dim continuationCount As Long
+    Dim codePoint As Long
+
+    decoded = String$(byteCount, " ")
+    Do While i < byteCount
+        leadByte = bytes(i)
+        If leadByte < &H80 Then
+            codePoint = leadByte
+            continuationCount = 0
+        ElseIf leadByte >= &HC0 And leadByte < &HE0 Then
+            codePoint = leadByte And &H1F
+            continuationCount = 1
+        ElseIf leadByte >= &HE0 And leadByte < &HF0 Then
+            codePoint = leadByte And &HF
+            continuationCount = 2
+        ElseIf leadByte >= &HF0 And leadByte < &HF8 Then
+            codePoint = leadByte And &H7
+            continuationCount = 3
+        Else
+            Err.Raise vbObjectError + 531, , "The notes are not valid UTF-8 at byte " & i & "."
+        End If
+        If i + continuationCount >= byteCount Then
+            Err.Raise vbObjectError + 531, , "The notes end inside a UTF-8 character."
+        End If
+        For j = 1 To continuationCount
+            If (bytes(i + j) And &HC0) <> &H80 Then
+                Err.Raise vbObjectError + 531, , "The notes are not valid UTF-8 at byte " & (i + j) & "."
+            End If
+            codePoint = codePoint * &H40& + (bytes(i + j) And &H3F)
+        Next j
+        i = i + continuationCount + 1
+
+        If codePoint >= &H10000 Then
+            codePoint = codePoint - &H10000
+            decodedLength = decodedLength + 1
+            Mid$(decoded, decodedLength, 1) = ChrW(&HD800& + codePoint \ &H400&)
+            decodedLength = decodedLength + 1
+            Mid$(decoded, decodedLength, 1) = ChrW(&HDC00& + (codePoint And &H3FF&))
+        Else
+            decodedLength = decodedLength + 1
+            Mid$(decoded, decodedLength, 1) = ChrW(codePoint)
+        End If
+    Loop
+
+    DecodeUtf8 = Left$(decoded, decodedLength)
+End Function
+
+' Notes data is UTF-8 holding "###SLIDE_START### <slide number>", the notes lines, then "###SLIDE_END###" per slide.
 Private Sub WriteNotesFromFile(pres As Presentation, dataPath As String)
-    Dim dataNum As Integer
+    Dim dataText As String
+    Dim dataLines() As String
+    Dim lineIndex As Long
     Dim lineData As String
     Dim slideNumber As Integer
     Dim notesText As String
@@ -539,12 +612,12 @@ Private Sub WriteNotesFromFile(pres As Presentation, dataPath As String)
     Dim isFirstLine As Boolean
     Dim errorMessage As String
 
-    dataNum = FreeFile
-    Open dataPath For Input As dataNum
+    dataText = Replace(ReadUtf8File(dataPath), vbCrLf, vbLf)
+    dataLines = Split(Replace(dataText, vbCr, vbLf), vbLf)
     On Error GoTo Failed
 
-    Do While Not EOF(dataNum)
-        Line Input #dataNum, lineData
+    For lineIndex = LBound(dataLines) To UBound(dataLines)
+        lineData = dataLines(lineIndex)
         If Left(lineData, 17) = "###SLIDE_START###" Then
             slideNumber = CInt(Mid(lineData, 19))
             notesText = ""
@@ -567,14 +640,11 @@ Private Sub WriteNotesFromFile(pres As Presentation, dataPath As String)
                 notesText = notesText & vbLf & lineData
             End If
         End If
-    Loop
-
-    Close dataNum
+    Next lineIndex
     Exit Sub
 
 Failed:
     errorMessage = "Could not write the notes of slide " & slideNumber & ": " & Err.Description
-    Close dataNum
     Err.Raise vbObjectError + 529, , errorMessage
 End Sub
 
