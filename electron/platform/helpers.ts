@@ -7,6 +7,7 @@ import type {
   ErrorResult,
   ExportSlideImagesResult,
   ReloadSlideImageResult,
+  Result,
   SlideImageMap,
   SlideManifestEntry,
   SlideWithNotes,
@@ -62,9 +63,9 @@ export function buildSlidesWithPaths(
 }
 
 export async function exportedPreviewImages(
-  imageExport: Promise<ExportSlideImagesResult>,
+  exportImages: () => Promise<ExportSlideImagesResult>,
 ): Promise<SlideImageMap> {
-  const imageResult = await imageExport.catch(previewExportFailure);
+  const imageResult = await settlePreviewExport(exportImages);
   if (!imageResult.success) {
     console.error("Slide previews are unavailable:", imageResult.message);
     return new Map();
@@ -74,9 +75,9 @@ export async function exportedPreviewImages(
 
 export async function reloadedPreviewImage(
   slideIndex: SlideIndex,
-  imageExport: Promise<ReloadSlideImageResult>,
+  exportImage: () => Promise<ReloadSlideImageResult>,
 ): Promise<string | null> {
-  const imageResult = await imageExport.catch(previewExportFailure);
+  const imageResult = await settlePreviewExport(exportImage);
   if (!imageResult.success) {
     console.error(
       `Slide ${slideNumberOf(slideIndex)} preview is unavailable:`,
@@ -87,7 +88,17 @@ export async function reloadedPreviewImage(
   return imageResult.image;
 }
 
-function previewExportFailure(error: unknown): ErrorResult {
+async function settlePreviewExport<T extends object>(
+  exportPreview: () => Promise<Result<T>>,
+): Promise<Result<T>> {
+  try {
+    return await exportPreview();
+  } catch (error) {
+    return toPreviewExportError(error);
+  }
+}
+
+function toPreviewExportError(error: unknown): ErrorResult {
   return { success: false, message: getErrorMessage(error) };
 }
 

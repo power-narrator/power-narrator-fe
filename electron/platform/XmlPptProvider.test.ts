@@ -116,6 +116,16 @@ function createSlidesDir(...images: string[]): string {
   return outputDir;
 }
 
+const previewExportFailures: Array<[string, () => Promise<never>]> = [
+  ["rejects", () => Promise.reject(new Error("PowerPoint quit"))],
+  [
+    "throws before returning a promise",
+    () => {
+      throw new Error("PowerPoint quit");
+    },
+  ],
+];
+
 describe("XmlPptProvider loading", () => {
   it("loads every slide with none of its section audio playing across slides", async () => {
     const provider = new XmlPptProvider(
@@ -236,29 +246,30 @@ describe("XmlPptProvider loading", () => {
     });
   });
 
-  it("accepts the fresh notes without the previous previews when the preview export rejects during Reload All", async () => {
-    const outputDir = createSlidesDir("Slide_1_in_use.png");
-    const provider = new XmlPptProvider(
-      createNativeProvider({
-        exportSlideImages: vi
-          .fn<NativePlatformProvider["exportSlideImages"]>()
-          .mockRejectedValue(new Error("PowerPoint quit")),
-      }),
-    );
-    respondWithSlides([{ notes: "Fresh", audio: [] }]);
+  it.each(previewExportFailures)(
+    "accepts the fresh notes without the previous previews when the preview export %s during Reload All",
+    async (_, failPreviewExport) => {
+      const outputDir = createSlidesDir("Slide_1_in_use.png");
+      const provider = new XmlPptProvider(
+        createNativeProvider({
+          exportSlideImages: vi.fn<NativePlatformProvider["exportSlideImages"]>(failPreviewExport),
+        }),
+      );
+      respondWithSlides([{ notes: "Fresh", audio: [] }]);
 
-    await expect(provider.convertPptx("/presentations/deck.pptx", outputDir)).resolves.toEqual({
-      success: true,
-      slides: [
-        {
-          slideIndex: 0,
-          notes: "Fresh",
-          sectionsPlayingAcrossSlides: new Set(),
-          preview: null,
-        },
-      ],
-    });
-  });
+      await expect(provider.convertPptx("/presentations/deck.pptx", outputDir)).resolves.toEqual({
+        success: true,
+        slides: [
+          {
+            slideIndex: 0,
+            notes: "Fresh",
+            sectionsPlayingAcrossSlides: new Set(),
+            preview: null,
+          },
+        ],
+      });
+    },
+  );
 });
 
 const unreadableSlideData: Array<[string, XmlCliResponse, string]> = [
@@ -425,6 +436,7 @@ describe("XmlPptProvider.reloadSlide", () => {
     expect(fs.existsSync(previousImage)).toBe(false);
     expect(fs.existsSync(otherSlideImage)).toBe(true);
   });
+
   it("accepts the fresh notes without the previous image when the preview fails to export", async () => {
     const outputDir = createSlidesDir("Slide_2_previous.png", "Slide_20_existing.png");
     const reloadSlideImage = vi
@@ -453,34 +465,37 @@ describe("XmlPptProvider.reloadSlide", () => {
     });
     expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_20_existing.png"]);
   });
-  it("accepts the fresh notes without the previous image when the preview export rejects", async () => {
-    const outputDir = createSlidesDir("Slide_2_previous.png", "Slide_20_existing.png");
-    const reloadSlideImage = vi
-      .fn<NativePlatformProvider["reloadSlideImage"]>()
-      .mockRejectedValue(new Error("PowerPoint quit"));
-    const provider = new XmlPptProvider(createNativeProvider({ reloadSlideImage }));
-    respondWithSlides([
-      { notes: "First slide", audio: [] },
-      { notes: "Fresh notes", audio: [] },
-    ]);
 
-    const result = await provider.reloadSlide(
-      "/presentations/deck.pptx",
-      toSlideIndex(1),
-      outputDir,
-    );
+  it.each(previewExportFailures)(
+    "accepts the fresh notes without the previous image when the preview export %s",
+    async (_, failPreviewExport) => {
+      const outputDir = createSlidesDir("Slide_2_previous.png", "Slide_20_existing.png");
+      const reloadSlideImage = vi.fn<NativePlatformProvider["reloadSlideImage"]>(failPreviewExport);
+      const provider = new XmlPptProvider(createNativeProvider({ reloadSlideImage }));
+      respondWithSlides([
+        { notes: "First slide", audio: [] },
+        { notes: "Fresh notes", audio: [] },
+      ]);
 
-    expect(result).toEqual({
-      success: true,
-      slide: {
-        slideIndex: 1,
-        preview: null,
-        notes: "Fresh notes",
-        sectionsPlayingAcrossSlides: new Set(),
-      },
-    });
-    expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_20_existing.png"]);
-  });
+      const result = await provider.reloadSlide(
+        "/presentations/deck.pptx",
+        toSlideIndex(1),
+        outputDir,
+      );
+
+      expect(result).toEqual({
+        success: true,
+        slide: {
+          slideIndex: 1,
+          preview: null,
+          notes: "Fresh notes",
+          sectionsPlayingAcrossSlides: new Set(),
+        },
+      });
+      expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_20_existing.png"]);
+    },
+  );
+
   it("reports a failure instead of throwing when the reloaded slide cannot be built", async () => {
     const unencodableImage = "slides/Slide_2_\uD800.png";
     const outputDir = createSlidesDir();
