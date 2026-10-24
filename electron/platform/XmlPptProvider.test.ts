@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toSlideIndex } from "../../shared/slides/slideCoordinates.js";
+import { MacPptProvider } from "./MacPptProvider.js";
 import { XmlPptProvider } from "./XmlPptProvider.js";
 import type { NativePlatformProvider } from "./PptProvider.js";
 import type { XmlCliOperation, XmlCliResponse, XmlSlideData } from "./types.js";
@@ -16,9 +17,11 @@ type XmlCliRequest = {
 
 const xmlCliCalls: XmlCliRequest[] = [];
 const xmlCliResponses: XmlCliResponse[] = [];
+const spawnedCommands: string[] = [];
 
 vi.mock("node:child_process", () => ({
-  spawn: (_command: string, [requestPath, responsePath]: string[]) => {
+  spawn: (command: string, [requestPath, responsePath]: string[]) => {
+    spawnedCommands.push(path.basename(command));
     xmlCliCalls.push(JSON.parse(fs.readFileSync(requestPath!, "utf8")) as XmlCliRequest);
     const listeners = new Map<string, (value: string | number) => void>();
 
@@ -50,6 +53,13 @@ vi.mock("electron", () => ({
 
 let tempDir: string | undefined;
 
+function testDir(): string {
+  if (!tempDir) {
+    throw new Error("Expected a temporary test directory");
+  }
+  return tempDir;
+}
+
 beforeEach(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "power-narrator-xml-provider-"));
   // `app.getPath` is an Electron-owned method; mocking it requires an unbound reference.
@@ -61,6 +71,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   xmlCliCalls.length = 0;
   xmlCliResponses.length = 0;
+  spawnedCommands.length = 0;
   if (tempDir) {
     fs.rmSync(tempDir, { recursive: true, force: true });
     tempDir = undefined;
@@ -105,10 +116,7 @@ function createNativeProvider(
 
 /** An output directory whose slides folder already holds these images. */
 function createSlidesDir(...images: string[]): string {
-  if (!tempDir) {
-    throw new Error("Expected a temporary test directory");
-  }
-  const outputDir = path.join(tempDir, "deck");
+  const outputDir = path.join(testDir(), "deck");
   fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });
   for (const image of images) {
     fs.writeFileSync(path.join(outputDir, "slides", image), "fixture");
@@ -217,19 +225,11 @@ describe("XmlPptProvider loading", () => {
   });
 
   it("opens every slide without previews when the preview export folder cannot be created", async () => {
-    const provider = new XmlPptProvider(
-      createNativeProvider({
-        exportSlideImages: vi.fn<NativePlatformProvider["exportSlideImages"]>(
-          () =>
-            new Promise((resolve) => {
-              const notAFolder = path.join(createSlidesDir(), "power-narrator");
-              fs.writeFileSync(notAFolder, "not a folder");
-              fs.mkdirSync(path.join(notAFolder, "deck"), { recursive: true });
-              resolve({ success: true, images: new Map() });
-            }),
-        ),
-      }),
-    );
+    fs.writeFileSync(path.join(testDir(), "power-narrator"), "not a folder");
+    const macProvider = new MacPptProvider();
+    vi.spyOn(macProvider, "closePresentation").mockResolvedValue(toSlideIndex(0));
+    vi.spyOn(macProvider, "reopenPresentation").mockResolvedValue();
+    const provider = new XmlPptProvider(macProvider);
     respondWithSlides([
       { notes: "First", audio: [] },
       { notes: "Second", audio: [] },
@@ -244,6 +244,7 @@ describe("XmlPptProvider loading", () => {
         { slideIndex: 1, notes: "Second", preview: null },
       ],
     });
+    expect(spawnedCommands).toEqual(["power-narrator-cli"]);
   });
 
   it.each(previewExportFailures)(
@@ -389,10 +390,7 @@ describe("XmlPptProvider required slide data", () => {
 
 describe("XmlPptProvider.reloadSlide", () => {
   it("uses the requested slide notes, with no section audio playing across slides, and commits only its staged image", async () => {
-    if (!tempDir) {
-      throw new Error("Expected a temporary test directory");
-    }
-    const outputDir = path.join(tempDir, "deck");
+    const outputDir = path.join(testDir(), "deck");
     const slidesDir = path.join(outputDir, "slides");
     fs.mkdirSync(slidesDir, { recursive: true });
 
