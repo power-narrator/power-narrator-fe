@@ -481,7 +481,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
 
   /** Required slide data is read before image export, so a failed reload never clears the images in use. */
   async convertPptx(filePath: string, outputDir: string): Promise<SlidesPptResult> {
-    // Image export brings PowerPoint to the front.
     try {
       const notesResult = await this.readAllSlideNotes(filePath);
       if (!notesResult.success) {
@@ -509,6 +508,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     } catch (err: unknown) {
       return { success: false, message: getErrorMessage(err) };
     } finally {
+      // Image export brings PowerPoint to the front.
       this.focusApp();
     }
   }
