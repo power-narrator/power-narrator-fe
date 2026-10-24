@@ -4,14 +4,14 @@ import type {
   StructuredSlideResult,
   StructuredSlidesResult,
 } from "../../shared/types/slides.js";
-import type { SlidePptResult, SlidesPptResult, SlideWithSrc } from "../platform/types.js";
+import type { SlidePptResult, SlidesPptResult, SlideWithNotes } from "../platform/types.js";
 
 /**
  * Notes are parsed here, immediately outside the PowerPoint adapters, so raw
  * note syntax never travels further into the application than this seam.
  */
 const parseSlide = (
-  { notes, slideIndex, sectionsPlayingAcrossSlides, ...slide }: SlideWithSrc,
+  { notes, slideIndex, sectionsPlayingAcrossSlides, ...slide }: SlideWithNotes,
   knownSpeakers: Iterable<string>,
 ): StructuredSlide => ({
   ...slide,

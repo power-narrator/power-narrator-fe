@@ -7,7 +7,7 @@ import { parseNarrationSections } from "../../../shared/narration/NarrationSecti
 import { toSlideIndex } from "../../../shared/slides/slideCoordinates.js";
 import type {
   SlideNarrationEntry,
-  SlideWithSrc as Slide,
+  SlideWithNotes as Slide,
   StructuredSlide,
 } from "../../../electron/platform/types.js";
 import type { SpeakerMapping, Voice } from "../../../shared/types/tts.js";
