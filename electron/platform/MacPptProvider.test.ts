@@ -762,6 +762,62 @@ describe("MacPptProvider.reloadSlide", () => {
       expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_2_previous.png"]);
     },
   );
+
+  it("accepts the fresh notes and playback without the previous image when the preview fails to export", async () => {
+    const provider = new MacPptProvider();
+    const { outputDir, reloadSlideImage } = stageReloadedImage(provider);
+    fs.writeFileSync(path.join(outputDir, "slides/Slide_3_other.png"), "other");
+    reloadSlideImage.mockResolvedValue({
+      success: false,
+      message: "PowerPoint could not export the slide image",
+    });
+    reportNotes(
+      "ExportSlideNotes",
+      "###SLIDE_COUNT### 3\n###SLIDE_START### 2\nFresh\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+    reportSectionAudioPlayback(
+      "###SLIDE_START### 2\nppt_audio_1\ttrue\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+
+    const result = await provider.reloadSlide(
+      "/presentations/deck.pptx",
+      toSlideIndex(1),
+      outputDir,
+    );
+
+    expect(result).toEqual({
+      success: true,
+      slide: {
+        slideIndex: 1,
+        preview: null,
+        notes: "Fresh",
+        sectionsPlayingAcrossSlides: new Set([0]),
+      },
+    });
+    expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_3_other.png"]);
+  });
+
+  it("restores the preview and drops the previous image once the preview exports again", async () => {
+    const provider = new MacPptProvider();
+    const { outputDir } = stageReloadedImage(provider);
+    reportNotes(
+      "ExportSlideNotes",
+      "###SLIDE_COUNT### 3\n###SLIDE_START### 2\nFresh\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+    reportSectionAudioPlayback(noPlaybackReport(2));
+
+    const result = await provider.reloadSlide(
+      "/presentations/deck.pptx",
+      toSlideIndex(1),
+      outputDir,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      slide: { slideIndex: 1, notes: "Fresh", preview: { image: "slides/Slide_2_staged.png" } },
+    });
+    expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_2_staged.png"]);
+  });
 });
 
 describe("MacPptProvider.saveSlideNarration", () => {
