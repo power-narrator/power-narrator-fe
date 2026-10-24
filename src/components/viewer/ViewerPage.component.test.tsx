@@ -1372,3 +1372,117 @@ test("keeps the preview warning when Reload All cannot read the presentation", a
     .element(screen.getByRole("button", { name: "Slide 2" }).getByText("Preview unavailable"))
     .toBeInTheDocument();
 });
+
+function reloadedAs(slide: Slide) {
+  return vi.fn<typeof window.electronAPI.reloadSlide>(() =>
+    Promise.resolve({ success: true, slide }),
+  );
+}
+
+test("shows fresh notes behind a placeholder, not the old image, when Reload Slide cannot export the preview", async () => {
+  installElectronApi({
+    confirmDiscardNarrationChanges: () => Promise.resolve(true),
+    reloadSlide: reloadedAs(withoutPreview(loadedWith("Fresh narration"))),
+  });
+  const { screen } = await renderViewer(vi.fn(), presentationMissingPreviews(2, []));
+  const notes = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });
+
+  await notes.fill("Unsaved narration");
+  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+
+  await expect.element(notes).toHaveValue("Fresh narration");
+  await expect
+    .element(screen.getByRole("img", { name: "Slide 1 preview unavailable" }))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByRole("img", { name: "Slide 1 preview", exact: true }))
+    .not.toBeInTheDocument();
+  await expect
+    .element(screen.getByRole("button", { name: "Slide 1" }).getByText("Preview unavailable"))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByRole("alert").getByText("Preview unavailable for 1 of 2 slides"))
+    .toBeInTheDocument();
+  await notes.fill("Edited after reload");
+  await expect.element(notes).toHaveValue("Edited after reload");
+});
+
+test("restores the preview and updates the warning when Reload Slide exports it again", async () => {
+  installElectronApi({ reloadSlide: reloadedAs(loadedSlide) });
+  const { screen } = await renderViewer(vi.fn(), presentationMissingPreviews(3, [1, 3]));
+  const warning = screen.getByRole("alert");
+
+  await expect
+    .element(warning.getByText("Previews unavailable for 2 of 3 slides"))
+    .toBeInTheDocument();
+
+  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+
+  await expect
+    .element(screen.getByRole("img", { name: "Slide 1 preview", exact: true }))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByRole("button", { name: "Slide 1" }).getByText("Preview unavailable"))
+    .not.toBeInTheDocument();
+  await expect
+    .element(warning.getByText("Preview unavailable for 1 of 3 slides"))
+    .toBeInTheDocument();
+  await warning.getByRole("button", { name: "Show affected slides" }).click();
+  await expect.element(warning.getByText("Slide 3", { exact: true })).toBeVisible();
+});
+
+test("removes the preview warning once Reload Slide recovers the last missing preview", async () => {
+  installElectronApi({ reloadSlide: reloadedAs(loadedSlide) });
+  const { screen } = await renderViewer(vi.fn(), presentationMissingPreviews(2, [1]));
+
+  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+
+  await expect
+    .element(screen.getByRole("img", { name: "Slide 1 preview", exact: true }))
+    .toBeInTheDocument();
+  await expect.element(screen.getByRole("alert")).not.toBeInTheDocument();
+});
+
+test("keeps the notes, preview and warning when Reload Slide cannot read the slide", async () => {
+  const alerted = vi.spyOn(window, "alert").mockImplementation(() => {});
+  installElectronApi({
+    reloadSlide: vi.fn<typeof window.electronAPI.reloadSlide>(() =>
+      Promise.resolve({ success: false, message: "Could not read the notes of slide 1." }),
+    ),
+  });
+  const { screen } = await renderViewer(vi.fn(), presentationMissingPreviews(2, [2]));
+
+  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+
+  await vi.waitFor(() =>
+    expect(alerted).toHaveBeenCalledWith("Sync slide error: Could not read the notes of slide 1."),
+  );
+  await expect
+    .element(screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }))
+    .toHaveValue("Loaded narration");
+  await expect
+    .element(screen.getByRole("img", { name: "Slide 1 preview", exact: true }))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByRole("alert").getByText("Preview unavailable for 1 of 2 slides"))
+    .toBeInTheDocument();
+});
+
+test("changes neither the preview nor the warning when the reload discard warning is declined", async () => {
+  const reloadSlide = reloadedAs(withoutPreview(loadedWith("Fresh narration")));
+  installElectronApi({ reloadSlide });
+  const { screen } = await renderViewer(vi.fn(), presentationMissingPreviews(2, [2]));
+  const notes = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });
+
+  await notes.fill("Unsaved narration");
+  await screen.getByRole("button", { name: "Reload Slide", exact: true }).click();
+
+  await expect.element(notes).toHaveValue("Unsaved narration");
+  expect(reloadSlide).not.toHaveBeenCalled();
+  await expect
+    .element(screen.getByRole("img", { name: "Slide 1 preview", exact: true }))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByRole("alert").getByText("Preview unavailable for 1 of 2 slides"))
+    .toBeInTheDocument();
+});
