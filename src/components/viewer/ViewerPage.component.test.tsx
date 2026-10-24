@@ -26,8 +26,7 @@ const at = (zeroBased: number): SlideIndex => toSlideIndex(zeroBased);
 function loadedWith(notes: string, knownSpeakers: readonly string[] = []): Slide {
   return {
     slideIndex: at(0),
-    image: "slide-one.png",
-    src: "slide-one",
+    preview: { image: "slide-one.png", src: "slide-one" },
     sections: parseNarrationSections(notes, knownSpeakers).map((section) => ({
       ...section,
       playAcrossSlides: false,
@@ -188,7 +187,7 @@ test("shows the sections of the slide whose thumbnail is chosen", async () => {
   const secondSlide: Slide = {
     ...loadedWith("Second slide narration"),
     slideIndex: at(1),
-    image: "slide-two.png",
+    preview: { image: "slide-two.png", src: "slide-two" },
   };
   const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
 
@@ -331,7 +330,11 @@ test("shows each save-all phase and fills progress before reporting completion",
       },
     ),
   });
-  const secondSlide: Slide = { ...loadedSlide, slideIndex: at(1), image: "slide-two.png" };
+  const secondSlide: Slide = {
+    ...loadedSlide,
+    slideIndex: at(1),
+    preview: { image: "slide-two.png", src: "slide-two" },
+  };
   const { screen, onBack } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
   await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Saved narration");
   await startSaveAll(screen);
@@ -417,7 +420,11 @@ test.each([
 });
 
 test("treats the slides the run reported complete as saved when the run request fails", async () => {
-  const thirdSlide: Slide = { ...loadedSlide, slideIndex: at(2), image: "slide-three.png" };
+  const thirdSlide: Slide = {
+    ...loadedSlide,
+    slideIndex: at(2),
+    preview: { image: "slide-three.png", src: "slide-three" },
+  };
   const saveNarratedPresentation = vi.fn<typeof window.electronAPI.saveNarratedPresentation>(
     (_request, { onProgress }) => {
       onProgress({ slideIndex: at(2), completedSlides: 1, totalSlides: 2, phase: "generating" });
@@ -511,7 +518,11 @@ test.each([
       ),
     });
     const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
-    const secondSlide: Slide = { ...loadedSlide, slideIndex: at(1), image: "slide-two.png" };
+    const secondSlide: Slide = {
+      ...loadedSlide,
+      slideIndex: at(1),
+      preview: { image: "slide-two.png", src: "slide-two" },
+    };
     const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
     await screen
       .getByRole("textbox", { name: "Slide 1 section 1 notes" })
@@ -576,7 +587,11 @@ test.each([
       ),
     });
     const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
-    const secondSlide: Slide = { ...loadedSlide, slideIndex: at(1), image: "slide-two.png" };
+    const secondSlide: Slide = {
+      ...loadedSlide,
+      slideIndex: at(1),
+      preview: { image: "slide-two.png", src: "slide-two" },
+    };
     const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
     await screen.getByRole("textbox", { name: "Slide 1 section 1 notes" }).fill("Saved notes");
     await screen.getByRole("button", { name: "Slide 2", exact: true }).click();
@@ -633,7 +648,11 @@ test("skips destination selection and rendering after a synthesis failure", asyn
     ),
   });
   const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
-  const secondSlide: Slide = { ...loadedSlide, slideIndex: at(1), image: "slide-two.png" };
+  const secondSlide: Slide = {
+    ...loadedSlide,
+    slideIndex: at(1),
+    preview: { image: "slide-two.png", src: "slide-two" },
+  };
   const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
   await screen
     .getByRole("textbox", { name: "Slide 1 section 1 notes" })
@@ -681,7 +700,11 @@ test.each(["generating", "saving"] as const)(
       ),
     });
     const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
-    const secondSlide: Slide = { ...loadedSlide, slideIndex: at(1), image: "slide-two.png" };
+    const secondSlide: Slide = {
+      ...loadedSlide,
+      slideIndex: at(1),
+      preview: { image: "slide-two.png", src: "slide-two" },
+    };
     const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
     const firstEditor = screen.getByRole("textbox", { name: "Slide 1 section 1 notes" });
     await firstEditor.fill("Kept after cancelling video");
@@ -769,7 +792,11 @@ test("requests a video destination only after full save success, then renders", 
     ),
   });
   const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
-  const secondSlide: Slide = { ...loadedSlide, slideIndex: at(1), image: "slide-two.png" };
+  const secondSlide: Slide = {
+    ...loadedSlide,
+    slideIndex: at(1),
+    preview: { image: "slide-two.png", src: "slide-two" },
+  };
   const { screen, onBack } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
   await screen
     .getByRole("textbox", { name: "Slide 1 section 1 notes" })
@@ -851,7 +878,7 @@ test("removes audio for every slide", async () => {
   const secondSlide: Slide = {
     ...loadedSlide,
     slideIndex: at(1),
-    image: "slide-two.png",
+    preview: { image: "slide-two.png", src: "slide-two" },
   };
   const { screen } = await renderViewer(vi.fn<() => void>(), [loadedSlide, secondSlide]);
 
@@ -1159,7 +1186,7 @@ test("addresses the selected slide by its own index, not its place in the list",
   const thirdSlide: Slide = {
     ...loadedSlide,
     slideIndex: at(2),
-    image: "slide-three.png",
+    preview: { image: "slide-three.png", src: "slide-three" },
   };
   const playSlide = vi.fn<typeof window.electronAPI.playSlide>(() =>
     Promise.resolve({ success: true as const }),
@@ -1230,4 +1257,39 @@ test("previews the section with plain sections and its position in their order",
     },
   ]);
   expect(request?.sections.some((section) => "id" in section)).toBe(false);
+});
+
+function withoutPreview(slide: Slide): Slide {
+  return { ...slide, preview: null };
+}
+
+test("lets a slide without a preview be selected, edited and saved behind placeholders", async () => {
+  const saveNarratedSlide = vi.fn<typeof window.electronAPI.saveNarratedSlide>(() =>
+    Promise.resolve({ success: true }),
+  );
+  installElectronApi({ saveNarratedSlide });
+  const secondSlide = withoutPreview({ ...loadedWith("Second narration"), slideIndex: at(1) });
+  const { screen } = await renderViewer(vi.fn(), [loadedSlide, secondSlide]);
+
+  await expect
+    .element(screen.getByRole("button", { name: "Slide 2" }).getByText("Preview unavailable"))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByRole("button", { name: "Slide 1" }).getByText("Preview unavailable"))
+    .not.toBeInTheDocument();
+
+  await screen.getByRole("button", { name: "Slide 2" }).click();
+
+  await expect
+    .element(screen.getByRole("img", { name: "Slide 2 preview unavailable" }))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByRole("img", { name: "Slide 2 preview", exact: true }))
+    .not.toBeInTheDocument();
+  await screen.getByRole("textbox", { name: "Slide 2 section 1 notes" }).fill("Edited narration");
+  await expect.element(screen.getByRole("button", { name: "Play", exact: true })).toBeEnabled();
+  await screen.getByRole("button", { name: "Save Slide", exact: true }).click();
+  await vi.waitFor(() =>
+    expect(saveNarratedSlide).toHaveBeenCalledWith(expect.objectContaining({ slideIndex: 1 })),
+  );
 });

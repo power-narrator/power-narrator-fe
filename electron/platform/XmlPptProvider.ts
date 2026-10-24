@@ -27,6 +27,7 @@ import type {
   ReadSlideNotesResult,
   RunXmlCliResult,
   SlideAudioEntry,
+  SlideImageMap,
   SlidePptResult,
   SlideNarrationEntry,
   SlideNarrationSaveResult,
@@ -388,15 +389,16 @@ export class XmlPptProvider implements PptProvider {
 
     const imageResult = await this.nativeProvider.exportSlideImages(filePath, outputDir);
     if (!imageResult.success) {
-      return imageResult;
+      console.error("Slide previews are unavailable:", imageResult.message);
     }
+    const images: SlideImageMap = imageResult.success ? imageResult.images : new Map();
 
     const slides = queryResult.slideData.map((slide, position) => {
       const slideIndex = toSlideIndex(position);
 
       return {
         slideIndex,
-        image: imageResult.images.get(slideIndex)?.image || "",
+        image: images.get(slideIndex)?.image || null,
         notes: slide.notes,
         sectionsPlayingAcrossSlides: NO_SECTIONS_PLAYING_ACROSS_SLIDES,
       };

@@ -110,7 +110,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
       .toSorted((a, b) => a - b)
       .map((slideIndex) => ({
         slideIndex,
-        image: images.get(slideIndex)?.image || "",
+        image: images.get(slideIndex)?.image || null,
         notes: notes.get(slideIndex) || "",
         sectionsPlayingAcrossSlides: sectionsPlayingAcrossSlidesOn(playback, slideIndex),
       }));
@@ -496,11 +496,11 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
 
       const imageResult = await this.exportSlideImages(filePath, outputDir);
       if (!imageResult.success) {
-        return imageResult;
+        console.error("Slide previews are unavailable:", imageResult.message);
       }
 
       const slides = this.mergeSlideData(
-        imageResult.images,
+        imageResult.success ? imageResult.images : new Map(),
         notesResult.notes,
         playbackResult.playback,
       );

@@ -43,19 +43,13 @@ export function buildSlidesWithPaths(
 ): SlideWithSrc[] {
   const timestamp = Date.now();
 
-  return slides.flatMap((slide) => {
-    if (!slide.image) {
-      return [];
-    }
-
-    return [
-      {
-        ...slide,
-        src: `${resolveSlideAssetUrl(path.join(outputDir, slide.image))}?t=${timestamp}`,
-        notes: normalizeNotes(slide.notes || ""),
-      },
-    ];
-  });
+  return slides.map(({ image, ...slide }) => ({
+    ...slide,
+    preview: image
+      ? { image, src: `${resolveSlideAssetUrl(path.join(outputDir, image))}?t=${timestamp}` }
+      : null,
+    notes: normalizeNotes(slide.notes),
+  }));
 }
 
 export function cleanupPaths(...paths: Array<string | null | undefined>): void {

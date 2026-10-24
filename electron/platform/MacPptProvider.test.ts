@@ -500,54 +500,85 @@ describe("MacPptProvider section audio playback", () => {
 });
 
 describe("MacPptProvider.convertPptx", () => {
-  it("reads notes and Play Across Slides for every slide in the presentation, not only those with images", async () => {
+  it("keeps all 72 slides with their notes and settings when only 10 previews export", async () => {
     const provider = new MacPptProvider();
-    stubImageExport(provider, [0, 2]);
-    reportNotes("ExportAllSlideNotes", notesReport("First", "Second", "Third"));
-    const playback = reportSectionAudioPlayback(noPlaybackReport(1, 2, 3));
+    const previewed = [0, 7, 15, 22, 30, 38, 45, 53, 60, 71];
+    stubImageExport(provider, previewed);
+    const notes = Array.from({ length: 72 }, (_, i) => `Notes ${i + 1}`);
+    reportNotes("ExportAllSlideNotes", notesReport(...notes));
+    const playback = reportSectionAudioPlayback(
+      [
+        "###SLIDE_START### 5\nppt_audio_1\ttrue\n###SLIDE_END###",
+        ...notes.flatMap((_, i) =>
+          i === 4 ? [] : [`###SLIDE_START### ${i + 1}`, "###SLIDE_END###"],
+        ),
+        "###EXPORT_COMPLETE###",
+        "",
+      ].join("\n"),
+    );
 
     const result = await provider.convertPptx("/presentations/deck.pptx", "/tmp/deck");
 
-    expect(playback.slideNumbers).toBe("1,2,3");
-    expect(result).toMatchObject({
+    if (!result.success) {
+      throw new Error(result.message);
+    }
+    expect(playback.slideNumbers.split(",")).toHaveLength(72);
+    expect(result.slides).toHaveLength(72);
+    expect(result.slides.map(({ slideIndex, notes }) => ({ slideIndex, notes }))).toEqual(
+      notes.map((text, i) => ({ slideIndex: i, notes: text })),
+    );
+    expect(result.slides.filter(({ preview }) => preview === null)).toHaveLength(62);
+    expect(result.slides[4]).toMatchObject({
+      preview: null,
+      sectionsPlayingAcrossSlides: new Set([0]),
+    });
+    expect(result.slides[7]?.preview?.image).toBe("slides/Slide_8_uuid.png");
+    expect(result.slides[7]?.preview?.src).toContain(
+      encodeURIComponent("/tmp/deck/slides/Slide_8_uuid.png"),
+    );
+  });
+
+  it("opens every slide without previews when the whole image export fails", async () => {
+    const provider = new MacPptProvider();
+    vi.spyOn(provider, "exportSlideImages").mockResolvedValue({
+      success: false,
+      message: "PowerPoint could not export images",
+    });
+    reportNotes("ExportAllSlideNotes", notesReport("First", "Second"));
+    reportSectionAudioPlayback(noPlaybackReport(1, 2));
+
+    await expect(
+      provider.convertPptx("/presentations/deck.pptx", "/tmp/deck"),
+    ).resolves.toMatchObject({
       success: true,
       slides: [
-        { slideIndex: 0, notes: "First" },
-        { slideIndex: 2, notes: "Third" },
+        { slideIndex: 0, notes: "First", preview: null },
+        { slideIndex: 1, notes: "Second", preview: null },
       ],
     });
   });
 
-  it("keeps each slide's own index when only some slides exported", async () => {
+  it("treats a slide the exporter reported without an image as having no preview", async () => {
     const provider = new MacPptProvider();
-    reportSectionAudioPlayback(
-      "###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 4\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
-    );
     vi.spyOn(provider, "exportSlideImages").mockResolvedValue({
       success: true,
       images: new Map([
-        [toSlideIndex(3), { image: "slides/Slide_4_uuid.png" }],
-        [toSlideIndex(0), { image: "slides/Slide_1_uuid.png" }],
+        [toSlideIndex(0), { image: "" }],
+        [toSlideIndex(1), { image: "slides/Slide_2_uuid.png" }],
       ]),
     });
-    vi.spyOn(provider, "readAllSlideNotes").mockResolvedValue({
+    reportNotes("ExportAllSlideNotes", notesReport("First", "Second"));
+    reportSectionAudioPlayback(noPlaybackReport(1, 2));
+
+    await expect(
+      provider.convertPptx("/presentations/deck.pptx", "/tmp/deck"),
+    ).resolves.toMatchObject({
       success: true,
-      notes: new Map([
-        [toSlideIndex(0), "First"],
-        [toSlideIndex(3), "Fourth"],
-      ]),
+      slides: [
+        { slideIndex: 0, preview: null },
+        { slideIndex: 1, preview: { image: "slides/Slide_2_uuid.png" } },
+      ],
     });
-
-    const result = await provider.convertPptx("/presentations/deck.pptx", "/tmp/deck");
-
-    expect(result.success).toBe(true);
-    if (!result.success) {
-      throw new Error(result.message);
-    }
-    expect(result.slides.map(({ slideIndex, notes }) => ({ slideIndex, notes }))).toEqual([
-      { slideIndex: 0, notes: "First" },
-      { slideIndex: 3, notes: "Fourth" },
-    ]);
   });
 });
 
@@ -689,7 +720,7 @@ describe("MacPptProvider.reloadSlide", () => {
     expect(notes.params.split("|").slice(0, 2)).toEqual(["/presentations/deck.pptx", "2"]);
     expect(result).toMatchObject({
       success: true,
-      slide: { slideIndex: 1, image: "slides/Slide_2_staged.png", notes: "" },
+      slide: { slideIndex: 1, preview: { image: "slides/Slide_2_staged.png" }, notes: "" },
     });
   });
 

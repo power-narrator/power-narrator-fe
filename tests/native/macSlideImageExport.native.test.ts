@@ -6,11 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { buildSlidesWithPaths } from "../../electron/platform/helpers.js";
-import { slideIndexFromOneBased } from "../../shared/slides/slideCoordinates.js";
-
-vi.mock("electron", () => ({ app: {} }));
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const run = promisify(execFile);
 const REPO = fileURLToPath(new URL("../..", import.meta.url));
@@ -120,18 +116,7 @@ end run
       const actual = await exported(harness, [target, outputDir, other, timing]);
 
       expect(actual.map(({ slideNumber }) => slideNumber)).toEqual([1, 2, 3, 4, 5]);
-      // The viewer drops entries with no image. Check its final slide count as
-      // well as the manifest, which can still contain five entries after failures.
-      const visibleSlides = buildSlidesWithPaths(
-        actual.map(({ slideNumber, image }) => ({
-          slideIndex: slideIndexFromOneBased(slideNumber),
-          image,
-          notes: "",
-          sectionsPlayingAcrossSlides: new Set<number>(),
-        })),
-        outputDir,
-      );
-      expect(visibleSlides).toHaveLength(5);
+      expect(actual.filter(({ image }) => !image)).toEqual([]);
       const imageDigest = (filePath: string) =>
         createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
       for (const [i, slide] of actual.entries()) {
