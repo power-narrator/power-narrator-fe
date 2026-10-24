@@ -16,6 +16,9 @@ const ERROR = "###ERROR### ";
 
 export type NotesReportResult = Result<{ notes: SlideNotesMap }>;
 
+const unfinishedSlide = (slideNumber: SlideNumber) =>
+  fail(`PowerPoint did not finish reporting the notes of slide ${slideNumber}.`);
+
 /**
  * Reads a notes export, which must report every requested slide, or every slide
  * of the presentation when none are named.
@@ -45,7 +48,7 @@ export function parseNotesReport(
         notes.set(slideIndexOf(slide.number), slide.lines.join("\n"));
         slide = null;
       } else if (line.startsWith(SLIDE_START) || line === EXPORT_COMPLETE) {
-        return fail(`PowerPoint did not finish reporting the notes of slide ${slide.number}.`);
+        return unfinishedSlide(slide.number);
       } else {
         slide.lines.push(line);
       }
@@ -80,7 +83,7 @@ export function parseNotesReport(
   }
 
   if (slide !== null) {
-    return fail(`PowerPoint did not finish reporting the notes of slide ${slide.number}.`);
+    return unfinishedSlide(slide.number);
   }
   if (!complete) {
     return fail("PowerPoint did not finish reporting slide notes.");
