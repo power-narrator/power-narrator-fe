@@ -1,6 +1,5 @@
 import { strToU8, zipSync } from "fflate";
 
-/** Just enough of a presentation for the inspector's tests; not a general writer. */
 export type TestShape =
   | { kind: "shape"; id: number; name: string; text?: string; offset?: [number, number] }
   | {

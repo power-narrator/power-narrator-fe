@@ -17,17 +17,14 @@ from PowerPoint's UI, not VBA, AppleScript or the app.
 
 ## Before you start
 
-Make four short, distinct audio clips, with clip 2 the longest. The checked-in deck uses MP3s made
-by the app; only the files were taken from it, and they were inserted by hand as described below.
-Clips made with `say` work as well:
+The deck uses four distinct audio clips containing this spoken text:
 
-```sh
-mkdir -p ~/Desktop/deck-clips && cd ~/Desktop/deck-clips
-say -o clip1.m4a --data-format=aac "Section one"
-say -o clip2.m4a --data-format=aac "Section two, a little longer than one"
-say -o clip3.m4a --data-format=aac "Section three"
-say -o music.m4a --data-format=aac "Not section audio"
-```
+| Clip | Spoken text |
+| --- | --- |
+| Clip 1 | Section one |
+| Clip 2 | Section two, a little longer than one |
+| Clip 3 | Section three |
+| Music clip | Not section audio |
 
 Create a new blank presentation (16:9, Office theme) with five slides, using the Title Only layout.
 

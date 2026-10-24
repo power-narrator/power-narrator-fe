@@ -497,25 +497,20 @@ The layout is:
 - `tests/fixtures/hand-built-deck.md`: the recipe the deck was built from in PowerPoint's UI. Its
   fixture test, `tests/native/handBuiltDeck.test.ts`, runs in the unit profile.
 
-The clips in `tests/fixtures/audio` are spoken with `say` and encoded with `lame`, because macOS's
-audio converter cannot encode MP3. Each has a different length:
+The clips in `tests/fixtures/audio` contain spoken text:
 
-```sh
-brew install lame
-cd tests/fixtures/audio
-say -o s1.aiff "Section one"
-say -o s2.aiff "Section two, a little longer than one"
-say -o s3.aiff "Section three, the longest of the three clips by a few words"
-for i in 1 2 3; do lame --quiet -b 64 s$i.aiff section-$i.mp3; done
-rm s?.aiff
-```
+| File | Spoken text |
+| --- | --- |
+| `section-1.mp3` | Section one |
+| `section-2.mp3` | Section two, a little longer than one |
+| `section-3.mp3` | Section three, the longest of the three clips by a few words |
 
-`not-audio.mp3` is the input that makes a slide save fail part-way through. It is a line of text,
-not audio:
+The native save and replacement cases use these distinct clips and compare the saved audio's
+bytes with the requested clip. The recovery case uses `section-1.mp3` before a failure, then
+`section-2.mp3` and `section-3.mp3` on retry, so it can detect audio left behind by the failed save.
 
-```sh
-printf 'These bytes are plain text, not audio.\n' > tests/fixtures/audio/not-audio.mp3
-```
+`not-audio.mp3` contains the plain text `These bytes are plain text, not audio.` followed by a
+newline. It makes a slide save fail part-way through.
 
 ## Troubleshooting
 
