@@ -304,23 +304,8 @@ const unreadableSlideData: Array<[string, XmlCliResponse, string]> = [
 
 describe("XmlPptProvider required slide data", () => {
   it.each(unreadableSlideData)(
-    "fails the load without exporting slide images when %s",
+    "fails the load, exporting no slide images and leaving the previews in use on disk, when %s",
     async (_, response, message) => {
-      const exportSlideImages = vi.fn<NativePlatformProvider["exportSlideImages"]>();
-      const provider = new XmlPptProvider(createNativeProvider({ exportSlideImages }));
-      xmlCliResponses.push(response);
-
-      await expect(provider.convertPptx("/presentations/deck.pptx", "/tmp/deck")).resolves.toEqual({
-        success: false,
-        message,
-      });
-      expect(exportSlideImages).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each(unreadableSlideData)(
-    "leaves the previews in use untouched on disk when %s during Reload All",
-    async (_, response) => {
       const outputDir = createSlidesDir();
       fs.writeFileSync(path.join(outputDir, "slides/Slide_1_in_use.png"), "first preview");
       fs.writeFileSync(path.join(outputDir, "slides/Slide_2_in_use.png"), "second preview");
@@ -332,9 +317,11 @@ describe("XmlPptProvider required slide data", () => {
       const provider = new XmlPptProvider(createNativeProvider({ exportSlideImages }));
       xmlCliResponses.push(response);
 
-      const result = await provider.convertPptx("/presentations/deck.pptx", outputDir);
-
-      expect(result.success).toBe(false);
+      await expect(provider.convertPptx("/presentations/deck.pptx", outputDir)).resolves.toEqual({
+        success: false,
+        message,
+      });
+      expect(exportSlideImages).not.toHaveBeenCalled();
       const slidesDir = path.join(outputDir, "slides");
       expect(
         Object.fromEntries(

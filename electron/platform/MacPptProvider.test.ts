@@ -296,15 +296,7 @@ function stubImageExport(provider: MacPptProvider, slideIndices: number[]) {
 }
 
 function stubSlideExport(provider: MacPptProvider, slideIndices: number[]) {
-  const imageExport = vi.spyOn(provider, "exportSlideImages").mockResolvedValue({
-    success: true,
-    images: new Map(
-      slideIndices.map((index) => [
-        toSlideIndex(index),
-        { image: `slides/Slide_${index + 1}_uuid.png` },
-      ]),
-    ),
-  });
+  const imageExport = stubImageExport(provider, slideIndices);
   vi.spyOn(provider, "readAllSlideNotes").mockResolvedValue({
     success: true,
     notes: new Map(slideIndices.map((index) => [toSlideIndex(index), `Slide ${index + 1}`])),
