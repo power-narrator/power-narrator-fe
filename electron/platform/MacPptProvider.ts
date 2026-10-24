@@ -5,10 +5,10 @@ import { spawn } from "node:child_process";
 import type { NativePlatformProvider, PptProvider } from "./PptProvider.js";
 import {
   FIRST_SLIDE_INDEX,
-  slideIndexFromOneBased,
   trySlideIndexFromOneBased,
   slideNumberOf,
   type SlideIndex,
+  type SlideNumber,
 } from "../../shared/slides/slideCoordinates.js";
 import { getErrorMessage } from "./errors.js";
 import {
@@ -23,6 +23,7 @@ import {
   sectionsPlayingAcrossSlidesOn,
   type SectionAudioPlaybackResult,
 } from "./sectionAudioPlayback.js";
+import { parseNotesReport, type NotesReportResult } from "./notesReport.js";
 import { completeSlideReload } from "./slideReload.js";
 import {
   checkSaveNarrationReport,
@@ -38,6 +39,7 @@ import type {
   SectionsPlayingAcrossSlides,
   ExportSlideImagesResult,
   ReadAllSlideNotesResult,
+  ReadSlideContentResult,
   ReadSlideNotesResult,
   ReloadSlideImageResult,
   SlideAudioEntry,
@@ -104,7 +106,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     notes: SlideNotesMap,
     playback: ReadonlyMap<SlideIndex, SectionsPlayingAcrossSlides>,
   ): SlideManifestEntry[] {
-    return [...images.keys()]
+    return [...notes.keys()]
       .toSorted((a, b) => a - b)
       .map((slideIndex) => ({
         slideIndex,
@@ -130,37 +132,6 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
 
     return images;
-  }
-
-  private parseNotesExportFile(filePath: string): SlideNotesMap {
-    const content = fs.readFileSync(filePath, "utf8");
-    const lines = content.split(/\r\n|\n|\r/);
-    const notes = new Map<SlideIndex, string>();
-    let currentSlideNumber: number | null = null;
-    let currentLines: string[] = [];
-
-    for (const line of lines) {
-      if (line.startsWith("###SLIDE_START### ")) {
-        currentSlideNumber = Number(line.slice("###SLIDE_START### ".length));
-        currentLines = [];
-        continue;
-      }
-
-      if (line === "###SLIDE_END###") {
-        if (currentSlideNumber !== null && Number.isInteger(currentSlideNumber)) {
-          notes.set(slideIndexFromOneBased(currentSlideNumber), currentLines.join("\n"));
-        }
-        currentSlideNumber = null;
-        currentLines = [];
-        continue;
-      }
-
-      if (currentSlideNumber !== null) {
-        currentLines.push(line);
-      }
-    }
-
-    return notes;
   }
 
   private parseAppleScriptJson<T = Record<string, unknown>>(stdout: string): AppleScriptResult<T> {
@@ -408,6 +379,16 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
+  private readNotesReport(
+    outputPath: string,
+    requestedSlides?: readonly SlideNumber[],
+  ): NotesReportResult {
+    if (!fs.existsSync(outputPath)) {
+      return { success: false, message: "PowerPoint did not report slide notes." };
+    }
+    return parseNotesReport(fs.readFileSync(outputPath, "utf8"), requestedSlides);
+  }
+
   async readAllSlideNotes(filePath: string): Promise<ReadAllSlideNotesResult> {
     const officeContainer = this.getOfficeContainerPath();
     const outputPath = path.join(officeContainer, "export_all_notes.txt");
@@ -424,8 +405,7 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
         return { success: false, message: scriptResult.message || "Failed to export slide notes." };
       }
 
-      const notes = this.parseNotesExportFile(outputPath);
-      return { success: true, notes };
+      return this.readNotesReport(outputPath);
     } catch (e: unknown) {
       return { success: false, message: getErrorMessage(e) };
     } finally {
@@ -449,8 +429,11 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
         return { success: false, message: scriptResult.message || "Failed to export slide notes." };
       }
 
-      const notes = this.parseNotesExportFile(outputPath);
-      return { success: true, notes: notes.get(slideIndex) || "" };
+      const notesResult = this.readNotesReport(outputPath, [slideNumberOf(slideIndex)]);
+      if (!notesResult.success) {
+        return notesResult;
+      }
+      return { success: true, notes: notesResult.notes.get(slideIndex) ?? "" };
     } catch (e: unknown) {
       return { success: false, message: getErrorMessage(e) };
     } finally {
@@ -496,40 +479,37 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     }
   }
 
+  /** Required slide data is read before image export, so a failed reload never clears the images in use. */
   async convertPptx(filePath: string, outputDir: string): Promise<SlidesPptResult> {
-    const imageResult = await this.exportSlideImages(filePath, outputDir);
-    if (!imageResult.success) {
-      return imageResult;
-    }
-
     // Image export brings PowerPoint to the front.
     try {
-      return await this.readSlideData(filePath, outputDir, imageResult.images);
-    } finally {
-      this.focusApp();
-    }
-  }
+      const notesResult = await this.readAllSlideNotes(filePath);
+      if (!notesResult.success) {
+        return notesResult;
+      }
 
-  private async readSlideData(
-    filePath: string,
-    outputDir: string,
-    images: SlideImageMap,
-  ): Promise<SlidesPptResult> {
-    const notesResult = await this.readAllSlideNotes(filePath);
-    if (!notesResult.success) {
-      return notesResult;
-    }
+      const playbackResult = await this.readSectionAudioPlayback(filePath, [
+        ...notesResult.notes.keys(),
+      ]);
+      if (!playbackResult.success) {
+        return playbackResult;
+      }
 
-    const playbackResult = await this.readSectionAudioPlayback(filePath, [...images.keys()]);
-    if (!playbackResult.success) {
-      return playbackResult;
-    }
+      const imageResult = await this.exportSlideImages(filePath, outputDir);
+      if (!imageResult.success) {
+        return imageResult;
+      }
 
-    try {
-      const slides = this.mergeSlideData(images, notesResult.notes, playbackResult.playback);
+      const slides = this.mergeSlideData(
+        imageResult.images,
+        notesResult.notes,
+        playbackResult.playback,
+      );
       return { success: true, slides: buildSlidesWithPaths(slides, outputDir) };
     } catch (err: unknown) {
       return { success: false, message: getErrorMessage(err) };
+    } finally {
+      this.focusApp();
     }
   }
 
@@ -733,37 +713,49 @@ export class MacPptProvider implements PptProvider, NativePlatformProvider {
     return { success: true };
   }
 
+  private async readSlideContent(
+    filePath: string,
+    slideIndex: SlideIndex,
+  ): Promise<ReadSlideContentResult> {
+    const notesResult = await this.readSlideNotes(filePath, slideIndex);
+    if (!notesResult.success) {
+      return notesResult;
+    }
+
+    const playbackResult = await this.readSectionAudioPlayback(filePath, [slideIndex]);
+    if (!playbackResult.success) {
+      return playbackResult;
+    }
+
+    return {
+      success: true,
+      notes: notesResult.notes,
+      sectionsPlayingAcrossSlides: sectionsPlayingAcrossSlidesOn(
+        playbackResult.playback,
+        slideIndex,
+      ),
+    };
+  }
+
   async reloadSlide(
     filePath: string,
     slideIndex: SlideIndex,
     outputDir: string,
   ): Promise<SlidePptResult> {
-    const imageResult = await this.reloadSlideImage(filePath, slideIndex, outputDir);
-    if (!imageResult.success) {
-      return imageResult;
-    }
-
     try {
-      return await completeSlideReload(outputDir, slideIndex, imageResult.image, async () => {
-        const notesResult = await this.readSlideNotes(filePath, slideIndex);
-        if (!notesResult.success) {
-          return notesResult;
-        }
+      const contentResult = await this.readSlideContent(filePath, slideIndex);
+      if (!contentResult.success) {
+        return contentResult;
+      }
 
-        const playbackResult = await this.readSectionAudioPlayback(filePath, [slideIndex]);
-        if (!playbackResult.success) {
-          return playbackResult;
-        }
+      const imageResult = await this.reloadSlideImage(filePath, slideIndex, outputDir);
+      if (!imageResult.success) {
+        return imageResult;
+      }
 
-        return {
-          success: true,
-          notes: notesResult.notes,
-          sectionsPlayingAcrossSlides: sectionsPlayingAcrossSlidesOn(
-            playbackResult.playback,
-            slideIndex,
-          ),
-        };
-      });
+      return await completeSlideReload(outputDir, slideIndex, imageResult.image, () =>
+        Promise.resolve(contentResult),
+      );
     } finally {
       try {
         this.focusApp();

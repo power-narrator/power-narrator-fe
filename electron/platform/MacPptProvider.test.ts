@@ -12,15 +12,21 @@ const spawnCalls: Array<{ command: string; args: string[] }> = [];
 let spawnStdout = "";
 let beforeSpawnClose: (() => void) | undefined;
 const scriptOutcomes = new Map<string, ScriptOutcome>();
+/** What each fake macro does while trigger-macro.applescript runs it, keyed by macro name. */
+const macroRuns = new Map<string, () => void>();
 
 vi.mock("node:child_process", () => ({
   spawn: (command: string, args: string[]) => {
     spawnCalls.push({ command, args });
     const listeners = new Map<string, (value: unknown) => void>();
-    const outcome = scriptOutcomes.get(path.basename(args[0] ?? "")) ?? { stdout: spawnStdout };
+    const script = path.basename(args[0] ?? "");
+    const outcome = scriptOutcomes.get(script) ?? { stdout: spawnStdout };
 
     queueMicrotask(() => {
       beforeSpawnClose?.();
+      if (script === "trigger-macro.applescript") {
+        macroRuns.get(args[1] ?? "")?.();
+      }
       if (outcome.stdout) {
         listeners.get("stdout")?.(outcome.stdout);
       }
@@ -73,6 +79,7 @@ afterEach(() => {
   spawnStdout = "";
   beforeSpawnClose = undefined;
   scriptOutcomes.clear();
+  macroRuns.clear();
   if (tempDir) {
     fs.rmSync(tempDir, { recursive: true, force: true });
     tempDir = undefined;
@@ -218,7 +225,8 @@ describe("MacPptProvider.exportSlideImages", () => {
  */
 function reportSectionAudioPlayback(report: string | null) {
   const request = { slideNumbers: "" };
-  succeedAppleScript(() => {
+  spawnStdout = JSON.stringify({ success: true, data: {} });
+  macroRuns.set("ExportSectionAudioPlayback", () => {
     const [, slideNumbers, outputPath] = fs
       .readFileSync(officeContainerPath("export_audio_playback_params.txt"), "utf8")
       .split("|");
@@ -230,8 +238,61 @@ function reportSectionAudioPlayback(report: string | null) {
   return request;
 }
 
+const NOTES_PARAMS = {
+  ExportAllSlideNotes: "export_all_notes_params.txt",
+  ExportSlideNotes: "export_slide_notes_params.txt",
+};
+
+/** Plays a notes export macro, which writes its report to the last path in its parameters. */
+function reportNotes(macro: keyof typeof NOTES_PARAMS, report: string | null) {
+  const request = { params: "" };
+  spawnStdout = JSON.stringify({ success: true, data: {} });
+  macroRuns.set(macro, () => {
+    request.params = fs.readFileSync(officeContainerPath(NOTES_PARAMS[macro]), "utf8");
+    if (report !== null) {
+      fs.writeFileSync(request.params.split("|").at(-1)!, report);
+    }
+  });
+  return request;
+}
+
+/** A complete notes report for a presentation whose slides have these notes, in order. */
+function notesReport(...notes: string[]): string {
+  return [
+    `###SLIDE_COUNT### ${notes.length}`,
+    ...notes.flatMap((text, i) => [
+      `###SLIDE_START### ${i + 1}`,
+      ...(text ? [text] : []),
+      "###SLIDE_END###",
+    ]),
+    "###EXPORT_COMPLETE###",
+    "",
+  ].join("\n");
+}
+
+/** A complete playback report for slides with no section audio. */
+function noPlaybackReport(...slideNumbers: number[]): string {
+  return [
+    ...slideNumbers.flatMap((n) => [`###SLIDE_START### ${n}`, "###SLIDE_END###"]),
+    "###EXPORT_COMPLETE###",
+    "",
+  ].join("\n");
+}
+
+function stubImageExport(provider: MacPptProvider, slideIndices: number[]) {
+  return vi.spyOn(provider, "exportSlideImages").mockResolvedValue({
+    success: true,
+    images: new Map(
+      slideIndices.map((index) => [
+        toSlideIndex(index),
+        { image: `slides/Slide_${index + 1}_uuid.png` },
+      ]),
+    ),
+  });
+}
+
 function stubSlideExport(provider: MacPptProvider, slideIndices: number[]) {
-  vi.spyOn(provider, "exportSlideImages").mockResolvedValue({
+  const imageExport = vi.spyOn(provider, "exportSlideImages").mockResolvedValue({
     success: true,
     images: new Map(
       slideIndices.map((index) => [
@@ -244,6 +305,7 @@ function stubSlideExport(provider: MacPptProvider, slideIndices: number[]) {
     success: true,
     notes: new Map(slideIndices.map((index) => [toSlideIndex(index), `Slide ${index + 1}`])),
   });
+  return imageExport;
 }
 
 describe("MacPptProvider section audio playback", () => {
@@ -350,18 +412,19 @@ describe("MacPptProvider section audio playback", () => {
       "PowerPoint did not report section audio playback for slide 1.",
     ],
     ["no report is written", null, "PowerPoint did not report section audio playback."],
-  ])("fails the load when %s", async (_, report, message) => {
+  ])("fails the load without exporting slide images when %s", async (_, report, message) => {
     const provider = new MacPptProvider();
-    stubSlideExport(provider, [0]);
+    const imageExport = stubSlideExport(provider, [0]);
     reportSectionAudioPlayback(report);
 
     await expect(provider.convertPptx("/presentations/deck.pptx", "/tmp/deck")).resolves.toEqual({
       success: false,
       message,
     });
+    expect(imageExport).not.toHaveBeenCalled();
   });
 
-  it("returns focus to the app after the slide images were exported but PowerPoint fails to read the checkboxes", async () => {
+  it("returns focus to the app when PowerPoint fails to read the checkboxes", async () => {
     const appWindow = openAppWindow();
     const provider = new MacPptProvider();
     stubSlideExport(provider, [0]);
@@ -437,6 +500,24 @@ describe("MacPptProvider section audio playback", () => {
 });
 
 describe("MacPptProvider.convertPptx", () => {
+  it("reads notes and Play Across Slides for every slide in the presentation, not only those with images", async () => {
+    const provider = new MacPptProvider();
+    stubImageExport(provider, [0, 2]);
+    reportNotes("ExportAllSlideNotes", notesReport("First", "Second", "Third"));
+    const playback = reportSectionAudioPlayback(noPlaybackReport(1, 2, 3));
+
+    const result = await provider.convertPptx("/presentations/deck.pptx", "/tmp/deck");
+
+    expect(playback.slideNumbers).toBe("1,2,3");
+    expect(result).toMatchObject({
+      success: true,
+      slides: [
+        { slideIndex: 0, notes: "First" },
+        { slideIndex: 2, notes: "Third" },
+      ],
+    });
+  });
+
   it("keeps each slide's own index when only some slides exported", async () => {
     const provider = new MacPptProvider();
     reportSectionAudioPlayback(
@@ -484,6 +565,173 @@ function saveNarrationMacroReports(report: string | undefined) {
   });
   return request;
 }
+
+describe("MacPptProvider notes reports", () => {
+  it("loads genuinely blank notes as empty", async () => {
+    const provider = new MacPptProvider();
+    stubImageExport(provider, [0, 1]);
+    reportNotes("ExportAllSlideNotes", notesReport("", "Second"));
+    reportSectionAudioPlayback(noPlaybackReport(1, 2));
+
+    const result = await provider.convertPptx("/presentations/deck.pptx", "/tmp/deck");
+
+    expect(result).toMatchObject({
+      success: true,
+      slides: [
+        { slideIndex: 0, notes: "" },
+        { slideIndex: 1, notes: "Second" },
+      ],
+    });
+  });
+
+  it.each([
+    [
+      "PowerPoint cannot read a slide's notes",
+      "###ERROR### Could not read the notes of slide 2: Automation error\n",
+      "Could not read the notes of slide 2: Automation error",
+    ],
+    [
+      "the report stops before completing",
+      "###SLIDE_COUNT### 2\n###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 2\n###SLIDE_END###\n",
+      "PowerPoint did not finish reporting slide notes.",
+    ],
+    ["the report is empty", "", "PowerPoint did not report how many slides the presentation has."],
+    [
+      "the slide count is missing",
+      "###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 2\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint did not report how many slides the presentation has.",
+    ],
+    [
+      "the slide count is unreadable",
+      "###SLIDE_COUNT### two\n###EXPORT_COMPLETE###\n",
+      "PowerPoint did not report how many slides the presentation has.",
+    ],
+    [
+      "a slide is missing from the report",
+      "###SLIDE_COUNT### 2\n###SLIDE_START### 1\nFirst\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint did not report the notes of slide 2.",
+    ],
+    [
+      "a slide's notes are not closed",
+      "###SLIDE_COUNT### 2\n###SLIDE_START### 1\nFirst\n###SLIDE_START### 2\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint did not finish reporting the notes of slide 1.",
+    ],
+    [
+      "the last slide's notes are not closed",
+      "###SLIDE_COUNT### 2\n###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 2\nSecond\n###EXPORT_COMPLETE###\n",
+      "PowerPoint did not finish reporting the notes of slide 2.",
+    ],
+    [
+      "a slide's number is unreadable",
+      "###SLIDE_COUNT### 2\n###SLIDE_START### first\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported notes for an unreadable slide: first",
+    ],
+    [
+      "a slide is reported twice",
+      "###SLIDE_COUNT### 2\n###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 2\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported the notes of slide 1 more than once.",
+    ],
+    [
+      "a slide is beyond the reported slide count",
+      "###SLIDE_COUNT### 2\n###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 2\n###SLIDE_END###\n###SLIDE_START### 3\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported notes for slide 3 of a 2-slide presentation.",
+    ],
+    [
+      "notes are reported outside any slide",
+      "###SLIDE_COUNT### 2\nStray\n###SLIDE_START### 1\n###SLIDE_END###\n###SLIDE_START### 2\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "PowerPoint reported notes outside a slide: Stray",
+    ],
+    ["no report is written", null, "PowerPoint did not report slide notes."],
+  ])("fails the load without exporting slide images when %s", async (_, report, message) => {
+    const provider = new MacPptProvider();
+    const imageExport = stubImageExport(provider, [0, 1]);
+    reportNotes("ExportAllSlideNotes", report);
+    reportSectionAudioPlayback(noPlaybackReport(1, 2));
+
+    await expect(provider.convertPptx("/presentations/deck.pptx", "/tmp/deck")).resolves.toEqual({
+      success: false,
+      message,
+    });
+    expect(imageExport).not.toHaveBeenCalled();
+  });
+});
+
+describe("MacPptProvider.reloadSlide", () => {
+  function stageReloadedImage(provider: MacPptProvider) {
+    if (!tempDir) {
+      throw new Error("Expected a temporary test directory");
+    }
+    const outputDir = path.join(tempDir, "deck");
+    fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });
+    fs.writeFileSync(path.join(outputDir, "slides/Slide_2_previous.png"), "previous");
+    const reloadSlideImage = vi.spyOn(provider, "reloadSlideImage").mockImplementation(() => {
+      fs.writeFileSync(path.join(outputDir, "slides/Slide_2_staged.png"), "staged");
+      return Promise.resolve({ success: true, image: "slides/Slide_2_staged.png" });
+    });
+    return { outputDir, reloadSlideImage };
+  }
+
+  it("reads the 1-based slide's notes, accepting genuinely blank notes", async () => {
+    const provider = new MacPptProvider();
+    const { outputDir } = stageReloadedImage(provider);
+    const notes = reportNotes(
+      "ExportSlideNotes",
+      "###SLIDE_COUNT### 3\n###SLIDE_START### 2\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+    reportSectionAudioPlayback(noPlaybackReport(2));
+
+    const result = await provider.reloadSlide(
+      "/presentations/deck.pptx",
+      toSlideIndex(1),
+      outputDir,
+    );
+
+    expect(notes.params.split("|").slice(0, 2)).toEqual(["/presentations/deck.pptx", "2"]);
+    expect(result).toMatchObject({
+      success: true,
+      slide: { slideIndex: 1, image: "slides/Slide_2_staged.png", notes: "" },
+    });
+  });
+
+  it.each([
+    [
+      "PowerPoint cannot read the slide's notes",
+      "###ERROR### Could not read the notes of slide 2: Automation error\n",
+      noPlaybackReport(2),
+      "Could not read the notes of slide 2: Automation error",
+    ],
+    [
+      "PowerPoint reports another slide's notes",
+      "###SLIDE_COUNT### 3\n###SLIDE_START### 1\nFirst\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      noPlaybackReport(2),
+      "PowerPoint did not report the notes of slide 2.",
+    ],
+    [
+      "PowerPoint cannot read the slide's Play Across Slides checkboxes",
+      "###SLIDE_COUNT### 3\n###SLIDE_START### 2\nSecond\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+      "###ERROR### Target presentation has no editing window\n",
+      "Target presentation has no editing window",
+    ],
+  ])(
+    "keeps the previous image and exports no new one when %s",
+    async (_, notesReportText, playbackReport, message) => {
+      const provider = new MacPptProvider();
+      const { outputDir, reloadSlideImage } = stageReloadedImage(provider);
+      reportNotes("ExportSlideNotes", notesReportText);
+      reportSectionAudioPlayback(playbackReport);
+
+      const result = await provider.reloadSlide(
+        "/presentations/deck.pptx",
+        toSlideIndex(1),
+        outputDir,
+      );
+
+      expect(result).toEqual({ success: false, message });
+      expect(reloadSlideImage).not.toHaveBeenCalled();
+      expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_2_previous.png"]);
+    },
+  );
+});
 
 describe("MacPptProvider.saveSlideNarration", () => {
   const deck = "/presentations/deck.pptx";
