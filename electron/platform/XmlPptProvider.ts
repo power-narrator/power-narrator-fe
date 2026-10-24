@@ -388,8 +388,8 @@ export class XmlPptProvider implements PptProvider {
       return queryResult;
     }
 
-    const images = exportedPreviewImages(
-      await this.nativeProvider.exportSlideImages(filePath, outputDir),
+    const images = await exportedPreviewImages(
+      this.nativeProvider.exportSlideImages(filePath, outputDir),
     );
 
     const slides = queryResult.slideData.map((slide, position) => {
@@ -428,9 +428,9 @@ export class XmlPptProvider implements PptProvider {
       };
     }
 
-    const image = reloadedPreviewImage(
+    const image = await reloadedPreviewImage(
       slideIndex,
-      await this.nativeProvider.reloadSlideImage(filePath, slideIndex, outputDir),
+      this.nativeProvider.reloadSlideImage(filePath, slideIndex, outputDir),
     );
     return completeSlideReload(
       outputDir,
