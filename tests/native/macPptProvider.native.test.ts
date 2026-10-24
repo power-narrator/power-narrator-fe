@@ -144,16 +144,21 @@ function tidy(runDir: string): void {
 describe.skipIf(process.platform !== "darwin")("MacPptProvider against PowerPoint", () => {
   /** Inside the Office group container, so sandboxed PowerPoint opens files without asking. */
   const runDir = path.join(OFFICE_CONTAINER, "power-narrator-native", randomUUID());
-  const provider = new MacPptProvider();
+  let provider: MacPptProvider;
   const harness: PptProviderHarness = {
-    provider,
+    get provider() {
+      return provider;
+    },
     openPresentation: openInPowerPoint,
     closePresentation: closeInPowerPoint,
     isPresentationOpen: isOpenInPowerPoint,
     tempDir: () => runDir,
   };
 
-  beforeAll(() => preflight(provider, runDir));
+  beforeAll(async () => {
+    provider = new MacPptProvider();
+    await preflight(provider, runDir);
+  });
   afterAll(() => tidy(runDir));
 
   describePptProviderContract(harness);
