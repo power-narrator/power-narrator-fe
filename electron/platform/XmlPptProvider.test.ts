@@ -398,6 +398,24 @@ describe("XmlPptProvider.reloadSlide", () => {
     });
     expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_20_existing.png"]);
   });
+  it("reports a failure instead of throwing when the reloaded slide cannot be built", async () => {
+    const unencodableImage = "slides/Slide_2_\uD800.png";
+    const outputDir = createSlidesDir();
+    fs.writeFileSync(path.join(outputDir, unencodableImage), "staged");
+    const reloadSlideImage = vi
+      .fn<NativePlatformProvider["reloadSlideImage"]>()
+      .mockResolvedValue({ success: true, image: unencodableImage });
+    const provider = new XmlPptProvider(createNativeProvider({ reloadSlideImage }));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    respondWithSlides([
+      { notes: "First slide", audio: [] },
+      { notes: "Fresh notes", audio: [] },
+    ]);
+
+    await expect(
+      provider.reloadSlide("/presentations/deck.pptx", toSlideIndex(1), outputDir),
+    ).resolves.toEqual({ success: false, message: "URI malformed" });
+  });
 });
 
 describe("XmlPptProvider slide addressing", () => {
