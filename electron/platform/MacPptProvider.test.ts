@@ -14,6 +14,8 @@ let beforeSpawnClose: (() => void) | undefined;
 const scriptOutcomes = new Map<string, ScriptOutcome>();
 /** What each fake macro does while trigger-macro.applescript runs it, keyed by macro name. */
 const macroRuns = new Map<string, () => void>();
+/** What each fake AppleScript does while it runs, keyed by script file name. */
+const scriptRuns = new Map<string, (args: string[]) => void>();
 
 vi.mock("node:child_process", () => ({
   spawn: (command: string, args: string[]) => {
@@ -24,6 +26,7 @@ vi.mock("node:child_process", () => ({
 
     queueMicrotask(() => {
       beforeSpawnClose?.();
+      scriptRuns.get(script)?.(args.slice(1));
       if (script === "trigger-macro.applescript") {
         macroRuns.get(args[1] ?? "")?.();
       }
@@ -80,6 +83,7 @@ afterEach(() => {
   beforeSpawnClose = undefined;
   scriptOutcomes.clear();
   macroRuns.clear();
+  scriptRuns.clear();
   if (tempDir) {
     fs.rmSync(tempDir, { recursive: true, force: true });
     tempDir = undefined;
@@ -578,6 +582,56 @@ describe("MacPptProvider.convertPptx", () => {
         { slideIndex: 0, preview: null },
         { slideIndex: 1, preview: { image: "slides/Slide_2_uuid.png" } },
       ],
+    });
+  });
+});
+
+/** Like the real export script, a whole-deck export rebuilds the slides folder before writing. */
+function rebuildSlidesOnImageExport() {
+  scriptRuns.set("export-slide-images.applescript", ([, outputDir, slideNumber]) => {
+    if (slideNumber === undefined) {
+      fs.rmSync(path.join(outputDir!, "slides"), { recursive: true, force: true });
+      fs.mkdirSync(path.join(outputDir!, "slides"), { recursive: true });
+    }
+  });
+}
+
+function readSlidesDir(outputDir: string): Record<string, string> {
+  const slidesDir = path.join(outputDir, "slides");
+  return Object.fromEntries(
+    fs
+      .readdirSync(slidesDir)
+      .map((name) => [name, fs.readFileSync(path.join(slidesDir, name), "utf8")]),
+  );
+}
+
+describe("MacPptProvider Reload All", () => {
+  it.each([
+    ["the notes cannot be read", "###ERROR### Automation error\n", noPlaybackReport(1, 2)],
+    [
+      "the Play Across Slides checkboxes cannot be read",
+      notesReport("First", "Second"),
+      "###ERROR### Target presentation has no editing window\n",
+    ],
+  ])("leaves the previews in use untouched on disk when %s", async (_, notes, playback) => {
+    if (!tempDir) {
+      throw new Error("Expected a temporary test directory");
+    }
+    const provider = new MacPptProvider();
+    const outputDir = path.join(tempDir, "deck");
+    fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });
+    fs.writeFileSync(path.join(outputDir, "slides/Slide_1_in_use.png"), "first preview");
+    fs.writeFileSync(path.join(outputDir, "slides/Slide_2_in_use.png"), "second preview");
+    rebuildSlidesOnImageExport();
+    reportNotes("ExportAllSlideNotes", notes);
+    reportSectionAudioPlayback(playback);
+
+    const result = await provider.convertPptx("/presentations/deck.pptx", outputDir);
+
+    expect(result.success).toBe(false);
+    expect(readSlidesDir(outputDir)).toEqual({
+      "Slide_1_in_use.png": "first preview",
+      "Slide_2_in_use.png": "second preview",
     });
   });
 });
