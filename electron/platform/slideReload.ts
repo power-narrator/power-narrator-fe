@@ -5,6 +5,7 @@ import {
   type SlideIndex,
   type SlideNumber,
 } from "../../shared/slides/slideCoordinates.js";
+import { getErrorMessage } from "./errors.js";
 import { buildSlidesWithPaths } from "./helpers.js";
 import type { SlideContent, SlidePptResult } from "./types.js";
 
@@ -97,27 +98,37 @@ export function completeSlideReload(
   stagedImage: string | null,
 ): SlidePptResult {
   const slideNumber = slideNumberOf(slideIndex);
-  const image =
-    stagedImage !== null && isSlideImageAvailable(outputDir, slideNumber, stagedImage)
-      ? stagedImage
-      : null;
 
-  const [slide] = buildSlidesWithPaths(
-    [
-      {
-        slideIndex,
-        image,
-        notes: content.notes,
-        sectionsPlayingAcrossSlides: content.sectionsPlayingAcrossSlides,
-      },
-    ],
-    outputDir,
-  );
+  try {
+    const image =
+      stagedImage !== null && isSlideImageAvailable(outputDir, slideNumber, stagedImage)
+        ? stagedImage
+        : null;
 
-  if (!slide) {
-    return { success: false, message: "Could not build the reloaded slide." };
+    const [slide] = buildSlidesWithPaths(
+      [
+        {
+          slideIndex,
+          image,
+          notes: content.notes,
+          sectionsPlayingAcrossSlides: content.sectionsPlayingAcrossSlides,
+        },
+      ],
+      outputDir,
+    );
+
+    if (!slide) {
+      return { success: false, message: "Could not build the reloaded slide." };
+    }
+
+    pruneSlideImageVersions(
+      outputDir,
+      slideNumber,
+      image && resolveSlideImagePath(outputDir, image),
+    );
+    return { success: true, slide };
+  } catch (error: unknown) {
+    console.error("Failed to complete slide reload:", error);
+    return { success: false, message: getErrorMessage(error) };
   }
-
-  pruneSlideImageVersions(outputDir, slideNumber, image && resolveSlideImagePath(outputDir, image));
-  return { success: true, slide };
 }

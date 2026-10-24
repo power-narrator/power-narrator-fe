@@ -872,6 +872,25 @@ describe("MacPptProvider.reloadSlide", () => {
     });
     expect(fs.readdirSync(path.join(outputDir, "slides"))).toEqual(["Slide_2_staged.png"]);
   });
+  it("reports a failure instead of throwing when the reloaded slide cannot be built", async () => {
+    const provider = new MacPptProvider();
+    const { outputDir, reloadSlideImage } = stageReloadedImage(provider);
+    const unencodableImage = "slides/Slide_2_\uD800.png";
+    reloadSlideImage.mockImplementation(() => {
+      fs.writeFileSync(path.join(outputDir, unencodableImage), "staged");
+      return Promise.resolve({ success: true, image: unencodableImage });
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    reportNotes(
+      "ExportSlideNotes",
+      "###SLIDE_COUNT### 3\n###SLIDE_START### 2\nFresh\n###SLIDE_END###\n###EXPORT_COMPLETE###\n",
+    );
+    reportSectionAudioPlayback(noPlaybackReport(2));
+
+    await expect(
+      provider.reloadSlide("/presentations/deck.pptx", toSlideIndex(1), outputDir),
+    ).resolves.toEqual({ success: false, message: "URI malformed" });
+  });
 });
 
 describe("MacPptProvider.saveSlideNarration", () => {
