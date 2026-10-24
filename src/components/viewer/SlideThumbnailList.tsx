@@ -47,7 +47,7 @@ export function SlideThumbnailList({
               ) : (
                 <AspectRatio ratio={16 / 9}>
                   <Center bg="gray.8" bdrs={isActive ? undefined : "sm"}>
-                    <Text size="xs" c="dimmed">
+                    <Text size="xs" c="dimmed" ta="center">
                       Preview unavailable
                     </Text>
                   </Center>

@@ -1293,3 +1293,82 @@ test("lets a slide without a preview be selected, edited and saved behind placeh
     expect(saveNarratedSlide).toHaveBeenCalledWith(expect.objectContaining({ slideIndex: 1 })),
   );
 });
+
+function presentationMissingPreviews(slideCount: number, missingSlideNumbers: number[]): Slide[] {
+  return Array.from({ length: slideCount }, (_, i) => {
+    const slide = { ...loadedSlide, slideIndex: at(i) };
+    return missingSlideNumbers.includes(i + 1) ? withoutPreview(slide) : slide;
+  });
+}
+
+test("summarises unavailable previews in one warning that lists their slide numbers on request", async () => {
+  installElectronApi();
+  const { screen } = await renderViewer(vi.fn(), presentationMissingPreviews(72, [3, 7, 8, 9, 15]));
+  const warning = screen.getByRole("alert");
+
+  await expect
+    .element(warning.getByText("Previews unavailable for 5 of 72 slides"))
+    .toBeInTheDocument();
+  await expect
+    .element(warning.getByRole("button", { name: "Show affected slides" }))
+    .toHaveAttribute("aria-expanded", "false");
+
+  await warning.getByRole("button", { name: "Show affected slides" }).click();
+
+  await expect
+    .element(warning.getByRole("button", { name: "Hide affected slides" }))
+    .toHaveAttribute("aria-expanded", "true");
+  await expect.element(warning.getByText("Slides 3, 7–9, 15")).toBeVisible();
+});
+
+test("shows no preview warning when every preview is available", async () => {
+  installElectronApi();
+  const { screen } = await renderViewer(vi.fn(), presentationMissingPreviews(3, []));
+
+  await expect.element(screen.getByRole("button", { name: "Slide 3" })).toBeInTheDocument();
+  await expect.element(screen.getByRole("alert")).not.toBeInTheDocument();
+});
+
+test("updates the preview warning from each accepted Reload All and removes it once previews return", async () => {
+  const convertPptx = vi
+    .fn<typeof window.electronAPI.convertPptx>()
+    .mockResolvedValueOnce({ success: true, slides: presentationMissingPreviews(4, [2]) })
+    .mockResolvedValueOnce({ success: true, slides: presentationMissingPreviews(4, []) });
+  installElectronApi({ convertPptx });
+  const { screen } = await renderViewer(vi.fn(), presentationMissingPreviews(4, [1, 2, 3]));
+  const reloadAll = screen.getByRole("button", { name: "Reload All Slides", exact: true });
+
+  await expect
+    .element(screen.getByRole("alert").getByText("Previews unavailable for 3 of 4 slides"))
+    .toBeInTheDocument();
+
+  await reloadAll.click();
+  await expect
+    .element(screen.getByRole("alert").getByText("Preview unavailable for 1 of 4 slides"))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByRole("button", { name: "Slide 1" }).getByText("Preview unavailable"))
+    .not.toBeInTheDocument();
+
+  await reloadAll.click();
+  await expect.element(screen.getByRole("alert")).not.toBeInTheDocument();
+});
+
+test("keeps the preview warning when Reload All cannot read the presentation", async () => {
+  vi.spyOn(window, "alert").mockImplementation(() => {});
+  const convertPptx = vi.fn<typeof window.electronAPI.convertPptx>(() =>
+    Promise.resolve({ success: false, message: "Could not read the notes of slide 1." }),
+  );
+  installElectronApi({ convertPptx });
+  const { screen } = await renderViewer(vi.fn(), presentationMissingPreviews(4, [2]));
+
+  await screen.getByRole("button", { name: "Reload All Slides", exact: true }).click();
+
+  await vi.waitFor(() => expect(convertPptx).toHaveBeenCalledOnce());
+  await expect
+    .element(screen.getByRole("alert").getByText("Preview unavailable for 1 of 4 slides"))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByRole("button", { name: "Slide 2" }).getByText("Preview unavailable"))
+    .toBeInTheDocument();
+});
