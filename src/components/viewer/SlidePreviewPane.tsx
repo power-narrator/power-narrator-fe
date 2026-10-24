@@ -1,6 +1,7 @@
-import { Center, Image, Text } from "@mantine/core";
+import { Image } from "@mantine/core";
 import type { SlideNumber } from "../../../shared/slides/slideCoordinates";
 import type { Slide } from "../../types/electron";
+import { PreviewUnavailablePlaceholder } from "./PreviewUnavailablePlaceholder";
 
 type SlidePreviewPaneProps = {
   preview: Slide["preview"];
@@ -10,9 +11,11 @@ type SlidePreviewPaneProps = {
 export function SlidePreviewPane({ preview, slideNumber }: SlidePreviewPaneProps) {
   if (!preview) {
     return (
-      <Center role="img" aria-label={`Slide ${slideNumber} preview unavailable`} h="100%">
-        <Text c="dimmed">Preview unavailable</Text>
-      </Center>
+      <PreviewUnavailablePlaceholder
+        role="img"
+        aria-label={`Slide ${slideNumber} preview unavailable`}
+        h="100%"
+      />
     );
   }
 
