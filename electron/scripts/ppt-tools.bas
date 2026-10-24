@@ -97,42 +97,90 @@ EmptyNotes:
     GetSlideNotesText = ""
 End Function
 
-Sub WriteSlideNotesBlock(fileNum As Integer, slideIndex As Integer, notesText As String)
+Function SlideNotesBlock(slideIndex As Integer, notesText As String) As String
     Dim normalizedText As String
-    Dim lines() As String
-    Dim i As Long
-
-    Print #fileNum, "###SLIDE_START### " & slideIndex
 
     normalizedText = Replace(notesText, vbCrLf, vbLf)
     normalizedText = Replace(normalizedText, vbCr, vbLf)
 
-    If Len(normalizedText) > 0 Then
-        lines = Split(normalizedText, vbLf)
-        For i = LBound(lines) To UBound(lines)
-            Print #fileNum, lines(i)
-        Next i
-    End If
+    SlideNotesBlock = "###SLIDE_START### " & slideIndex & vbLf
+    If Len(normalizedText) > 0 Then SlideNotesBlock = SlideNotesBlock & normalizedText & vbLf
+    SlideNotesBlock = SlideNotesBlock & "###SLIDE_END###" & vbLf
+End Function
 
-    Print #fileNum, "###SLIDE_END###"
+' Print # writes in the legacy Mac encoding, which cannot hold most Unicode text.
+Private Function Utf8Bytes(text As String) As Byte()
+    Dim bytes() As Byte
+    Dim count As Long
+    Dim i As Long
+    Dim code As Long
+    Dim low As Long
+
+    ReDim bytes(0 To 3 * Len(text) - 1)
+    i = 1
+    Do While i <= Len(text)
+        code = AscW(Mid$(text, i, 1)) And &HFFFF&
+        If code >= &HD800& And code <= &HDBFF& And i < Len(text) Then
+            low = AscW(Mid$(text, i + 1, 1)) And &HFFFF&
+            If low >= &HDC00& And low <= &HDFFF& Then
+                code = &H10000 + (code - &HD800&) * &H400& + (low - &HDC00&)
+                i = i + 1
+            End If
+        End If
+
+        If code < &H80& Then
+            bytes(count) = code
+            count = count + 1
+        ElseIf code < &H800& Then
+            bytes(count) = &HC0& Or (code \ &H40&)
+            bytes(count + 1) = &H80& Or (code And &H3F&)
+            count = count + 2
+        ElseIf code < &H10000 Then
+            bytes(count) = &HE0& Or (code \ &H1000&)
+            bytes(count + 1) = &H80& Or ((code \ &H40&) And &H3F&)
+            bytes(count + 2) = &H80& Or (code And &H3F&)
+            count = count + 3
+        Else
+            bytes(count) = &HF0& Or (code \ &H40000)
+            bytes(count + 1) = &H80& Or ((code \ &H1000&) And &H3F&)
+            bytes(count + 2) = &H80& Or ((code \ &H40&) And &H3F&)
+            bytes(count + 3) = &H80& Or (code And &H3F&)
+            count = count + 4
+        End If
+        i = i + 1
+    Loop
+
+    ReDim Preserve bytes(0 To count - 1)
+    Utf8Bytes = bytes
+End Function
+
+Private Sub WriteUtf8File(outputPath As String, text As String)
+    Dim outputNum As Integer
+    Dim bytes() As Byte
+
+    If Dir(outputPath) <> "" Then Kill outputPath
+    outputNum = FreeFile
+    Open outputPath For Binary Access Write As outputNum
+    If Len(text) > 0 Then
+        bytes = Utf8Bytes(text)
+        Put #outputNum, , bytes
+    End If
+    Close outputNum
 End Sub
 
 Sub ExportNotesToFile(pres As Presentation, outputPath As String, Optional slideIndex As Integer = 0)
-    Dim outputNum As Integer
+    Dim content As String
     Dim i As Integer
 
-    outputNum = FreeFile
-    Open outputPath For Output As outputNum
-
     If slideIndex > 0 Then
-        WriteSlideNotesBlock outputNum, slideIndex, GetSlideNotesText(pres.Slides(slideIndex))
+        content = SlideNotesBlock(slideIndex, GetSlideNotesText(pres.Slides(slideIndex)))
     Else
         For i = 1 To pres.Slides.Count
-            WriteSlideNotesBlock outputNum, i, GetSlideNotesText(pres.Slides(i))
+            content = content & SlideNotesBlock(i, GetSlideNotesText(pres.Slides(i)))
         Next i
     End If
 
-    Close outputNum
+    WriteUtf8File outputPath, content
 End Sub
 
 Function GetSectionIndex(audioTag As String) As Integer
