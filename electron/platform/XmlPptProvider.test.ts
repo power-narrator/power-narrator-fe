@@ -250,6 +250,37 @@ describe("XmlPptProvider required slide data", () => {
     },
   );
 
+  it.each(unreadableSlideData)(
+    "leaves the previews in use untouched on disk when %s during Reload All",
+    async (_, response) => {
+      const outputDir = createSlidesDir();
+      fs.writeFileSync(path.join(outputDir, "slides/Slide_1_in_use.png"), "first preview");
+      fs.writeFileSync(path.join(outputDir, "slides/Slide_2_in_use.png"), "second preview");
+      const exportSlideImages = vi.fn<NativePlatformProvider["exportSlideImages"]>(() => {
+        fs.rmSync(path.join(outputDir, "slides"), { recursive: true, force: true });
+        fs.mkdirSync(path.join(outputDir, "slides"));
+        return Promise.resolve({ success: true, images: new Map() });
+      });
+      const provider = new XmlPptProvider(createNativeProvider({ exportSlideImages }));
+      xmlCliResponses.push(response);
+
+      const result = await provider.convertPptx("/presentations/deck.pptx", outputDir);
+
+      expect(result.success).toBe(false);
+      const slidesDir = path.join(outputDir, "slides");
+      expect(
+        Object.fromEntries(
+          fs
+            .readdirSync(slidesDir)
+            .map((name) => [name, fs.readFileSync(path.join(slidesDir, name), "utf8")]),
+        ),
+      ).toEqual({
+        "Slide_1_in_use.png": "first preview",
+        "Slide_2_in_use.png": "second preview",
+      });
+    },
+  );
+
   it.each<[string, XmlCliResponse, string]>([
     ...unreadableSlideData,
     [
