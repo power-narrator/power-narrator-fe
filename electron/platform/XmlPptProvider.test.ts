@@ -128,16 +128,67 @@ describe("XmlPptProvider loading", () => {
       slides: [
         {
           slideIndex: 0,
-          image: "slides/Slide_1.png",
+          preview: { image: "slides/Slide_1.png" },
           notes: "First",
           sectionsPlayingAcrossSlides: new Set(),
         },
         {
           slideIndex: 1,
-          image: "slides/Slide_2.png",
+          preview: { image: "slides/Slide_2.png" },
           notes: "Second\nnotes",
           sectionsPlayingAcrossSlides: new Set(),
         },
+      ],
+    });
+  });
+
+  it("keeps all 72 slides with their notes when only 10 previews export", async () => {
+    const previewed = [0, 7, 15, 22, 30, 38, 45, 53, 60, 71];
+    const provider = new XmlPptProvider(
+      createNativeProvider({
+        exportSlideImages: vi.fn<NativePlatformProvider["exportSlideImages"]>().mockResolvedValue({
+          success: true,
+          images: new Map(
+            previewed.map((i) => [toSlideIndex(i), { image: `slides/Slide_${i + 1}.png` }]),
+          ),
+        }),
+      }),
+    );
+    const notes = Array.from({ length: 72 }, (_, i) => `Notes ${i + 1}`);
+    respondWithSlides(notes.map((text) => ({ notes: text, audio: [] })));
+
+    const result = await provider.convertPptx("/presentations/deck.pptx", "/tmp/deck");
+
+    if (!result.success) {
+      throw new Error(result.message);
+    }
+    expect(result.slides.map(({ slideIndex, notes }) => ({ slideIndex, notes }))).toEqual(
+      notes.map((text, i) => ({ slideIndex: i, notes: text })),
+    );
+    expect(result.slides.filter(({ preview }) => preview === null)).toHaveLength(62);
+    expect(result.slides[7]?.preview).toMatchObject({ image: "slides/Slide_8.png" });
+  });
+
+  it("opens every slide without previews when the whole image export fails", async () => {
+    const provider = new XmlPptProvider(
+      createNativeProvider({
+        exportSlideImages: vi
+          .fn<NativePlatformProvider["exportSlideImages"]>()
+          .mockResolvedValue({ success: false, message: "PowerPoint could not export images" }),
+      }),
+    );
+    respondWithSlides([
+      { notes: "First", audio: [] },
+      { notes: "Second", audio: [] },
+    ]);
+
+    await expect(
+      provider.convertPptx("/presentations/deck.pptx", "/tmp/deck"),
+    ).resolves.toMatchObject({
+      success: true,
+      slides: [
+        { slideIndex: 0, notes: "First", preview: null },
+        { slideIndex: 1, notes: "Second", preview: null },
       ],
     });
   });
@@ -261,7 +312,7 @@ describe("XmlPptProvider.reloadSlide", () => {
       success: true,
       slide: {
         slideIndex: 1,
-        image: "slides/Slide_2_staged.png",
+        preview: { image: "slides/Slide_2_staged.png" },
         notes: "Fresh\nnotes",
         sectionsPlayingAcrossSlides: new Set(),
       },

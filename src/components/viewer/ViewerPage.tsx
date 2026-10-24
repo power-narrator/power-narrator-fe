@@ -427,7 +427,7 @@ export function ViewerPage({
             <Split.Pane initialHeight="30%">
               {activeSlideNumber !== undefined && (
                 <SlidePreviewPane
-                  activeSlideSrc={editor.activeSlideSrc}
+                  preview={editor.activeSlidePreview}
                   slideNumber={activeSlideNumber}
                 />
               )}

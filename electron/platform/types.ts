@@ -1,9 +1,11 @@
 import type { SlideIndex } from "../../shared/slides/slideCoordinates.js";
 import type { ErrorResult, Result, SuccessResult } from "../../shared/types/result.js";
 import type { SavedSlideNarration } from "../../shared/types/narration.js";
+import type { SlidePreview } from "../../shared/types/slides.js";
 
 export type { ErrorResult, Result, SuccessResult };
 export type {
+  SlidePreview,
   StructuredSlide,
   StructuredSlideResult,
   StructuredSlidesResult,
@@ -22,7 +24,7 @@ export type SectionsPlayingAcrossSlides = ReadonlySet<number>;
 
 export type SlideManifestEntry = {
   slideIndex: SlideIndex;
-  image: string;
+  image: string | null;
   notes: string;
   sectionsPlayingAcrossSlides: SectionsPlayingAcrossSlides;
 };
@@ -32,8 +34,8 @@ export type SlideNotesEntry = {
   notes: string;
 };
 
-export type SlideWithSrc = SlideManifestEntry & {
-  src: string;
+export type SlideWithSrc = Omit<SlideManifestEntry, "image"> & {
+  preview: SlidePreview | null;
 };
 
 /**

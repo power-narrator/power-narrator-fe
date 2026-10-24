@@ -280,7 +280,11 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
       expect(slides.map(({ slideIndex }) => slideIndex)).toEqual(
         recipe.map((_, slideIndex) => slideIndex),
       );
-      expect(slides.filter(({ image }) => !fs.existsSync(path.join(outputDir, image)))).toEqual([]);
+      expect(
+        slides.filter(
+          ({ preview }) => !preview || !fs.existsSync(path.join(outputDir, preview.image)),
+        ),
+      ).toEqual([]);
       expect.soft(slides.map(({ notes }) => notes)).toEqual(recipe.map(({ notes }) => notes));
       expect(slides.map(({ sectionsPlayingAcrossSlides }) => sectionsPlayingAcrossSlides)).toEqual(
         recipe.map(({ sectionsPlayingAcrossSlides }) => sectionsPlayingAcrossSlides),
@@ -296,7 +300,8 @@ export function describePptProviderContract(harness: PptProviderHarness): void {
         );
         reloaded.push({
           slide: slideLabel,
-          imageExists: fs.existsSync(path.join(reloadDir, slide.image)),
+          imageExists:
+            slide.preview !== null && fs.existsSync(path.join(reloadDir, slide.preview.image)),
           slideIndex: slide.slideIndex,
           notes: slide.notes,
           sectionsPlayingAcrossSlides: slide.sectionsPlayingAcrossSlides,

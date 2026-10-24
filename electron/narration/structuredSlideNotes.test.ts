@@ -23,8 +23,7 @@ const rawSlide = (
   sectionsPlayingAcrossSlides: ReadonlySet<number> = new Set(),
 ) => ({
   slideIndex: slideIndexFromOneBased(slideNumber),
-  image: `slide-${slideNumber}.png`,
-  src: `app://slide-${slideNumber}.png`,
+  preview: { image: `slide-${slideNumber}.png`, src: `app://slide-${slideNumber}.png` },
   notes,
   sectionsPlayingAcrossSlides,
 });
@@ -43,14 +42,12 @@ it("structures every slide in a loaded presentation", () => {
     slides: [
       {
         slideIndex: slideIndexFromOneBased(1),
-        image: "slide-1.png",
-        src: "app://slide-1.png",
+        preview: { image: "slide-1.png", src: "app://slide-1.png" },
         sections: [expect.objectContaining({ speaker: "Narrator", text: "Opening line" })],
       },
       {
         slideIndex: slideIndexFromOneBased(2),
-        image: "slide-2.png",
-        src: "app://slide-2.png",
+        preview: { image: "slide-2.png", src: "app://slide-2.png" },
         // No mapping names it, so the bracketed line stays narration text.
         sections: [
           expect.objectContaining({ speaker: "", text: "[Stage direction]\nSecond slide" }),
@@ -70,8 +67,7 @@ it("structures one reloaded slide", () => {
     success: true,
     slide: {
       slideIndex: slideIndexFromOneBased(1),
-      image: "slide-1.png",
-      src: "app://slide-1.png",
+      preview: { image: "slide-1.png", src: "app://slide-1.png" },
       sections: [expect.objectContaining({ speaker: "Narrator", text: "Replaced line" })],
     },
   });

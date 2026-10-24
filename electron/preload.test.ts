@@ -228,8 +228,7 @@ it("carries structured slides back across the load channel with their slide indi
     slides: [
       {
         slideIndex: slideIndexFromOneBased(4),
-        image: "slide-4.png",
-        src: "app://slide-4.png",
+        preview: { image: "slide-4.png", src: "app://slide-4.png" },
         sections: sectionsOf(notes, ["Narrator"]),
       },
     ],
@@ -295,8 +294,7 @@ it("carries a reloaded structured slide back across the reload channel", async (
     success: true,
     slide: {
       slideIndex: slideIndexFromOneBased(2),
-      image: "slide-2.png",
-      src: "app://slide-2.png",
+      preview: { image: "slide-2.png", src: "app://slide-2.png" },
       sections: sectionsOf(notes, ["Narrator"]),
     },
   } satisfies StructuredSlideResult);
