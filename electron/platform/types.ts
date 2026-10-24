@@ -103,10 +103,11 @@ export type XmlCliOperation = {
   args: Record<string, string | number>;
 };
 
+/** Parsed from the CLI's response JSON, so no field is guaranteed to be present or well-typed. */
 export type XmlCliOperationResult = {
-  success: boolean;
-  result: unknown;
-  message: string;
+  success?: unknown;
+  result?: unknown;
+  message?: unknown;
 };
 
 export type XmlCliResponse = {

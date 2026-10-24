@@ -283,14 +283,14 @@ const unreadableSlideData: Array<[string, XmlCliResponse, string]> = [
     "the CLI omits the operation status",
     {
       results: [{ result: [{ notes: "First", audio: [] }], message: "" }],
-    } as unknown as XmlCliResponse,
+    },
     "Failed to query slide content: the slide report did not confirm success",
   ],
   [
     "the CLI reports an invalid operation status",
     {
       results: [{ success: "true", result: [{ notes: "First", audio: [] }], message: "" }],
-    } as unknown as XmlCliResponse,
+    },
     "Failed to query slide content: the slide report did not confirm success",
   ],
   [
