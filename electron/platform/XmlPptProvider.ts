@@ -60,11 +60,28 @@ export class XmlPptProvider implements PptProvider {
     }
 
     const firstResult = queryResult.data.results[0];
+    if (firstResult?.success === false) {
+      return { success: false, message: "Failed to query slide content: " + firstResult.message };
+    }
     if (!firstResult || !Array.isArray(firstResult.result)) {
       return { success: false, message: "Could not find slide data" };
     }
 
-    return { success: true, slideData: firstResult.result as XmlSlideData[] };
+    const slideData: unknown[] = firstResult.result;
+    const unreadable = slideData.findIndex(
+      (slide) =>
+        typeof slide !== "object" ||
+        slide === null ||
+        typeof (slide as Partial<XmlSlideData>).notes !== "string",
+    );
+    if (unreadable !== -1) {
+      return {
+        success: false,
+        message: `Could not read the notes of slide ${slideNumberOf(toSlideIndex(unreadable))}.`,
+      };
+    }
+
+    return { success: true, slideData: slideData as XmlSlideData[] };
   }
 
   /** The CLI's `slide_index` argument is already 0-based, so indices pass straight through. */
@@ -325,7 +342,7 @@ export class XmlPptProvider implements PptProvider {
       notes: new Map(
         queryResult.slideData.map((slide, position) => [
           toSlideIndex(position),
-          normalizeNotes(slide.notes || ""),
+          normalizeNotes(slide.notes),
         ]),
       ),
     };
@@ -345,7 +362,7 @@ export class XmlPptProvider implements PptProvider {
       };
     }
 
-    return { success: true, notes: normalizeNotes(slide.notes || "") };
+    return { success: true, notes: normalizeNotes(slide.notes) };
   }
 
   async saveNotes(filePath: string, slides: SlideNotesEntry[]): Promise<BasicPptResult> {
@@ -364,14 +381,14 @@ export class XmlPptProvider implements PptProvider {
       return { success: false, message: "Slide image export is not supported on this platform" };
     }
 
-    const imageResult = await this.nativeProvider.exportSlideImages(filePath, outputDir);
-    if (!imageResult.success) {
-      return imageResult;
-    }
-
     const queryResult = await this.querySlides(filePath);
     if (!queryResult.success) {
       return queryResult;
+    }
+
+    const imageResult = await this.nativeProvider.exportSlideImages(filePath, outputDir);
+    if (!imageResult.success) {
+      return imageResult;
     }
 
     const slides = queryResult.slideData.map((slide, position) => {
@@ -380,7 +397,7 @@ export class XmlPptProvider implements PptProvider {
       return {
         slideIndex,
         image: imageResult.images.get(slideIndex)?.image || "",
-        notes: slide?.notes || "",
+        notes: slide.notes,
         sectionsPlayingAcrossSlides: NO_SECTIONS_PLAYING_ACROSS_SLIDES,
       };
     });
@@ -397,30 +414,30 @@ export class XmlPptProvider implements PptProvider {
       return { success: false, message: "Slide image export is not supported on this platform" };
     }
 
+    const queryResult = await this.querySlides(filePath);
+    if (!queryResult.success) {
+      return queryResult;
+    }
+
+    const slide = queryResult.slideData[slideIndex];
+    if (!slide) {
+      return {
+        success: false,
+        message: `Could not find slide data for slide ${slideNumberOf(slideIndex)}`,
+      };
+    }
+
     const imageResult = await this.nativeProvider.reloadSlideImage(filePath, slideIndex, outputDir);
     if (!imageResult.success) {
       return imageResult;
     }
 
-    return completeSlideReload(outputDir, slideIndex, imageResult.image, async () => {
-      const queryResult = await this.querySlides(filePath);
-      if (!queryResult.success) {
-        return queryResult;
-      }
-
-      const slide = queryResult.slideData?.[slideIndex];
-      if (!slide) {
-        return {
-          success: false,
-          message: `Could not find slide data for slide ${slideNumberOf(slideIndex)}`,
-        };
-      }
-
-      return {
+    return completeSlideReload(outputDir, slideIndex, imageResult.image, () =>
+      Promise.resolve({
         success: true,
-        notes: slide.notes || "",
+        notes: slide.notes,
         sectionsPlayingAcrossSlides: NO_SECTIONS_PLAYING_ACROSS_SLIDES,
-      };
-    });
+      }),
+    );
   }
 }

@@ -143,6 +143,84 @@ describe("XmlPptProvider loading", () => {
   });
 });
 
+const unreadableSlideData: Array<[string, XmlCliResponse, string]> = [
+  [
+    "the CLI cannot read the slides",
+    { results: [{ success: false, result: null, message: "Bad zip file" }] },
+    "Failed to query slide content: Bad zip file",
+  ],
+  [
+    "the CLI reports no slide list",
+    { results: [{ success: true, result: {}, message: "" }] },
+    "Could not find slide data",
+  ],
+  [
+    "a slide's notes are missing",
+    {
+      results: [
+        { success: true, result: [{ notes: "First", audio: [] }, { audio: [] }], message: "" },
+      ],
+    },
+    "Could not read the notes of slide 2.",
+  ],
+  [
+    "a slide entry is unreadable",
+    { results: [{ success: true, result: [{ notes: "First", audio: [] }, null], message: "" }] },
+    "Could not read the notes of slide 2.",
+  ],
+];
+
+describe("XmlPptProvider required slide data", () => {
+  it.each(unreadableSlideData)(
+    "fails the load without exporting slide images when %s",
+    async (_, response, message) => {
+      const exportSlideImages = vi.fn<NativePlatformProvider["exportSlideImages"]>();
+      const provider = new XmlPptProvider(createNativeProvider({ exportSlideImages }));
+      xmlCliResponses.push(response);
+
+      await expect(provider.convertPptx("/presentations/deck.pptx", "/tmp/deck")).resolves.toEqual({
+        success: false,
+        message,
+      });
+      expect(exportSlideImages).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each<[string, XmlCliResponse, string]>([
+    ...unreadableSlideData,
+    [
+      "the presentation has no such slide",
+      { results: [{ success: true, result: [{ notes: "First", audio: [] }], message: "" }] },
+      "Could not find slide data for slide 2",
+    ],
+  ])("fails the reload without exporting its image when %s", async (_, response, message) => {
+    const reloadSlideImage = vi.fn<NativePlatformProvider["reloadSlideImage"]>();
+    const provider = new XmlPptProvider(createNativeProvider({ reloadSlideImage }));
+    xmlCliResponses.push(response);
+
+    await expect(
+      provider.reloadSlide("/presentations/deck.pptx", toSlideIndex(1), "/tmp/deck"),
+    ).resolves.toEqual({ success: false, message });
+    expect(reloadSlideImage).not.toHaveBeenCalled();
+  });
+
+  it("loads genuinely blank notes as empty", async () => {
+    const provider = new XmlPptProvider(
+      createNativeProvider({
+        exportSlideImages: vi.fn<NativePlatformProvider["exportSlideImages"]>().mockResolvedValue({
+          success: true,
+          images: new Map([[toSlideIndex(0), { image: "slides/Slide_1.png" }]]),
+        }),
+      }),
+    );
+    respondWithSlides([{ notes: "", audio: [] }]);
+
+    await expect(
+      provider.convertPptx("/presentations/deck.pptx", "/tmp/deck"),
+    ).resolves.toMatchObject({ success: true, slides: [{ slideIndex: 0, notes: "" }] });
+  });
+});
+
 describe("XmlPptProvider.reloadSlide", () => {
   it("uses the requested slide notes, with no section audio playing across slides, and commits only its staged image", async () => {
     if (!tempDir) {
