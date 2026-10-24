@@ -59,7 +59,6 @@ function isSlideImageAvailable(
   }
 }
 
-/** Removes every image of the slide except `keepImagePath`, or all of them when it is null. */
 function pruneSlideImageVersions(
   outputDir: string,
   slideNumber: SlideNumber,

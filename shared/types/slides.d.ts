@@ -12,7 +12,6 @@ export type StructuredSlide = {
   sections: NarrationSection[];
 };
 
-/** An exported slide image and the URL the viewer loads it from. */
 export type SlidePreview = {
   image: string;
   src: string;
