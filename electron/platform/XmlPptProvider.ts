@@ -64,7 +64,7 @@ export class XmlPptProvider implements PptProvider {
     const firstResult = queryResult.data.results[0];
     if (firstResult && firstResult.success !== true) {
       const reason =
-        firstResult.success === false && typeof firstResult.message === "string"
+        firstResult.success === false && firstResult.message
           ? firstResult.message
           : "the slide report did not confirm success";
       return { success: false, message: `Failed to query slide content: ${reason}` };
