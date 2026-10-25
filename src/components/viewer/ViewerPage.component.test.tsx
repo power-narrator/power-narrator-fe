@@ -1281,7 +1281,7 @@ test("lets a slide without a preview be selected, edited and saved behind placeh
   await screen.getByRole("button", { name: "Slide 2" }).click();
 
   await expect
-    .element(screen.getByRole("img", { name: "Slide 2 preview unavailable" }))
+    .element(screen.getByRole("region", { name: "Slide 2 preview" }).getByText("Preview unavailable"))
     .toBeInTheDocument();
   await expect
     .element(screen.getByRole("img", { name: "Slide 2 preview", exact: true }))
@@ -1392,7 +1392,7 @@ test("shows fresh notes behind a placeholder, not the old image, when Reload Sli
 
   await expect.element(notes).toHaveValue("Fresh narration");
   await expect
-    .element(screen.getByRole("img", { name: "Slide 1 preview unavailable" }))
+    .element(screen.getByRole("region", { name: "Slide 1 preview" }).getByText("Preview unavailable"))
     .toBeInTheDocument();
   await expect
     .element(screen.getByRole("img", { name: "Slide 1 preview", exact: true }))
