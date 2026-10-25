@@ -10,7 +10,7 @@ type SlidePreviewPaneProps = {
 
 export function SlidePreviewPane({ preview, slideNumber }: SlidePreviewPaneProps) {
   return (
-    <Box component="section" aria-label={`Slide ${slideNumber} preview`} h="100%">
+    <Box component="section" aria-label="Slide preview" h="100%">
       {preview ? (
         <Image src={preview.src} alt={`Slide ${slideNumber} preview`} fit="contain" h="100%" />
       ) : (
