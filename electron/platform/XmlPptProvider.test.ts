@@ -114,7 +114,6 @@ function createNativeProvider(
   };
 }
 
-/** An output directory whose slides folder already holds these images. */
 function createSlidesDir(...images: string[]): string {
   const outputDir = path.join(testDir(), "deck");
   fs.mkdirSync(path.join(outputDir, "slides"), { recursive: true });

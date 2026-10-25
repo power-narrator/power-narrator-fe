@@ -261,7 +261,6 @@ function reportNotes(macro: keyof typeof NOTES_PARAMS, report: string | null) {
   return request;
 }
 
-/** A complete notes report for a presentation whose slides have these notes, in order. */
 function notesReport(...notes: string[]): string {
   return [
     `###SLIDE_COUNT### ${notes.length}`,
@@ -275,7 +274,6 @@ function notesReport(...notes: string[]): string {
   ].join("\n");
 }
 
-/** A complete playback report for slides with no section audio. */
 function noPlaybackReport(...slideNumbers: number[]): string {
   return [
     ...slideNumbers.flatMap((n) => [`###SLIDE_START### ${n}`, "###SLIDE_END###"]),

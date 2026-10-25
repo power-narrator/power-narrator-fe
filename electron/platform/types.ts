@@ -75,7 +75,6 @@ export type ReadAllSlideNotesResult = Result<{ notes: SlideNotesMap }>;
 
 export type ReadSlideNotesResult = Result<{ notes: string }>;
 
-/** The data a slide requires, without its optional preview. */
 export type SlideContent = {
   notes: string;
   sectionsPlayingAcrossSlides: SectionsPlayingAcrossSlides;
